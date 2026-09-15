@@ -555,7 +555,7 @@ $(document).ready(function () {
 
     $('#addUserBtn').on('click', function()
     {
-      
+
         resetForm();
 
         $('#userModalTitle').text('Add User');
@@ -639,7 +639,7 @@ $(document).ready(function () {
         if(userId)
         {
 
-            url = "{{ url('admin/users/update') }}/" + userId;
+            url = "{{ route('admin.users.update', ['id' => ':id']) }}".replace(':id', userId);
 
         }
         else
@@ -680,7 +680,7 @@ $(document).ready(function () {
 
             success: function(response)
             {
-
+              //  alert(JSON.stringify(response));
                 if(response.status)
                 {
 
@@ -702,7 +702,7 @@ $(document).ready(function () {
 
             error: function(xhr)
             {
-
+               // alert(JSON.stringify(xhr));
                 if(xhr.status === 422)
                 {
 
@@ -779,7 +779,7 @@ $(document).ready(function () {
 
         $.ajax({
 
-            url: "{{ url('admin/users/edit') }}/" + id,
+            url: "{{ route('admin.users.edit', ['id' => ':id']) }}".replace(':id', id),
 
             type: "GET",
 
@@ -912,7 +912,7 @@ $(document).ready(function () {
 
                 $.ajax({
 
-                    url: "{{ url('admin/users/delete') }}/" + id,
+                    url: "{{ route('admin.users.delete', ['id' => ':id']) }}".replace(':id', id),
 
                     type: "POST",
 
@@ -922,7 +922,7 @@ $(document).ready(function () {
 
                     success: function(response)
                     {
-                        alert(JSON.stringify(response));
+                       // alert(JSON.stringify(response));
                         if(response.status)
                         {
 
@@ -946,7 +946,7 @@ $(document).ready(function () {
 
                     error: function(xhr)
                     {
-                        alert(JSON.stringify(xhr));
+                        //alert(JSON.stringify(xhr));
                         toastr.error(
                             xhr.responseJSON?.message ??
                             'Unable to delete user.'

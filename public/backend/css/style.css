@@ -921,7 +921,8 @@ html[data-theme="dark"] .profile-button .avatar-sm {
 
 .auth-visual {
   margin-bottom: 1rem;
-  height: 96px;
+  height: 40px;
+  width: auto;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
   overflow: hidden;
@@ -931,8 +932,6 @@ html[data-theme="dark"] .profile-button .avatar-sm {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
-  object-position: center;
 }
 
 .error-card {

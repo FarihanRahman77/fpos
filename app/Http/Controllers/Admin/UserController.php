@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
@@ -157,6 +158,7 @@ class UserController extends Controller
     */
     public function update(Request $request, $id)
     {
+        //return $request;
         $user = User::where('id', $id)
             ->where('deleted', 'No')
             ->first();
@@ -263,6 +265,7 @@ class UserController extends Controller
     */
     public function destroy($id)
     {
+
         $user = User::where('id', $id)
             ->where('deleted', 'No')
             ->first();
@@ -276,7 +279,7 @@ class UserController extends Controller
 
 
         $user->deleted = 'Yes';
-        $user->deleted_by =  auth()->user()->id();
+        $user->deleted_by =  Auth::id();
         $user->deleted_date = now();
 
         $user->save();

@@ -19,16 +19,17 @@
     </button>
     <main class="auth-page">
         <section class="auth-card">
-            
-            <div class="auth-visual"><img src="../assets/images/png/dasher-ui-bootstrap-5.jpg"
-                    alt="adminHMD dashboard interface"></div>
+
+            <div class="auth-visual">
+                <img src="{{ asset($setting->logo) }}" alt="adminHMD dashboard interface">
+            </div>
             <form method="POST" action="{{ route('login') }}" class="needs-validation" novalidate>
                 @csrf
 
                 <div class="mb-3">
                     <label class="form-label" for="loginEmail">Email</label>
                     <input class="form-control" id="email" type="email" name="email" :value="old('email')"
-                        required autofocus autocomplete="username">
+                        required autofocus autocomplete="username" placeholder="Email">
                     <div class="invalid-feedback">$errors->get('email')</div>
                 </div>
                 <div class="mb-3">
@@ -37,7 +38,7 @@
 
                     </div>
                     <input class="form-control" id="password" type="password" name="password" required
-                        autocomplete="current-password">
+                        autocomplete="current-password"  placeholder="Password">
                     <div class="invalid-feedback">$errors->get('password')</div>
                 </div>
                 <div class="form-check mb-4">

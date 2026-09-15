@@ -43,11 +43,11 @@
             <div class="dropdown">
                 <button class="profile-button dropdown-toggle" type="button" data-bs-toggle="dropdown"
                     aria-expanded="false">
-                    <img class="avatar-img avatar-sm" src="../assets/images/avatar/avatar.jpg" alt="Admin Hasan">
-                    <span class="profile-name d-none d-sm-inline">Admin Hasan</span>
+                    <img class="avatar-img avatar-sm" src="{{ asset(Auth::user()->image) }}" alt="{{ Auth::user()->name }}">
+                    <span class="profile-name d-none d-sm-inline">{{ Auth::user()->name }}</span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="profile.html">Profile</a></li>
+                    <li><a class="dropdown-item" href="{{route('admin.users.profile', Auth::user()->id)}}">Profile</a></li>
                     <li><a class="dropdown-item" href="settings.html">Account settings</a></li>
                     <li>
                         <hr class="dropdown-divider">
@@ -58,7 +58,7 @@
                             <a class="dropdown-item" href="{{ route('logout') }}" onclick="event.preventDefault(); this.closest('form').submit();">Sign out</a>
                         </form>
                     </li>
-                    
+
                 </ul>
             </div>
         </div>
