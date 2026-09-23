@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin\Attribute;
+use App\Models\Admin\AttributeType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -11,7 +12,8 @@ class AttributeController extends Controller
 {
     public function index()
     {
-        return view('admin.inventory.attribute.index');
+        $attributeTypes = AttributeType::where('deleted', 'No')->get();
+        return view('admin.inventory.attribute.index', ['attributeTypes' => $attributeTypes]);
     }
 
 
@@ -26,6 +28,7 @@ class AttributeController extends Controller
         $i = 1;
 
         foreach ($attributes as $attribute) {
+            $attributeType = AttributeType::where('deleted', 'No')->where('id', $attribute->attribute_type_id)->first();
 
             $status = $attribute->status == 'Active'
 
@@ -75,8 +78,7 @@ class AttributeController extends Controller
 
                     </ul>
 
-                </div>
-            ';
+                </div>';
 
 
             $output['data'][] = [
@@ -86,6 +88,8 @@ class AttributeController extends Controller
                 $attribute->name,
 
                 $attribute->slug,
+
+                $attributeType->name,
 
                 $status,
 
@@ -125,6 +129,7 @@ class AttributeController extends Controller
 
             $attribute = new Attribute();
 
+
             $attribute->deleted = 'No';
             $attribute->status = 'Active';
             $attribute->created_by = auth()->id();
@@ -132,7 +137,7 @@ class AttributeController extends Controller
 
 
         $attribute->name = $request->name;
-
+        $attribute->attribute_type_id = $request->attribute_type_id;
         $attribute->slug = Str::slug($request->name);
 
 
@@ -220,8 +225,8 @@ class AttributeController extends Controller
 
         $attribute->status =
             $attribute->status == 'Active'
-                ? 'Inactive'
-                : 'Active';
+            ? 'Inactive'
+            : 'Active';
 
         $attribute->updated_by = auth()->id();
 

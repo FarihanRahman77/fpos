@@ -154,6 +154,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.attribute_types.index') }}">
+                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-text">Attribute Type</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.attribute.index') }}">
                             <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
                             <span class="nav-text">Attributes</span>

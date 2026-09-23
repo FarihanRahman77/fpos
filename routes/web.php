@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\BrandController;
 use App\Http\Controllers\Admin\UnitController;
 use App\Http\Controllers\Admin\AttributeController;
+use App\Http\Controllers\Admin\AttributeTypeController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\BarcodeController;
 
@@ -158,7 +159,15 @@ Route::middleware('auth')->group(function () {
             ->name('status');
     });
 
-
+    Route::prefix('admin/attribute_types')->name('admin.attribute_types.')->group(function () {
+        Route::get('/index', [AttributeTypeController::class, 'index'])->name('index');
+        Route::get('/list', [AttributeTypeController::class, 'getAttributeTypes'])->name('list');
+        Route::post('/store', [AttributeTypeController::class, 'store'])->name('store');
+        Route::get('/edit/{id}', [AttributeTypeController::class, 'edit'])->name('edit');
+        Route::post('/update/{id}', [AttributeTypeController::class, 'update'])->name('update');
+        Route::post('/delete/{id}', [AttributeTypeController::class, 'destroy'])->name('delete');
+        Route::post('/status/{id}', [AttributeTypeController::class, 'changeStatus'])->name('status');
+    });
     /*
 |--------------------------------------------------------------------------
 | Attribute
@@ -210,7 +219,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/update/{id}', [ProductController::class, 'update'])
             ->name('products.update');
 
-        Route::post('/delete/{id}', [ProductController::class, 'delete'])
+        Route::match(['post', 'delete'], '/delete/{id}', [ProductController::class, 'destroy'])
             ->name('products.delete');
 
         Route::post('/status/{id}', [ProductController::class, 'status'])
@@ -219,15 +228,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/attributes/{attributeTypeId}', [ProductController::class, 'attributes'])
             ->name('products.attributes');
 
-        Route::get('/data', [ProductController::class, 'data'])
-            ->name('products.data');
+        Route::get('/data', [ProductController::class, 'data'])->name('products.data');
+
+        Route::get('/generate/codes', [ProductController::class, 'generateCodes'])->name('products.generate.codes');
+        Route::get('products/generate-variant-barcodes', [ProductController::class, 'generateVariantBarcodes'])->name('products.generate.variant.barcodes');
     });
 
-    Route::prefix('admin/barcode')->name('admin.barcode.')->group(function () {
-
-        Route::get('/', [BarcodeController::class, 'index'])
-            ->name('index');
-    });
+    Route::get('barcode', [BarcodeController::class, 'index'])->name('admin.barcode.index');
+    Route::get('barcode/search', [BarcodeController::class, 'search'])->name('admin.barcode.search');
+    Route::get('barcode/variants/{product}', [BarcodeController::class, 'variants'])->name('admin.barcode.variants');
+    Route::post('barcode/print', [BarcodeController::class, 'print'])->name('admin.barcode.print');
 });
 
 require __DIR__ . '/auth.php';

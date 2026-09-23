@@ -33,11 +33,12 @@
             <thead>
 
                 <tr>
-                    <th width="6%">SL.</th>
-                    <th>Attribute Name</th>
-                    <th>Slug</th>
+                    <th width="5%">SL.</th>
+                    <th width="30%">Attribute Name</th>
+                    <th  width="30%">Slug</th>
+                    <th  width="20%">Attribute Type</th>
                     <th width="10%">Status</th>
-                    <th width="8%">Action</th>
+                    <th width="5%">Action</th>
                 </tr>
 
             </thead>
@@ -99,10 +100,31 @@
                     </label>
 
                     <input type="text"
-                           class="form-control"
+                           class="form-control  border-dark"
                            id="attribute_name"
                            name="name"
                            placeholder="Enter attribute name">
+
+                    <span class="text-danger error-text name_error"></span>
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label for="attribute_name"
+                           class="form-label">
+                        Attribute Type
+                    </label>
+
+                    <select type="text"
+                           class="form-control border-dark"
+                           id="attribute_type_id"
+                           name="attribute_type_id">
+                        <option value="">Select Attribute Types</option>
+                        @foreach($attributeTypes as $type)
+                        <option value="{{ $type->id }}">{{ $type->name }}</option>
+                        @endforeach
+                    </select>
 
                     <span class="text-danger error-text name_error"></span>
 
@@ -116,7 +138,7 @@
                         Status
                     </label>
 
-                    <select class="form-select"
+                    <select class="form-select  border-dark"
                             id="attribute_status"
                             name="status">
 
@@ -168,11 +190,20 @@
 
 <script>
 
+$(document).ready(function () {
+    $('.select2').select2({
+        width: '100%',
+        dropdownParent: $('#productModal')
+    });
+});
+
+
 let attributeTable;
 let attributeModal;
 
 
 $(document).ready(function () {
+
 
     attributeModal = new bootstrap.Modal(
         document.getElementById('attributeModal')
@@ -183,21 +214,7 @@ $(document).ready(function () {
 
         processing: true,
 
-        ajax: "{{ route('admin.attribute.list') }}",
-
-        columns: [
-
-            { data: 0 },
-
-            { data: 1 },
-
-            { data: 2 },
-
-            { data: 3 },
-
-            { data: 4 }
-
-        ]
+        ajax: "{{ route('admin.attribute.list') }}"
 
     });
 
@@ -322,6 +339,8 @@ function editAttribute(id)
                 $('#attribute_id').val(response.data.id);
 
                 $('#attribute_name').val(response.data.name);
+                
+                $('#attribute_type_id').val(response.data.attribute_type_id);
 
                 $('#attribute_status').val(response.data.status);
 
