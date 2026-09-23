@@ -146,7 +146,7 @@
                             <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
                             <span class="nav-text">Units</span>
                         </a>
-                    </li>
+                    </li>  
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.barcode.index') }}">
                             <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
