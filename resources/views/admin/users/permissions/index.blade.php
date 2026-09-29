@@ -32,7 +32,7 @@
 
             <div class="table-responsive">
 
-                <table class="table table-bordered table-hover"
+                <table class="table table-bordered table-hover datatable" style="width:100%"
                        id="permissionTable"
                        width="100%">
 

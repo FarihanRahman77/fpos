@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-{{ Session::get('companySettings')[0]['name'] ?? '' }} Units
+{{ $generalSetting['company_name'] ?? '' }} Units
 @endsection
 
 @section('content')
@@ -23,8 +23,8 @@
     <div class="card-body">
 
         <table id="manageUnitTable"
-               width="100%"
-               class="table table-bordered table-hover">
+               width="100%" style="width:100%"
+               class="table table-bordered table-hover datatable">
 
             <thead>
                 <tr>

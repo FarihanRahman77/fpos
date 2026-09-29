@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-    {{ Session::get('companySettings')[0]['name'] ?? '' }} Products
+    {{ $generalSetting['company_name'] ?? '' }} Products
 @endsection
 
 @section('content')
@@ -29,7 +29,7 @@
         <div class="card-body">
             <div class="table-responsive">
 
-                <table id="manageProductTable" class="table table-bordered" width="100%">
+                <table id="manageProductTable" class="table table-bordered datatable" width="100%" style="width:100%">
                     <thead>
                         <tr>
                             <th width="3%" class="text-center">SL#</th>

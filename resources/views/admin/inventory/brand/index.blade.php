@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-{{ Session::get('companySettings')[0]['name'] ?? '' }} Brands
+{{ $generalSetting['company_name'] ?? '' }} Brands
 @endsection
 
 @section('content')
@@ -27,8 +27,8 @@
     <div class="card-body">
 
         <table id="manageBrandTable"
-               width="100%"
-               class="table table-bordered table-hover">
+               width="100%" style="width:100%"
+               class="table table-bordered table-hover datatable">
 
             <thead>
 

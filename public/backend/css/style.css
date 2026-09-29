@@ -1615,3 +1615,32 @@ html[data-theme="dark"] {
   border-top-color: var(--admin-sidebar-border);
   color: var(--admin-sidebar-text);
 }
+
+
+
+/* Compact DataTable */
+.datatable {
+  width: 100% !important;
+  font-size: 0.75rem;
+}
+
+.datatable thead th,
+.datatable tbody td {
+  min-width: 0;                 /* cancels the 120px rule */
+  padding: 0.3rem 0.4rem;
+  vertical-align: middle;
+}
+
+.datatable .badge {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+/* Keep the expand (+) icon compact */
+.datatable td.dtr-control {
+  padding-left: 1.9rem;
+}
+
+@media (max-width: 575.98px) {
+  .datatable { font-size: 0.8rem; }
+}

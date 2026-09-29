@@ -15,17 +15,9 @@ use App\Http\Controllers\Admin\AttributeController;
 use App\Http\Controllers\Admin\AttributeTypeController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\BarcodeController;
+use App\Http\Controllers\Admin\PurchaseController;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
-*/
+
 
 Route::get('/', function () {
     $setting = Setting::where('deleted', 'No')
@@ -238,6 +230,35 @@ Route::middleware('auth')->group(function () {
     Route::get('barcode/search', [BarcodeController::class, 'search'])->name('admin.barcode.search');
     Route::get('barcode/variants/{product}', [BarcodeController::class, 'variants'])->name('admin.barcode.variants');
     Route::post('barcode/print', [BarcodeController::class, 'print'])->name('admin.barcode.print');
+
+
+
+    Route::prefix('admin')->middleware(['auth'])->group(function () {
+        Route::get('/purchases', [PurchaseController::class, 'index'])->name('purchases.index');
+        Route::get('/purchases/list', [PurchaseController::class, 'list'])->name('purchases.list');
+        Route::get('/purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+        Route::post('/purchases/store', [PurchaseController::class, 'store'])->name('purchases.store');
+        Route::get('/purchases/edit/{id}', [PurchaseController::class, 'edit'])->name('purchases.edit');
+        Route::post('/purchases/update/{id}', [PurchaseController::class, 'update'])->name('purchases.update');
+        Route::post('/purchases/delete/{id}', [PurchaseController::class, 'delete'])->name('purchases.delete');
+        Route::post('/purchases/status/{id}', [PurchaseController::class, 'status'])->name('purchases.status');
+        Route::get('/purchases/supplier-due/{supplierId}', [PurchaseController::class, 'supplierDue'])->name('purchases.supplier.due');
+        Route::get('/purchases/products/search', [PurchaseController::class, 'productSearch'])->name('purchases.products.search');
+        Route::get('/purchases/products/variants/{productId}', [PurchaseController::class, 'variants'])->name('purchases.products.variants');
+        Route::get('/purchases/invoice-pdf/{id}', [PurchaseController::class, 'invoicePdf'])->name('purchases.invoice.pdf');
+
+        Route::get('/purchases/return/{id}', [PurchaseController::class,'returnPage'])->name('purchases.return.page');
+        Route::get('/purchases/return/data/{id}', [PurchaseController::class,'returnData'])->name('purchases.return.data');
+        Route::post('/purchases/return/store', [ PurchaseController::class,'storeReturn'])->name('purchases.return.store');
+        Route::get('/purchases/returns', [PurchaseController::class, 'returnIndex'])->name('purchases.return.index');
+
+        Route::get('/purchases/returns/list', [PurchaseController::class, 'returnList'])->name('purchases.return.list');
+
+        Route::get('/purchases/returns/view/{id}', [PurchaseController::class, 'returnView'])->name('purchases.return.view');
+
+        Route::post('/purchases/returns/delete/{id}', [PurchaseController::class, 'returnDelete'])->name('purchases.return.delete');
+    });
+
 });
 
 require __DIR__ . '/auth.php';

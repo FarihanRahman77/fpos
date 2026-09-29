@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-    {{ Session::get('companySettings')[0]['name'] ?? '' }} Attribute Categories
+    {{ $generalSetting['company_name'] ?? '' }} Attribute Categories
 @endsection
 
 @section('content')

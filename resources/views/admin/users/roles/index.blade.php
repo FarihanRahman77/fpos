@@ -26,7 +26,7 @@
 
                 <div class="table-responsive">
 
-                    <table class="table table-bordered table-hover" id="roleTable" width="100%">
+                    <table class="table table-bordered table-hover datatable" style="width:100%" id="roleTable" width="100%">
 
                         <thead>
                             <tr>

@@ -1,6 +1,8 @@
 @extends('admin.master')
 
-@section('title', 'General Settings')
+@section('title')
+{{ $generalSetting['company_name'] ?? '' }} Settings
+@endsection
 
 @section('content')
 
@@ -965,7 +967,7 @@
 
                     <!-- STATUS -->
 
-                    
+
 
                 </div>
 

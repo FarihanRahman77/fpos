@@ -146,7 +146,7 @@
                             <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
                             <span class="nav-text">Units</span>
                         </a>
-                    </li>  
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.barcode.index') }}">
                             <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
@@ -169,6 +169,36 @@
                 </ul>
 
             </li>
+
+
+            <li class="nav-item">
+                <a class="nav-link" href="#purchaseSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                    aria-controls="purchaseSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+                    <span class="nav-text">Purchase</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </a>
+                <ul class="collapse nav flex-column submenu" id="purchaseSubmenu">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('purchases.index') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Purchase List</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('purchases.return.index') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Purchase Return List</span>
+                        </a>
+                    </li>
+                </ul>
+
+            </li>
+
             {{-- Users --}}
             <li class="nav-item">
 

@@ -21,15 +21,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $generalSetting = Session::get('generalSetting');
-        if (!$generalSetting) {
-            $generalSetting = Setting::where('deleted', 'No')
-                ->where('status', 'Active')
-                ->first();
-            if ($generalSetting) {
-                Session::put('generalSetting', $generalSetting);
-            }
-            View::share('generalSetting', $generalSetting);
+
+        $generalSetting = Setting::where('deleted', 'No')->where('status', 'Active')->first();
+        if ($generalSetting) {
+            Session::put('generalSetting', $generalSetting);
         }
+        View::share('generalSetting', $generalSetting);
+
     }
 }

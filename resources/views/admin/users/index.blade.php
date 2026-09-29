@@ -33,8 +33,8 @@
 
             <div class="table-responsive">
 
-                <table class="table table-hover align-middle"
-                       id="usersTable">
+                <table class="table table-hover align-middle datatable"
+                       id="usersTable" style="width:100%">
 
                     <thead>
                         <tr>

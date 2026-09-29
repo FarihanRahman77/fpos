@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-    {{ Session::get('companySettings')[0]['name'] ?? '' }} Barcode Print
+    {{ $generalSetting['company_name'] ?? '' }} Barcode Print
 @endsection
 
 
@@ -38,7 +38,7 @@
 
                     {{-- Cart --}}
                     <div class="table-responsive">
-                        <table class="table table-bordered align-middle" id="cartTable">
+                        <table class="table table-bordered align-middle" id="cartTable" style="width:100%">
                             <thead class="table-light">
                                 <tr>
                                     <th style="width:40px">#</th>
@@ -154,10 +154,10 @@
 
             type: 'GET',
 
-            
+
 
             success: function (response) {
-                alert(JSON.stringify(response));
+               // alert(JSON.stringify(response));
                 if (response && response.data) {
 
                     addProductToCart(response.data);
@@ -171,7 +171,7 @@
             },
 
             error: function (xhr) {
-                alert(JSON.stringify(xhr));
+               // alert(JSON.stringify(xhr));
                 toastr.error('Something went wrong.');
 
             }

@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-{{ Session::get('companySettings')[0]['name'] ?? '' }} Attributes
+{{ $generalSetting['company_name'] ?? '' }} Attributes
 @endsection
 
 @section('content')
@@ -339,7 +339,7 @@ function editAttribute(id)
                 $('#attribute_id').val(response.data.id);
 
                 $('#attribute_name').val(response.data.name);
-                
+
                 $('#attribute_type_id').val(response.data.attribute_type_id);
 
                 $('#attribute_status').val(response.data.status);
