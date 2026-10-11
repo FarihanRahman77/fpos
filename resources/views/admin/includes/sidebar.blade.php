@@ -198,6 +198,85 @@
                 </ul>
 
             </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#saleSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                    aria-controls="saleSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+                    <span class="nav-text">Sales</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </a>
+                <ul class="collapse nav flex-column submenu" id="saleSubmenu">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('sales.index', ['type' => 'Walk-In']) }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Walk-In Sale</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('sales.returns.index', ['type' => 'Walk-In']) }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Walk-In Sale Return</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('sales.index', ['type' => 'Wholesale']) }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Whole Sale</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('sales.returns.index', ['type' => 'Wholesale']) }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Whole Sale Return</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('sales.orders.index') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Sale Order</span>
+                        </a>
+                    </li>
+                </ul>
+
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#CRMSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                    aria-controls="CRMSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+                    <span class="nav-text">CRM</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </a>
+                <ul class="collapse nav flex-column submenu" id="CRMSubmenu">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('party.index','Customer') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Customer </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('party.index','Walk-In Customer') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Walk-In Customer </span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('party.index','Supplier') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Supplier </span>
+                        </a>
+                    </li>
+
+                </ul>
+
+            </li>
 
             {{-- Users --}}
             <li class="nav-item">
@@ -267,6 +346,85 @@
 
             </li>
 
+            {{-- Payments --}}
+            <li class="nav-item">
+
+                <a class="nav-link" href="#paymentSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                    aria-controls="paymentSubmenu">
+
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+
+                    <span class="nav-text">Payments</span>
+
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+
+                </a>
+
+
+                {{-- payment Sub Menu --}}
+                <ul class="collapse nav flex-column submenu" id="paymentSubmenu">
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payment.index','Payment') }}">
+                            <span class="nav-icon">
+                                <i class="bi bi-list-ul"></i>
+                            </span>
+                            <span class="nav-text">Payment</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payment.index','Payment Receive') }}">
+                            <span class="nav-icon">
+                                <i class="bi bi-list-ul"></i>
+                            </span>
+                            <span class="nav-text">Payment Receive</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payment.index','Discount') }}">
+                            <span class="nav-icon">
+                                <i class="bi bi-list-ul"></i>
+                            </span>
+                            <span class="nav-text">Discount</span>
+                        </a>
+                    </li>
+
+                </ul>
+
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" href="#accountsSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                    aria-controls="accountsSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+                    <span class="nav-text">Accounts</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </a>
+                <ul class="collapse nav flex-column submenu" id="accountsSubmenu">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.chart-of-accounts.page') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Chart Of Accounts</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.expense.index') }}">
+                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-text">Expense</span>
+                        </a>
+                    </li>
+
+                </ul>
+
+            </li>
 
 
             {{-- Profile --}}

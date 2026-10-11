@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
+use App\Models\Admin\Setting;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -17,7 +18,10 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View
     {
-        return view('auth.login');
+        $setting = Setting::where('deleted', 'No')
+        ->where('status', 'Active')
+        ->first();
+        return view('admin.auth.login', compact('setting'));
     }
 
     /**

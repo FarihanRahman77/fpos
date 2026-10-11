@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-    {{$generalSetting['company_name'] ?? '' }} Purchases
+    {{ $generalSetting['company_name'] ?? '' }} Purchases
 @endsection
 
 @section('content')
@@ -96,49 +96,70 @@
                 let id = $(this).data('id');
 
 
-                if (!confirm('Are you sure you want to delete this purchase?')) {
+                Swal.fire({
 
-                    return;
-                }
+                    title: 'Alert!',
 
+                    text: 'Are you sure you want to delete this purchase?',
 
-                $.ajax({
+                    icon: 'question',
 
-                    url: "{{ url('/admin/purchases/delete') }}/" + id,
+                    showCancelButton: true,
 
-                    type: 'POST',
+                    confirmButtonText: 'Yes, Delete Purchase',
 
-                    data: {
+                    cancelButtonText: 'No, Cancel',
 
-                        _token: "{{ csrf_token() }}"
+                    reverseButtons: true,
 
-                    },
+                    allowOutsideClick: false,
 
-                    success: function(response) {
+                    allowEscapeKey: false
 
-                        if (response.status) {
+                }).then((result) => {
 
-                            toastr.success(response.message);
+                      if (!result.isConfirmed) {
+                            return;
+                        }
 
-                            loadPurchases();
+                    $.ajax({
 
-                        } else {
+                        url: "{{ url('/admin/purchases/delete') }}/" + id,
 
-                            toastr.error(response.message);
+                        type: 'POST',
+
+                        data: {
+
+                            _token: "{{ csrf_token() }}"
+
+                        },
+
+                        success: function(response) {
+
+                            if (response.status) {
+
+                                toastr.success(response.message);
+
+                                loadPurchases();
+
+                            } else {
+
+                                toastr.error(response.message);
+
+                            }
+
+                        },
+
+                        error: function(xhr) {
+
+                            toastr.error(
+                                xhr.responseJSON?.message ||
+                                'Something went wrong.'
+                            );
 
                         }
 
-                    },
-
-                    error: function(xhr) {
-
-                        toastr.error(
-                            xhr.responseJSON?.message ||
-                            'Something went wrong.'
-                        );
-
-                    }
-
+                    });
                 });
 
             });

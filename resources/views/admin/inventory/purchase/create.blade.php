@@ -609,7 +609,7 @@
 
                         console.log('Success:', response);
 
-                      //  alert(JSON.stringify(response));
+                        //  alert(JSON.stringify(response));
 
                         if (response && response.data) {
 
@@ -631,7 +631,7 @@
 
                         console.log('Response:', xhr.responseText);
 
-                      //  alert(xhr.responseText);
+                        //  alert(xhr.responseText);
 
                         toastr.error(
                             'Something went wrong.'
@@ -920,7 +920,7 @@
                     <td>
 
                         <input
-                            type="number"
+                            type="text"
                             step="0.0001"
                             min="0.0001"
                             class="form-control qtyInput"
@@ -933,7 +933,7 @@
                     <td>
 
                         <input
-                            type="number"
+                            type="text"
                             step="0.01"
                             min="0"
                             class="form-control priceInput"
@@ -971,7 +971,7 @@
                     <td>
 
                         <input
-                            type="number"
+                            type="text"
                             step="0.01"
                             min="0"
                             class="form-control itemDiscount"
@@ -1085,13 +1085,15 @@
             |--------------------------------------------------------------------------
             */
 
-            $(document).on('input', '.qtyInput', function() {
+            $(document).on('blur', '.qtyInput', function() {
 
                 let index = $(this).data('index');
+                let value = $(this).val();
 
-                cart[index].qty =
-                    parseFloat($(this).val()) || 0;
 
+                if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                    cart[index].qty = value || 0;
+                }
                 renderCart();
 
             });
@@ -1103,13 +1105,14 @@
             |--------------------------------------------------------------------------
             */
 
-            $(document).on('input', '.priceInput', function() {
+            $(document).on('blur', '.priceInput', function() {
 
                 let index = $(this).data('index');
+                let value = $(this).val();
 
-                cart[index].purchase_price =
-                    parseFloat($(this).val()) || 0;
-
+                if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                    cart[index].purchase_price = value || 0;
+                }
                 renderCart();
 
             });
@@ -1139,12 +1142,16 @@
             |--------------------------------------------------------------------------
             */
 
-            $(document).on('input', '.itemDiscount', function() {
+            $(document).on('blur', '.itemDiscount', function() {
 
                 let index = $(this).data('index');
 
-                cart[index].discount_value =
-                    parseFloat($(this).val()) || 0;
+                let value = $(this).val();
+
+                if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                    cart[index].discount_value = value || 0;
+                }
+
 
                 renderCart();
 
@@ -1352,10 +1359,7 @@
 
                 e.preventDefault();
 
-
-                let supplierId =
-                    $('#supplier_id').val();
-
+                let supplierId = $('#supplier_id').val();
 
                 if (!supplierId) {
 
@@ -1366,7 +1370,6 @@
                     return;
                 }
 
-
                 if (cart.length === 0) {
 
                     toastr.error(
@@ -1376,9 +1379,7 @@
                     return;
                 }
 
-
                 let invalid = false;
-
 
                 $.each(cart, function(index, item) {
 
@@ -1392,7 +1393,6 @@
                         return false;
                     }
 
-
                     if (
                         item.purchase_price === undefined ||
                         parseFloat(item.purchase_price) < 0
@@ -1405,7 +1405,6 @@
 
                 });
 
-
                 if (invalid) {
 
                     toastr.error(
@@ -1416,124 +1415,182 @@
                 }
 
 
-                let items = [];
+                /*
+                |--------------------------------------------------------------------------
+                | SweetAlert Confirmation
+                |--------------------------------------------------------------------------
+                */
+
+                Swal.fire({
+
+                    title: 'Confirm Purchase?',
+
+                    text: 'Are you sure you want to save this purchase?',
+
+                    icon: 'question',
+
+                    showCancelButton: true,
+
+                    confirmButtonText: 'Yes, Save Purchase',
+
+                    cancelButtonText: 'No, Cancel',
+
+                    reverseButtons: true,
+
+                    allowOutsideClick: false,
+
+                    allowEscapeKey: false
+
+                }).then((result) => {
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | If user clicks No / Cancel
+                    |--------------------------------------------------------------------------
+                    */
+
+                    if (!result.isConfirmed) {
+
+                        return;
+                    }
 
 
-                $.each(cart, function(index, item) {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Prepare Items
+                    |--------------------------------------------------------------------------
+                    */
 
-                    calculateItemTotal(item);
+                    let items = [];
 
+                    $.each(cart, function(index, item) {
 
-                    items.push({
+                        calculateItemTotal(item);
 
-                        product_id: item.product_id,
+                        items.push({
 
-                        product_variant_id: item.product_variant_id,
+                            product_id: item.product_id,
 
-                        qty: item.qty,
+                            product_variant_id: item.product_variant_id,
 
-                        purchase_price: item.purchase_price,
+                            qty: item.qty,
 
-                        discount_type: item.discount_type,
+                            purchase_price: item.purchase_price,
 
-                        discount_value: item.discount_value
+                            discount_type: item.discount_type,
+
+                            discount_value: item.discount_value
+
+                        });
 
                     });
 
-                });
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Form Data
+                    |--------------------------------------------------------------------------
+                    */
+
+                    let formData = {
+
+                        _token: "{{ csrf_token() }}",
+
+                        supplier_id: $('#supplier_id').val(),
+
+                        purchase_date: $('#purchase_date').val(),
+
+                        discount_type: $('#discount_type').val(),
+
+                        discount_value: $('#discount_value').val(),
+
+                        paid_amount: $('#paid_amount').val(),
+
+                        payment_method: $('#payment_method').val(),
+
+                        remarks: $('#remarks').val(),
+
+                        items: items
+
+                    };
 
 
-                let formData = {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Disable Save Button
+                    |--------------------------------------------------------------------------
+                    */
 
-                    _token: "{{ csrf_token() }}",
-
-                    supplier_id: $('#supplier_id').val(),
-
-                    purchase_date: $('#purchase_date').val(),
-
-                    discount_type: $('#discount_type').val(),
-
-                    discount_value: $('#discount_value').val(),
-
-                    paid_amount: $('#paid_amount').val(),
-
-                    payment_method: $('#payment_method').val(),
-
-                    remarks: $('#remarks').val(),
-
-                    items: items
-
-                };
+                    $('#savePurchaseBtn')
+                        .prop('disabled', true);
 
 
-                $('#savePurchaseBtn')
-                    .prop('disabled', true);
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Submit AJAX
+                    |--------------------------------------------------------------------------
+                    */
 
+                    $.ajax({
 
-                $.ajax({
+                        url: "{{ route('purchases.store') }}",
 
-                    url: "{{ route('purchases.store') }}",
+                        type: 'POST',
 
-                    type: 'POST',
+                        data: formData,
 
-                    data: formData,
+                        success: function(response) {
 
+                            if (response && response.status) {
 
-                    success: function(response) {
+                                toastr.success(
+                                    response.message
+                                );
 
-                        if (response && response.status) {
+                                setTimeout(function() {
 
-                            toastr.success(
-                                response.message
-                            );
+                                    window.location.href =
+                                        response.redirect;
 
+                                }, 700);
 
-                            setTimeout(function() {
+                            } else {
 
-                                window.location.href =
-                                    response.redirect;
+                                toastr.error(
+                                    response.message ||
+                                    'Could not save purchase.'
+                                );
 
-                            }, 700);
+                                $('#savePurchaseBtn')
+                                    .prop('disabled', false);
 
-                        } else {
+                            }
 
-                            toastr.error(
-                                response.message ||
-                                'Could not save purchase.'
-                            );
+                        },
+
+                        error: function(xhr) {
+
+                            let message =
+                                'Something went wrong.';
+
+                            if (
+                                xhr.responseJSON &&
+                                xhr.responseJSON.message
+                            ) {
+
+                                message =
+                                    xhr.responseJSON.message;
+
+                            }
+
+                            toastr.error(message);
 
                             $('#savePurchaseBtn')
                                 .prop('disabled', false);
 
                         }
 
-                    },
-
-
-                    error: function(xhr) {
-
-                        let message =
-                            'Something went wrong.';
-
-
-                        if (
-                            xhr.responseJSON &&
-                            xhr.responseJSON.message
-                        ) {
-
-                            message =
-                                xhr.responseJSON.message;
-
-                        }
-
-
-                        toastr.error(message);
-
-
-                        $('#savePurchaseBtn')
-                            .prop('disabled', false);
-
-                    }
+                    });
 
                 });
 

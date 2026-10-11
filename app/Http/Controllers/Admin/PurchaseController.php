@@ -10,7 +10,7 @@ use App\Models\Admin\PurchaseReturnItem;
 use App\Models\Admin\Product;
 use App\Models\Admin\ProductVariant;
 use App\Models\Admin\Stock;
-use App\Models\Admin\Supplier;
+use App\Models\Admin\Party;
 use App\Models\Admin\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +19,11 @@ use Illuminate\Support\Facades\Validator;
 use Carbon\Carbon;
 use PDF;
 use Exception;
+use App\Traits\PartyDueTrait;
 
 class PurchaseController extends Controller
 {
+    use PartyDueTrait;
     public function index()
     {
         return view('admin.inventory.purchase.index');
@@ -35,8 +37,9 @@ class PurchaseController extends Controller
     */
     public function create()
     {
-        $suppliers = Supplier::where('deleted', 'No')
+        $suppliers = Party::where('deleted', 'No')
             ->where('status', 'Active')
+            ->where('type','Supplier')
             ->orderBy('name')
             ->get();
         $products = Product::where('deleted', 'No')
@@ -58,10 +61,10 @@ class PurchaseController extends Controller
         try {
 
             $purchases = DB::table('purchases')
-                ->leftJoin('suppliers', 'suppliers.id', '=', 'purchases.supplier_id')
+                ->leftJoin('parties', 'parties.id', '=', 'purchases.supplier_id')
                 ->select(
                     'purchases.*',
-                    'suppliers.name as supplier_name'
+                    'parties.name as supplier_name'
                 )
                 ->where('purchases.deleted', 'No')
                 ->orderByDesc('purchases.id')
@@ -153,10 +156,7 @@ class PurchaseController extends Controller
     {
         try {
 
-            $due = Purchase::where('supplier_id', $supplierId)
-                ->where('deleted', 'No')
-                ->where('status', 'Active')
-                ->sum('due_amount');
+            $due = $this->partyDue($supplierId);
 
             return response()->json([
                 'status' => true,
@@ -311,9 +311,10 @@ class PurchaseController extends Controller
 
         try {
 
-            $supplier = Supplier::where('id', $request->supplier_id)
+            $supplier = Party::where('id', $request->supplier_id)
                 ->where('deleted', 'No')
                 ->where('status', 'Active')
+                ->where('type', 'Supplier')
                 ->first();
 
             if (!$supplier) {
@@ -555,17 +556,19 @@ class PurchaseController extends Controller
                 $stock->save();
             }
 
-            $lastpaymentCode = Payment::where('deleted', 'No')->max('code');
+            $lastpaymentCode = Payment::max('code');
             $next = $lastpaymentCode ? ((int) substr($lastpaymentCode, 4)) + 1 : 1;
             $paymentCode = 'VO-' . str_pad($next, 6, '0', STR_PAD_LEFT);
 
             if ($grandTotal > 0) {
                 $payment = new Payment();
+                $payment->party_id = $request->supplier_id;
+                $payment->party_type = 'Supplier';
                 $payment->code = $paymentCode;
-                $payment->payment_type = 'Payable';
+                $payment->payment_type = 'Purchase';
                 $payment->datetime = $request->purchase_date;
-                $payment->debit = 0;
-                $payment->credit = $grandTotal;
+                $payment->debit = $grandTotal;
+                $payment->credit = 0;
                 $payment->purchase_id = $purchase->id;
                 $payment->payment_method = $request->payment_method;
                 $payment->status = 'Active';
@@ -575,23 +578,25 @@ class PurchaseController extends Controller
                 $payment->save();
             }
 
-            $lastpaymentCode2 = Payment::where('deleted', 'No')->max('code');
+            $lastpaymentCode2 = Payment::max('code');
             $next2 = $lastpaymentCode2 ? ((int) substr($lastpaymentCode2, 4)) + 1 : 1;
             $paymentCode2 = 'VO-' . str_pad($next2, 6, '0', STR_PAD_LEFT);
             if ($paidAmount > 0) {
-                $payment = new Payment();
-                $payment->code = $paymentCode2;
-                $payment->payment_type = 'Payment';
-                $payment->datetime = $request->purchase_date;
-                $payment->debit = $paidAmount;
-                $payment->credit = 0;
-                $payment->purchase_id = $purchase->id;
-                $payment->payment_method = $request->payment_method;
-                $payment->status = 'Active';
-                $payment->deleted = 'No';
-                $payment->created_by = auth()->id();
-                $payment->created_datetime = now();
-                $payment->save();
+                $payment2 = new Payment();
+                $payment2->party_id = $request->supplier_id;
+                $payment2->party_type = 'Supplier';
+                $payment2->code = $paymentCode2;
+                $payment2->payment_type = 'Purchase Payment';
+                $payment2->datetime = $request->purchase_date;
+                $payment2->debit = 0;
+                $payment2->credit = $paidAmount;
+                $payment2->purchase_id = $purchase->id;
+                $payment2->payment_method = $request->payment_method;
+                $payment2->status = 'Active';
+                $payment2->deleted = 'No';
+                $payment2->created_by = auth()->id();
+                $payment2->created_datetime = now();
+                $payment2->save();
             }
 
             DB::commit();
@@ -1128,7 +1133,7 @@ class PurchaseController extends Controller
     public function invoicePdf(Request $request, $id)
     {
         $purchase = Purchase::where('id', $id)->where('deleted', 'No')->firstOrFail();
-        $supplier = Supplier::find($purchase->supplier_id);
+        $supplier = Party::find($purchase->supplier_id);
 
         $items = DB::table('purchase_items')
             ->leftJoin('products', 'products.id', '=', 'purchase_items.product_id')
@@ -2099,8 +2104,8 @@ class PurchaseController extends Controller
                     'purchase_returns.purchase_id'
                 )
                 ->leftJoin(
-                    'suppliers',
-                    'suppliers.id',
+                    'parties',
+                    'parties.id',
                     '=',
                     'purchase_returns.supplier_id'
                 )
@@ -2111,7 +2116,7 @@ class PurchaseController extends Controller
                 ->select(
                     'purchase_returns.*',
                     'purchases.invoice_no',
-                    'suppliers.name as supplier_name'
+                    'parties.name as supplier_name'
                 )
                 ->orderBy(
                     'purchase_returns.id',
@@ -2371,8 +2376,8 @@ class PurchaseController extends Controller
                 'purchase_returns.purchase_id'
             )
             ->leftJoin(
-                'suppliers',
-                'suppliers.id',
+                'parties',
+                'parties.id',
                 '=',
                 'purchase_returns.supplier_id'
             )
@@ -2387,7 +2392,7 @@ class PurchaseController extends Controller
             ->select(
                 'purchase_returns.*',
                 'purchases.invoice_no',
-                'suppliers.name as supplier_name'
+                'parties.name as supplier_name'
             )
             ->first();
 

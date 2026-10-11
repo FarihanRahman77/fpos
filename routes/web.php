@@ -16,6 +16,11 @@ use App\Http\Controllers\Admin\AttributeTypeController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\BarcodeController;
 use App\Http\Controllers\Admin\PurchaseController;
+use App\Http\Controllers\Admin\PartyController;
+use App\Http\Controllers\Admin\SaleController;
+use App\Http\Controllers\Admin\ChartOfAccountController;
+use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\ExpenseController;
 
 
 
@@ -24,7 +29,7 @@ Route::get('/', function () {
         ->where('status', 'Active')
         ->first();
     return view('admin.auth.login', compact('setting'));
-});
+})->name('customLogin');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard')->middleware(['auth', 'verified']);
 
@@ -247,18 +252,158 @@ Route::middleware('auth')->group(function () {
         Route::get('/purchases/products/variants/{productId}', [PurchaseController::class, 'variants'])->name('purchases.products.variants');
         Route::get('/purchases/invoice-pdf/{id}', [PurchaseController::class, 'invoicePdf'])->name('purchases.invoice.pdf');
 
-        Route::get('/purchases/return/{id}', [PurchaseController::class,'returnPage'])->name('purchases.return.page');
-        Route::get('/purchases/return/data/{id}', [PurchaseController::class,'returnData'])->name('purchases.return.data');
-        Route::post('/purchases/return/store', [ PurchaseController::class,'storeReturn'])->name('purchases.return.store');
+        Route::get('/purchases/return/{id}', [PurchaseController::class, 'returnPage'])->name('purchases.return.page');
+        Route::get('/purchases/return/data/{id}', [PurchaseController::class, 'returnData'])->name('purchases.return.data');
+        Route::post('/purchases/return/store', [PurchaseController::class, 'storeReturn'])->name('purchases.return.store');
         Route::get('/purchases/returns', [PurchaseController::class, 'returnIndex'])->name('purchases.return.index');
-
         Route::get('/purchases/returns/list', [PurchaseController::class, 'returnList'])->name('purchases.return.list');
-
         Route::get('/purchases/returns/view/{id}', [PurchaseController::class, 'returnView'])->name('purchases.return.view');
-
         Route::post('/purchases/returns/delete/{id}', [PurchaseController::class, 'returnDelete'])->name('purchases.return.delete');
     });
 
+
+    Route::prefix('admin/parties')->name('party.')->group(function () {
+        Route::get('list/{type}', [PartyController::class, 'list'])->name('list');
+        Route::get('show', [PartyController::class, 'show'])->name('show');
+        Route::post('store', [PartyController::class, 'store'])->name('store');
+        Route::post('update', [PartyController::class, 'update'])->name('update');
+        Route::post('toggle-status', [PartyController::class, 'toggleStatus'])->name('toggle_status');
+        Route::post('delete', [PartyController::class, 'destroy'])->name('delete');
+
+        // keep this last
+        Route::get('{type}', [PartyController::class, 'index'])->name('index');
+    });
+
+
+    Route::prefix('admin')->middleware(['auth'])->group(function () {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sales
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/sales', [SaleController::class, 'index'])
+            ->name('sales.index');
+
+        Route::get('/sales/create', [SaleController::class, 'create'])
+            ->name('sales.create');
+
+        Route::get('/sales/list', [SaleController::class, 'list'])
+            ->name('sales.list');
+
+        Route::get('/sales/customer-by-phone/{phone}', [SaleController::class, 'customerByPhone'])
+            ->name('sales.customer.by.phone');
+
+        Route::get('/sales/customer-due/{customerId}', [SaleController::class, 'customerDue'])
+            ->name('sales.customer.due');
+
+        Route::get('/sales/products/search', [SaleController::class, 'productSearch'])
+            ->name('sales.products.search');
+
+        Route::get('/sales/products/variants/{productId}', [SaleController::class, 'variants'])
+            ->name('sales.products.variants');
+
+        Route::post('/sales/store', [SaleController::class, 'store'])
+            ->name('sales.store');
+
+        Route::get('/sales/invoice/{id}/pdf', [SaleController::class, 'invoicePdf'])
+            ->name('sales.invoice.pdf');
+
+        Route::post('/sales/delete/{id}', [SaleController::class, 'delete'])
+            ->name('sales.delete');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sale Returns
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/sales/returns', [SaleController::class, 'returnIndex'])
+            ->name('sales.returns.index');
+
+        Route::get('/sales/returns/list', [SaleController::class, 'returnList'])
+            ->name('sales.returns.list');
+
+        Route::get('/sales/return/{id}', [SaleController::class, 'returnPage'])
+            ->name('sales.return.page');
+
+        Route::get('/sales/return-data/{id}', [SaleController::class, 'returnData'])
+            ->name('sales.return.data');
+
+        Route::post('/sales/return/store', [SaleController::class, 'storeReturn'])
+            ->name('sales.return.store');
+
+        Route::get('/sales/return/view/{id}', [SaleController::class, 'returnView'])
+            ->name('sales.return.view');
+
+        Route::get('/sales/return/invoice/{id}/pdf', [SaleController::class, 'returnInvoicePdf'])
+            ->name('sales.return.invoice.pdf');
+
+        Route::post('/sales/return/delete/{id}', [SaleController::class, 'returnDelete'])
+            ->name('sales.return.delete');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sale Orders
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/sales/orders', [SaleController::class, 'orderIndex'])
+            ->name('sales.orders.index');
+
+        Route::get('/sales/orders/create', [SaleController::class, 'orderCreate'])
+            ->name('sales.orders.create');
+
+        Route::get('/sales/orders/list', [SaleController::class, 'orderList'])
+            ->name('sales.orders.list');
+
+        Route::post('/sales/orders/store', [SaleController::class, 'orderStore'])
+            ->name('sales.orders.store');
+
+        Route::get('/sales/orders/invoice/{id}/pdf', [SaleController::class, 'orderInvoicePdf'])
+            ->name('sales.order.invoice.pdf');
+
+        Route::post('/sales/orders/delete/{id}', [SaleController::class, 'orderDelete'])
+            ->name('sales.orders.delete');
+
+        Route::post('/sales/orders/deliver/{id}', [SaleController::class, 'orderDeliver'])->name('sales.orders.deliver');
+
+        Route::post('/sales/orders/cancel/{id}', [SaleController::class, 'orderCancel'])->name('sales.orders.cancel');
+
+        Route::get('/sales/orders/delivery/{id}', [SaleController::class, 'orderDeliveryPage'])->name('sales.orders.delivery_page');
+
+        Route::post('/sales/orders/delivery/{id}', [SaleController::class, 'orderDelivery'])->name('sales.orders.delivery');
+
+        Route::get('/payment/index/{type}', [PaymentController::class, 'index'])->name('admin.payment.index');
+        Route::get('/payment/list/{type}', [PaymentController::class, 'list'])->name('admin.payment.list');
+        Route::post('/payment/store/', [PaymentController::class, 'store'])->name('admin.payment.store');
+        Route::get('/payment/delete', [PaymentController::class, 'delete'])->name('admin.payment.delete');
+        Route::get('/payment/due', [PaymentController::class, 'party_due'])->name('admin.payment.due');
+
+        Route::get('/chart-of-accounts', [ChartOfAccountController::class, 'page'])->name('admin.chart-of-accounts.page');
+        Route::get('/chart-of-accounts/tree', [ChartOfAccountController::class, 'index'])->name('admin.chart-of-accounts.index');
+        Route::get('/chart-of-accounts/show/{id}', [ChartOfAccountController::class, 'show'])->name('admin.chart-of-accounts.show');
+        Route::post('/chart-of-accounts/store', [ChartOfAccountController::class, 'store'])->name('admin.chart-of-accounts.store');
+        Route::post('/chart-of-accounts/update/{id}', [ChartOfAccountController::class, 'update'])->name('admin.chart-of-accounts.update');
+        Route::post('/chart-of-accounts/destroy/{id}', [ChartOfAccountController::class, 'destroy'])->name('admin.chart-of-accounts.destroy');
+        Route::post('/chart-of-accounts/status/{id}', [ChartOfAccountController::class, 'status'])->name('admin.chart-of-accounts.status');
+        Route::get('/chart-of-accounts/next-code/{parentId}', [ChartOfAccountController::class, 'nextCode'])->name('admin.chart-of-accounts.next-code');
+
+
+
+
+        Route::get('/expense/index/', [ExpenseController::class, 'index'])->name('admin.expense.index');
+        Route::get('/expense/list/', [ExpenseController::class, 'list'])->name('admin.expense.list');
+        Route::post('/expense/store/', [ExpenseController::class, 'store'])->name('admin.expense.store');
+        Route::get('/expense/delete', [ExpenseController::class, 'delete'])->name('admin.expense.delete');
+        Route::get('/expense/show/', [ExpenseController::class, 'show'])->name('admin.expense.show');
+        Route::get('/expense/children/', [ExpenseController::class, 'children'])->name('admin.expense.children');
+        Route::get('/expense/pdf/', [ExpenseController::class, 'pdf'])->name('admin.expense.pdf');
+
+    });
 });
 
 require __DIR__ . '/auth.php';
