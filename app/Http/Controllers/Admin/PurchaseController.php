@@ -20,10 +20,11 @@ use Carbon\Carbon;
 use PDF;
 use Exception;
 use App\Traits\PartyDueTrait;
+use App\Traits\PaymentTrait;
 
 class PurchaseController extends Controller
 {
-    use PartyDueTrait;
+    use PartyDueTrait, PaymentTrait;
     public function index()
     {
         return view('admin.inventory.purchase.index');
@@ -556,47 +557,28 @@ class PurchaseController extends Controller
                 $stock->save();
             }
 
-            $lastpaymentCode = Payment::max('code');
-            $next = $lastpaymentCode ? ((int) substr($lastpaymentCode, 4)) + 1 : 1;
-            $paymentCode = 'VO-' . str_pad($next, 6, '0', STR_PAD_LEFT);
-
             if ($grandTotal > 0) {
-                $payment = new Payment();
-                $payment->party_id = $request->supplier_id;
-                $payment->party_type = 'Supplier';
-                $payment->code = $paymentCode;
-                $payment->payment_type = 'Purchase';
-                $payment->datetime = $request->purchase_date;
-                $payment->debit = $grandTotal;
-                $payment->credit = 0;
-                $payment->purchase_id = $purchase->id;
-                $payment->payment_method = $request->payment_method;
-                $payment->status = 'Active';
-                $payment->deleted = 'No';
-                $payment->created_by = auth()->id();
-                $payment->created_datetime = now();
-                $payment->save();
+                $this->storeDebitPayment([
+                    'party_id'       => $request->supplier_id,
+                    'party_type'     => 'Supplier',
+                    'payment_type'   => 'Purchase',
+                    'datetime'       => $request->purchase_date,
+                    'debit'          => $grandTotal,
+                    'purchase_id'    => $purchase->id,
+                    'payment_method' => $request->payment_method,
+                ]);
             }
 
-            $lastpaymentCode2 = Payment::max('code');
-            $next2 = $lastpaymentCode2 ? ((int) substr($lastpaymentCode2, 4)) + 1 : 1;
-            $paymentCode2 = 'VO-' . str_pad($next2, 6, '0', STR_PAD_LEFT);
             if ($paidAmount > 0) {
-                $payment2 = new Payment();
-                $payment2->party_id = $request->supplier_id;
-                $payment2->party_type = 'Supplier';
-                $payment2->code = $paymentCode2;
-                $payment2->payment_type = 'Purchase Payment';
-                $payment2->datetime = $request->purchase_date;
-                $payment2->debit = 0;
-                $payment2->credit = $paidAmount;
-                $payment2->purchase_id = $purchase->id;
-                $payment2->payment_method = $request->payment_method;
-                $payment2->status = 'Active';
-                $payment2->deleted = 'No';
-                $payment2->created_by = auth()->id();
-                $payment2->created_datetime = now();
-                $payment2->save();
+                $this->storeCreditPayment([
+                    'party_id'       => $request->supplier_id,
+                    'party_type'     => 'Supplier',
+                    'payment_type'   => 'Purchase Payment',
+                    'datetime'       => $request->purchase_date,
+                    'credit'         => $paidAmount,
+                    'purchase_id'    => $purchase->id,
+                    'payment_method' => $request->payment_method,
+                ]);
             }
 
             DB::commit();
@@ -1067,23 +1049,7 @@ class PurchaseController extends Controller
         | Delete Purchase Payments
         |--------------------------------------------------------------------------
         */
-            $payments = Payment::where('purchase_id', $purchase->id)
-                ->where('deleted', 'No')
-                ->get();
-
-            foreach ($payments as $payment) {
-
-                $payment->deleted = 'Yes';
-                $payment->status = 'Inactive';
-                $payment->deleted_by = auth()->id();
-
-                $payment->updated_by = auth()->id();
-                $payment->updated_datetime = Carbon::now();
-
-                $payment->updated_at = Carbon::now();
-
-                $payment->save();
-            }
+            $this->deletePaymentsBy('purchase_id', $purchase->id);
 
 
             /*
@@ -1554,9 +1520,7 @@ class PurchaseController extends Controller
 
             $discountAmount = 0;
 
-            /*
-         * Purchase-level discount is also returned proportionally.
-         */
+           
 
             if ((float) $purchase->subtotal > 0) {
 
@@ -1671,11 +1635,7 @@ class PurchaseController extends Controller
             $purchaseReturn->save();
 
 
-            /*
-        |--------------------------------------------------------------------------
-        | Return Items + Stock Out
-        |--------------------------------------------------------------------------
-        */
+
 
             foreach ($validItems as $returnItem) {
 
@@ -1896,145 +1856,35 @@ class PurchaseController extends Controller
          * Debit = supplier payable reduction.
          */
 
-            $lastPaymentCode =
-                Payment::where(
-                    'deleted',
-                    'No'
-                )->max('code');
-
-
-            $nextPaymentCode =
-                $lastPaymentCode
-                ? ((int) substr($lastPaymentCode, 4)) + 1
-                : 1;
-
-
-            $paymentCode =
-                'VO-' .
-                str_pad(
-                    $nextPaymentCode,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
-
-
             if ($grandTotal > 0) {
-
-                $payment =
-                    new Payment();
-
-                $payment->code =
-                    $paymentCode;
-
-                $payment->payment_type =
-                    'Payment Receivable';
-
-                $payment->datetime =
-                    $request->return_date;
-
-                $payment->debit =
-                    round($grandTotal, 2);
-
-                $payment->credit =
-                    0;
-
-                $payment->purchase_id =
-                    $purchase->id;
-
-                $payment->purchase_return_id =
-                    $purchaseReturn->id;
-
-                $payment->payment_method =
-                    '';
-
-                $payment->status =
-                    'Active';
-
-                $payment->deleted =
-                    'No';
-
-                $payment->created_by =
-                    auth()->id();
-
-                $payment->created_datetime =
-                    now();
-
-                $payment->save();
+                $this->storeDebitPayment([
+                    'party_id'           => $purchase->supplier_id,
+                    'party_type'         => 'Supplier',
+                    'payment_type'       => 'Purchase Payment',
+                    'datetime'           => $request->return_date,
+                    'debit'              => round($grandTotal, 2),
+                    'purchase_id'        => $purchase->id,
+                    'purchase_return_id' => $purchaseReturn->id,
+                    'payment_method'     => '',
+                ]);
             }
 
-
             /*
-        |--------------------------------------------------------------------------
-        | Supplier Refund
-        |--------------------------------------------------------------------------
-        */
-
+            |--------------------------------------------------------------------------
+            | Supplier Refund
+            |--------------------------------------------------------------------------
+            */
             if ($refundAmount > 0) {
-
-                $lastPaymentCode =
-                    Payment::where(
-                        'deleted',
-                        'No'
-                    )->max('code');
-
-
-                $nextPaymentCode =
-                    $lastPaymentCode
-                    ? ((int) substr($lastPaymentCode, 4)) + 1
-                    : 1;
-
-
-                $paymentCode =
-                    'VO-' .
-                    str_pad(
-                        $nextPaymentCode,
-                        6,
-                        '0',
-                        STR_PAD_LEFT
-                    );
-
-
-                $payment =
-                    new Payment();
-
-                $payment->code =
-                    $paymentCode;
-
-                $payment->payment_type =
-                    'Payment';
-
-                $payment->datetime =
-                    $request->return_date;
-
-                $payment->debit =
-                    0;
-
-                $payment->credit =
-                    round($refundAmount, 2);
-
-                $payment->purchase_id =
-                    $purchase->id;
-
-                $payment->purchase_return_id =
-                    $purchaseReturn->id;
-
-                $payment->payment_method =
-                    '';
-
-                $payment->status =
-                    'Active';
-
-                $payment->deleted =
-                    'No';
-
-                $payment->created_by =
-                    auth()->id();
-
-                $payment->created_datetime =
-                    now();
-
-                $payment->save();
+                $this->storeCreditPayment([
+                    'party_id'           => $purchase->supplier_id,
+                    'party_type'         => 'Supplier',
+                    'payment_type'       => 'Payment',
+                    'datetime'           => $request->return_date,
+                    'credit'             => round($refundAmount, 2),
+                    'purchase_id'        => $purchase->id,
+                    'purchase_return_id' => $purchaseReturn->id,
+                    'payment_method'     => '',
+                ]);
             }
 
 
@@ -2570,28 +2420,7 @@ class PurchaseController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            DB::table('payments')
-                ->where(
-                    'purchase_return_id',
-                    $purchaseReturn->id
-                )
-                ->update([
-
-                    'deleted' => 'Yes',
-
-                    'deleted_by' =>
-                    Session::get('user_id'),
-
-                    'updated_by' =>
-                    Session::get('user_id'),
-
-                    'deleted_datetime' =>
-                    now(),
-
-                    'updated_at' =>
-                    now(),
-
-                ]);
+            $this->deletePaymentsBy('purchase_return_id', $purchaseReturn->id);
 
 
             /*

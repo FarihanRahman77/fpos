@@ -16,6 +16,7 @@ use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 use PDF;
+use App\Traits\PaymentTrait;
 
 /**
  * Expense (header) + expense_details (lines).
@@ -29,6 +30,8 @@ use PDF;
  */
 class ExpenseController extends Controller
 {
+    use PaymentTrait;
+
     private const EXPENSE_TYPE = 'Expense';
     private const PAYMENT_TYPE = 'Liquid Asset';
     private const MAX_LINES    = 100;
@@ -367,25 +370,16 @@ class ExpenseController extends Controller
                     $expenseDetail->save();
                 }
 
-                $lastpaymentCode = Payment::max('code');
-                $next = $lastpaymentCode ? ((int) substr($lastpaymentCode, 4)) + 1 : 1;
-                $paymentCode = 'VO-' . str_pad($next, 6, '0', STR_PAD_LEFT);
                 if ($total > 0) {
-                    $payment2 = new Payment();
-                    $payment2->party_id = $request->employee_id;
-                    $payment2->party_type = 'Employee';
-                    $payment2->code = $paymentCode;
-                    $payment2->payment_type = 'Expense';
-                    $payment2->datetime = $request->expense_date;
-                    $payment2->debit = 0;
-                    $payment2->credit = $total;
-                    $payment2->expense_id = $expense->id;
-                    $payment2->payment_method = '';
-                    $payment2->status = 'Active';
-                    $payment2->deleted = 'No';
-                    $payment2->created_by = auth()->id();
-                    $payment2->created_datetime = now();
-                    $payment2->save();
+                    $this->storeCreditPayment([
+                        'party_id'       => $request->employee_id,
+                        'party_type'     => 'Employee',
+                        'payment_type'   => 'Expense',
+                        'datetime'       => $request->expense_date,
+                        'credit'         => $total,
+                        'expense_id'     => $expense->id,
+                        'payment_method' => '',
+                    ]);
                 }
                 // FIX 6: COA balances (payment account credited, expense heads debited).
                 // Remove this call if you do not want balances updated.
@@ -459,12 +453,7 @@ class ExpenseController extends Controller
                     'deleted_datetime' => now()
 
                 ]);
-                DB::table('payments')->where('expense_id', $expense->id)->update([
-                    'deleted'      => 'Yes',
-                    'status'      => 'Inactive',
-                    'deleted_by'   => Auth::id(),
-                    'deleted_datetime' => now()
-                ]);
+                $this->deletePaymentsBy('expense_id', $expense->id);
              }, 3);
 
             return response()->json(['status' => true, 'message' => 'Expense deleted and balances reversed.']);

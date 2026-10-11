@@ -22,10 +22,11 @@ use Carbon\Carbon;
 use PDF;
 use Exception;
 use App\Traits\PartyDueTrait;
+use App\Traits\PaymentTrait;
 
 class SaleController extends Controller
 {
-    use PartyDueTrait;
+    use PartyDueTrait, PaymentTrait;
     /*
     |--------------------------------------------------------------------------
     | Sales Index / List Page
@@ -609,48 +610,33 @@ class SaleController extends Controller
                 $stock->save();
             }
 
-            // Accounting Payments
+            // Accounting Payments using PaymentTrait
             $partyType = ($sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
-
-            $lastPayment = Payment::max('code');
-            $nextP = $lastPayment ? ((int) preg_replace('/[^0-9]/', '', $lastPayment)) + 1 : 1;
-            $code1 = 'VO-' . str_pad($nextP, 6, '0', STR_PAD_LEFT);
+            $paymentDateTime = $request->sale_date . ' ' . date('H:i:s');
+            $paymentMethod = $request->payment_method ?: 'Cash';
 
             if ($grandTotal > 0) {
-                $payment = new Payment();
-                $payment->party_id       = $customerId;
-                $payment->party_type     = $partyType;
-                $payment->code           = $code1;
-                $payment->payment_type   = $sale_type;
-                $payment->datetime       = $request->sale_date . ' ' . date('H:i:s');
-                $payment->debit          = 0;
-                $payment->credit         = $grandTotal;
-                $payment->sale_id        = $sale->id;
-                $payment->payment_method = $request->payment_method ?: 'Cash';
-                $payment->status         = 'Active';
-                $payment->deleted        = 'No';
-                $payment->created_by     = auth()->id();
-                $payment->created_datetime = now();
-                $payment->save();
+                $this->storeCreditPayment([
+                    'party_id'       => $customerId,
+                    'party_type'     => $partyType,
+                    'payment_type'   => $sale_type,
+                    'datetime'       => $paymentDateTime,
+                    'credit'         => $grandTotal,
+                    'sale_id'        => $sale->id,
+                    'payment_method' => $paymentMethod,
+                ]);
             }
 
             if ($paidAmount > 0) {
-                $code2 = 'VO-' . str_pad($nextP + 1, 6, '0', STR_PAD_LEFT);
-                $payment2 = new Payment();
-                $payment2->party_id       = $customerId;
-                $payment2->party_type     = $partyType;
-                $payment2->code           = $code2;
-                $payment2->payment_type   = $sale_type . ' Payment Receive';
-                $payment2->datetime       = $request->sale_date . ' ' . date('H:i:s');
-                $payment2->debit          = $paidAmount;
-                $payment2->credit         = 0;
-                $payment2->sale_id        = $sale->id;
-                $payment2->payment_method = $request->payment_method ?: 'Cash';
-                $payment2->status         = 'Active';
-                $payment2->deleted        = 'No';
-                $payment2->created_by     = auth()->id();
-                $payment2->created_datetime = now();
-                $payment2->save();
+                $this->storeDebitPayment([
+                    'party_id'       => $customerId,
+                    'party_type'     => $partyType,
+                    'payment_type'   => $sale_type . ' Payment Receive',
+                    'datetime'       => $paymentDateTime,
+                    'debit'          => $paidAmount,
+                    'sale_id'        => $sale->id,
+                    'payment_method' => $paymentMethod,
+                ]);
             }
 
             DB::commit();
@@ -760,12 +746,7 @@ class SaleController extends Controller
                 'updated_date' => $now
             ]);
 
-            Payment::where('sale_id', $id)->where('deleted', 'No')->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId,
-                'updated_by' => $userId,
-                'updated_datetime' => $now
-            ]);
+            $this->deletePaymentsBy('sale_id', $id);
 
             DB::commit();
 
@@ -1042,25 +1023,21 @@ class SaleController extends Controller
                 $stock->save();
             }
 
-            // Adjust Customer Receivable/Payment
-            $lastPayment = Payment::max('code');
-            $nextP = $lastPayment ? ((int) preg_replace('/[^0-9]/', '', $lastPayment)) + 1 : 1;
-            $code = 'VO-' . str_pad($nextP, 6, '0', STR_PAD_LEFT);
+            // Adjust Customer Balance via PaymentTrait
+            if ($subtotal > 0) {
+                $partyType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
+                $returnPaymentType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Sale Return' : 'Wholesale Sale Return';
 
-            $payment = new Payment();
-            $payment->party_id         = $sale->customer_id;
-            $payment->party_type       = ($sale->sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
-            $payment->code             = $code;
-            $payment->payment_type     = 'Walk-In Sale Return';
-            $payment->datetime         = $request->datetime;
-            $payment->debit            = 0;
-            $payment->credit           = $subtotal;
-            $payment->sale_return_id   = $saleReturn->id;
-            $payment->status           = 'Active';
-            $payment->deleted          = 'No';
-            $payment->created_by       = auth()->id();
-            $payment->created_datetime = now();
-            $payment->save();
+                $this->storeDebitPayment([
+                    'party_id'       => $sale->customer_id,
+                    'party_type'     => $partyType,
+                    'payment_type'   => $returnPaymentType,
+                    'datetime'       => $request->datetime ?: (date('Y-m-d H:i:s')),
+                    'debit'          => $subtotal,
+                    'sale_return_id' => $saleReturn->id,
+                    'payment_method' => 'Cash',
+                ]);
+            }
 
             DB::commit();
 
@@ -1157,10 +1134,7 @@ class SaleController extends Controller
                 'deleted_by' => $userId
             ]);
 
-            Payment::where('sale_return_id', $id)->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId
-            ]);
+            $this->deletePaymentsBy('sale_return_id', $id);
 
             DB::commit();
 
@@ -1470,46 +1444,31 @@ class SaleController extends Controller
                 $orderItem->created_date       = now();
                 $orderItem->save();
             }
-            $lastPayment = Payment::max('code');
-            $nextP = $lastPayment ? ((int) preg_replace('/[^0-9]/', '', $lastPayment)) + 1 : 1;
-            $code1 = 'VO-' . str_pad($nextP, 6, '0', STR_PAD_LEFT);
+            $paymentDateTime = $request->order_date . ' ' . date('H:i:s');
+            $paymentMethod = $request->payment_method ?: 'Cash';
 
             if ($grandTotal > 0) {
-                $payment = new Payment();
-                $payment->party_id       = $request->customer_id;
-                $payment->party_type     = 'Customer';
-                $payment->code           = $code1;
-                $payment->payment_type   = 'Sale Order';
-                $payment->datetime       = $request->order_date . ' ' . date('H:i:s');
-                $payment->debit          = 0;
-                $payment->credit         = $grandTotal;
-                $payment->order_id        = $order->id;
-                $payment->payment_method = $request->payment_method ?: 'Cash';
-                $payment->status         = 'Active';
-                $payment->deleted        = 'No';
-                $payment->created_by     = auth()->id();
-                $payment->created_datetime = now();
-                $payment->save();
+                $this->storeCreditPayment([
+                    'party_id'       => $request->customer_id,
+                    'party_type'     => 'Customer',
+                    'payment_type'   => 'Sale Order',
+                    'datetime'       => $paymentDateTime,
+                    'credit'         => $grandTotal,
+                    'order_id'       => $order->id,
+                    'payment_method' => $paymentMethod,
+                ]);
             }
-            $lastPayment2 = Payment::max('code');
-            $nextP2 = $lastPayment2 ? ((int) preg_replace('/[^0-9]/', '', $lastPayment2)) + 1 : 1;
-            $code2 = 'VO-' . str_pad($nextP2, 6, '0', STR_PAD_LEFT);
+
             if ($advancePaid > 0) {
-                $payment = new Payment();
-                $payment->party_id       = $request->customer_id;
-                $payment->party_type     = 'Customer';
-                $payment->code           = $code2;
-                $payment->payment_type   = 'Sale Order';
-                $payment->datetime       = $request->order_date . ' ' . date('H:i:s');
-                $payment->debit          = $advancePaid;
-                $payment->credit         = 0;
-                $payment->order_id        = $order->id;
-                $payment->payment_method = $request->payment_method ?: 'Cash';
-                $payment->status         = 'Active';
-                $payment->deleted        = 'No';
-                $payment->created_by     = auth()->id();
-                $payment->created_datetime = now();
-                $payment->save();
+                $this->storeDebitPayment([
+                    'party_id'       => $request->customer_id,
+                    'party_type'     => 'Customer',
+                    'payment_type'   => 'Sale Order Advance Receive',
+                    'datetime'       => $paymentDateTime,
+                    'debit'          => $advancePaid,
+                    'order_id'       => $order->id,
+                    'payment_method' => $paymentMethod,
+                ]);
             }
             DB::commit();
 
@@ -2256,14 +2215,7 @@ class SaleController extends Controller
                     'deleted_date'    => now(),
                     'deleted_by' => $userId
                 ]);
-            Payment::where('order_id', $id)
-                ->where('deleted', 'No')
-                ->update([
-                    'deleted'    => 'Yes',
-                    'status'    => 'Inactive',
-                    'deleted_datetime'    => now(),
-                    'deleted_by' => $userId
-                ]);
+            $this->deletePaymentsBy('order_id', $id);
             Stock::where('order_id', $id)
                 ->where('deleted', 'No')
                 ->update([

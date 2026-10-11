@@ -14,10 +14,11 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Exception;
 use App\Traits\PartyDueTrait;
+use App\Traits\PaymentTrait;
 
 class PaymentController extends Controller
 {
-    use PartyDueTrait;
+    use PartyDueTrait, PaymentTrait;
 
     private const TYPES = ['Payment', 'Payment Receive'];
 
@@ -167,23 +168,30 @@ class PaymentController extends Controller
             $party  = Party::findOrFail($request->party_id);
             $amount = (float) $request->amount;
 
-            $lastPayment = Payment::max('code');
-            $nextP = $lastPayment ? ((int) preg_replace('/[^0-9]/', '', $lastPayment)) + 1 : 1;
-            $code = 'VO-' . str_pad($nextP, 6, '0', STR_PAD_LEFT);
+            $datetime = $request->payment_date . ' ' . date('H:i:s');
+            $method   = $type == 'Discount' ? null : $request->payment_method;
 
-            $payment = new Payment();
-            $payment->party_id         = $party->id;
-            $payment->party_type       = $party->type;
-            $payment->code             = $code;
-            $payment->payment_type     = $type;
-            $payment->datetime         = $request->payment_date . ' ' . date('H:i:s');
-            if($type === 'Discount') {
-                if($party->type === 'Supplier') {
-                    $payment->debit = 0;
-                    $payment->credit = $amount;
-                } elseif($party->type === 'Customer' || $party->type === 'Walk-In Customer') {
-                    $payment->debit = $amount;
-                    $payment->credit = 0;
+            if ($type === 'Discount') {
+                if ($party->type === 'Supplier') {
+                    $this->storeCreditPayment([
+                        'party_id'       => $party->id,
+                        'party_type'     => $party->type,
+                        'payment_type'   => $type,
+                        'datetime'       => $datetime,
+                        'credit'         => $amount,
+                        'payment_method' => $method,
+                        'remarks'        => $request->remarks,
+                    ]);
+                } elseif ($party->type === 'Customer' || $party->type === 'Walk-In Customer') {
+                    $this->storeDebitPayment([
+                        'party_id'       => $party->id,
+                        'party_type'     => $party->type,
+                        'payment_type'   => $type,
+                        'datetime'       => $datetime,
+                        'debit'          => $amount,
+                        'payment_method' => $method,
+                        'remarks'        => $request->remarks,
+                    ]);
                 } else {
                     return response()->json([
                         'status'  => false,
@@ -191,16 +199,28 @@ class PaymentController extends Controller
                     ], 400);
                 }
             } else {
-                $payment->debit = $type === 'Payment Receive' ? $amount : 0;
-                $payment->credit = $type === 'Payment' ? $amount : 0;
+                if ($type === 'Payment Receive') {
+                    $this->storeDebitPayment([
+                        'party_id'       => $party->id,
+                        'party_type'     => $party->type,
+                        'payment_type'   => $type,
+                        'datetime'       => $datetime,
+                        'debit'          => $amount,
+                        'payment_method' => $method,
+                        'remarks'        => $request->remarks,
+                    ]);
+                } else {
+                    $this->storeCreditPayment([
+                        'party_id'       => $party->id,
+                        'party_type'     => $party->type,
+                        'payment_type'   => $type,
+                        'datetime'       => $datetime,
+                        'credit'         => $amount,
+                        'payment_method' => $method,
+                        'remarks'        => $request->remarks,
+                    ]);
+                }
             }
-            $payment->payment_method   = $type == 'Discount' ? null : $request->payment_method;
-            $payment->remarks          = $request->remarks;
-            $payment->status           = 'Active';
-            $payment->deleted          = 'No';
-            $payment->created_by       = auth()->id();
-            $payment->created_datetime = now();
-            $payment->save();
 
             DB::commit();
 
@@ -231,14 +251,7 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $now = now();
-
-            DB::table('payments')->where('id', $id)->update([
-                'deleted'          => 'Yes',
-                'deleted_by'       => Auth::id(),
-                'deleted_datetime' => $now,
-                'updated_at'       => $now,
-            ]);
+            $this->deletePaymentsBy('id', $id);
 
             return response()->json([
                 'status'  => true,
