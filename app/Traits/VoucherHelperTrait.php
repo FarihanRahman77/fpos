@@ -19,21 +19,23 @@ trait VoucherHelperTrait
         ];
     }
 
-    /** View / Edit / Delete buttons calling view{Label}(id), edit{Label}(id), delete{Label}(id). */
-    protected function actionButtons(string $label, int $id, string $extra = ''): string
+    /**
+     * View / Edit / Delete dropdown calling view{Label}(id), edit{Label}(id), delete{Label}(id).
+     * $extra = more action_dropdown() items, placed before Delete.
+     */
+    protected function actionButtons(string $label, int $id, array $extra = []): string
     {
-        return '
-            <div class="btn-group btn-group-sm" role="group">' . $extra . '
-                <button type="button" class="btn btn-outline-secondary" title="View" onclick="view' . $label . '(' . $id . ')">
-                    <i class="fas fa-eye"></i>
-                </button>
-                <button type="button" class="btn btn-outline-primary" title="Edit" onclick="edit' . $label . '(' . $id . ')">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button type="button" class="btn btn-outline-danger" title="Delete" onclick="delete' . $label . '(' . $id . ')">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>';
+        return action_dropdown(array_merge(
+            [
+                ['label' => 'View', 'icon' => 'fas fa-eye', 'onclick' => 'view' . $label . '(' . $id . ')'],
+                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'edit' . $label . '(' . $id . ')'],
+            ],
+            $extra,
+            [
+                ['divider' => true],
+                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'delete' . $label . '(' . $id . ')'],
+            ]
+        ));
     }
 
     protected function nullIfBlank($value): ?string

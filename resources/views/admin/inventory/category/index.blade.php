@@ -109,7 +109,8 @@
                         <input type="text"
                                name="name"
                                id="category_name"
-                               class="form-control">
+                               class="form-control"
+                               placeholder="e.g. Beverages">
 
                         <div class="text-danger small"
                              id="category_name_error">

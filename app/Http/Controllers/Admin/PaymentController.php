@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin\ChartOfAccount;
 use App\Models\Admin\Party;
 use App\Models\Admin\Payment;
 use Carbon\Carbon;
@@ -38,7 +39,13 @@ class PaymentController extends Controller
             $parties = Party::where('deleted', 'No')->get();
         }
 
-        return view('admin.payment.index', compact('type', 'parties'));
+        // Payment methods = 2nd layer groups under the Liquid Asset root (Cash, Bank ...), as on the sale page.
+        $coa       = ChartOfAccount::where('slug', 'liquid-asset')->where('deleted', 'No')->first();
+        $childCoas = $coa
+            ? ChartOfAccount::where('deleted', 'No')->where('status', 'Active')->where('parent_id', $coa->id)->orderBy('account_code')->get()
+            : collect();
+
+        return view('admin.payment.index', compact('type', 'parties', 'childCoas'));
     }
 
     public function list($type)
@@ -83,17 +90,18 @@ class PaymentController extends Controller
 
                 $date = $row->datetime ? Carbon::parse($row->datetime)->format('d M Y h:i A') : '';
 
-                $action = '
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletepayment(' . (int) $row->id . ')">
-                        <i class="fa fa-trash"></i>
-                    </button>';
+                $action = action_dropdown([
+                    ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deletepayment(' . (int) $row->id . ')'],
+                ]);
 
                 $data[] = [
                     $index + 1,
                     '<strong class="text-primary">' . e($row->code ?? '') . '</strong>',
                     e($date),
                     $party,
-                    e($row->payment_method ?? ''),
+                    $row->payment_method
+                        ? e($row->payment_method) . ($row->payment_method_account ? '<br><small class="text-muted">' . e($row->payment_method_account) . '</small>' : '')
+                        : '<span class="text-muted">-</span>',
                     '<span class="fw-bold">' . number_format((float) $amount, 2, '.', '') . '</span>',
                     '<span class="badge ' . $badge . '">' . e($status) . '</span>',
                     $action,
@@ -139,20 +147,33 @@ class PaymentController extends Controller
     public function store(Request $request)
     {
         $type = $request->type;
+        $isDiscount = $type == 'Discount';
 
         $rules = [
             'type'           => 'required',
             'payment_date'   => 'required|date',
             'party_id'       => 'required|exists:parties,id',
             'amount'         => 'required|numeric|gt:0',
-            'payment_method' => $type == 'Discount' ? 'nullable' : 'required',
+            // A discount moves no money, so it has no payment method / account.
+            'payment_method' => $isDiscount ? ['nullable'] : [
+                'required', 'integer',
+                Rule::exists('chart_of_accounts', 'id')->where('layer_level', 2)->where('account_type', 'Liquid Asset')->where('deleted', 'No'),
+            ],
+            'payment_method_account' => $isDiscount ? ['nullable'] : [
+                'required', 'integer',
+                Rule::exists('chart_of_accounts', 'id')->where('layer_level', 3)->where('deleted', 'No')
+                    ->where('parent_id', (int) $request->input('payment_method')),
+            ],
             'remarks'        => 'nullable|string|max:1000',
         ];
 
         $validator = Validator::make($request->all(), $rules, [
-            'party_id.required'       => 'Please select a party.',
-            'party_id.exists'         => 'Selected party is invalid.',
-            'payment_method.required' => 'Please select a payment method.',
+            'party_id.required'               => 'Please select a party.',
+            'party_id.exists'                 => 'Selected party is invalid.',
+            'payment_method.required'         => 'Please select a payment method.',
+            'payment_method.exists'           => 'Please select a valid payment method.',
+            'payment_method_account.required' => 'Please select a payment account.',
+            'payment_method_account.exists'   => 'Please select an account of the selected payment method.',
         ]);
 
         if ($validator->fails()) {
@@ -169,7 +190,8 @@ class PaymentController extends Controller
             $amount = (float) $request->amount;
 
             $datetime = $request->payment_date . ' ' . date('H:i:s');
-            $method   = $type == 'Discount' ? null : $request->payment_method;
+            $method   = $isDiscount ? null : (int) $request->payment_method;
+            $account  = $isDiscount ? null : (int) $request->payment_method_account;
 
             if ($type === 'Discount') {
                 if ($party->type === 'Supplier') {
@@ -180,6 +202,7 @@ class PaymentController extends Controller
                         'datetime'       => $datetime,
                         'credit'         => $amount,
                         'payment_method' => $method,
+                        'payment_method_account' => $account,
                         'remarks'        => $request->remarks,
                     ]);
                 } elseif ($party->type === 'Customer' || $party->type === 'Walk-In Customer') {
@@ -190,6 +213,7 @@ class PaymentController extends Controller
                         'datetime'       => $datetime,
                         'debit'          => $amount,
                         'payment_method' => $method,
+                        'payment_method_account' => $account,
                         'remarks'        => $request->remarks,
                     ]);
                 } else {
@@ -207,6 +231,7 @@ class PaymentController extends Controller
                         'datetime'       => $datetime,
                         'debit'          => $amount,
                         'payment_method' => $method,
+                        'payment_method_account' => $account,
                         'remarks'        => $request->remarks,
                     ]);
                 } else {
@@ -217,6 +242,7 @@ class PaymentController extends Controller
                         'datetime'       => $datetime,
                         'credit'         => $amount,
                         'payment_method' => $method,
+                        'payment_method_account' => $account,
                         'remarks'        => $request->remarks,
                     ]);
                 }

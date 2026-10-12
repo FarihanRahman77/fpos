@@ -30,25 +30,10 @@ class PermissionController extends Controller
                 ? '<span class="badge badge-success">Active</span>'
                 : '<span class="badge badge-danger">Inactive</span>';
 
-            $actions = '';
-
-            $actions .= '
-                <button type="button"
-                        class="btn btn-sm btn-info editPermission"
-                        data-id="' . $permission->id . '"
-                        title="Edit">
-                    <i class="fa fa-edit"></i>
-                </button>
-            ';
-
-            $actions .= '
-                <button type="button"
-                        class="btn btn-sm btn-danger deletePermission"
-                        data-id="' . $permission->id . '"
-                        title="Delete">
-                    <i class="fa fa-trash"></i>
-                </button>
-            ';
+            $actions = action_dropdown([
+                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'editPermission', 'attrs' => ['data-id' => $permission->id]],
+                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deletePermission', 'attrs' => ['data-id' => $permission->id]],
+            ]);
 
             $data[] = [
                 'id' => $permission->id,

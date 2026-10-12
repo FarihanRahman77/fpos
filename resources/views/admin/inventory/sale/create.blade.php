@@ -32,7 +32,7 @@
                                         Sale Type
                                     </label>
 
-                                    <input type="text" class="form-control" value="{{ $sale_type }}" readonly>
+                                    <input type="text" class="form-control" value="{{ $sale_type }}" placeholder="Sale type" readonly>
 
                                 </div>
 
@@ -96,7 +96,7 @@
                                             Customer Name
                                         </label>
 
-                                        <input type="text" id="customer_name" name="customer_name" class="form-control">
+                                        <input type="text" id="customer_name" name="customer_name" class="form-control" placeholder="Enter customer name">
 
                                     </div>
 
@@ -107,7 +107,7 @@
                                         </label>
 
                                         <input type="text" id="customer_address" name="customer_address"
-                                            class="form-control">
+                                            class="form-control" placeholder="Enter customer address">
 
                                     </div>
 
@@ -118,7 +118,7 @@
                                         </label>
 
                                         <input type="text" id="customer_due" class="form-control" value="0.00"
-                                            readonly>
+                                            placeholder="0.00" readonly>
 
                                     </div>
 
@@ -133,7 +133,7 @@
                                         </label>
 
                                         <input type="text" id="customer_due" class="form-control" value="0.00"
-                                            readonly>
+                                            placeholder="0.00" readonly>
 
                                     </div>
 
@@ -218,7 +218,7 @@
                                             <td colspan="7" class="text-end">Subtotal</td>
                                             <td>
                                                 <input type="text" id="subtotal" class="form-control text-end"
-                                                    value="0.00" readonly>
+                                                    value="0.00" placeholder="0.00" readonly>
                                             </td>
                                             <td></td>
                                         </tr>
@@ -234,7 +234,7 @@
                                             <td>
                                                 <input type="number" step="0.01" min="0"
                                                     name="discount_value" id="discount_value" class="form-control"
-                                                    value="0">
+                                                    value="0" placeholder="0.00">
                                             </td>
                                             <td></td>
                                         </tr>
@@ -242,7 +242,7 @@
                                             <td colspan="7" class="text-end">Discount Amount</td>
                                             <td>
                                                 <input type="text" id="discount_amount" class="form-control"
-                                                    value="0.00" readonly>
+                                                    value="0.00" placeholder="0.00" readonly>
                                             </td>
                                             <td></td>
                                         </tr>
@@ -250,7 +250,7 @@
                                             <td colspan="7" class="text-end">Grand Total</td>
                                             <td>
                                                 <input type="text" id="grand_total" class="form-control fw-bold"
-                                                    value="0.00" readonly>
+                                                    value="0.00" placeholder="0.00" readonly>
                                             </td>
                                             <td></td>
                                         </tr>
@@ -299,7 +299,7 @@
                                             <td colspan="7" class="text-end">Paid Amount</td>
                                             <td>
                                                 <input type="number" step="0.01" min="0" name="paid_amount"
-                                                    id="paid_amount" class="form-control" value="0">
+                                                    id="paid_amount" class="form-control" value="0" placeholder="0.00">
                                             </td>
                                             <td></td>
                                         </tr>
@@ -307,7 +307,7 @@
                                             <td colspan="7" class="text-end">Due Amount</td>
                                             <td>
                                                 <input type="text" id="due_amount" class="form-control"
-                                                    value="0.00" readonly>
+                                                    value="0.00" placeholder="0.00" readonly>
                                             </td>
                                             <td></td>
                                         </tr>
@@ -725,7 +725,8 @@
                            step="0.01"
                            class="form-control form-control-sm itemQty"
                            data-index="${index}"
-                           value="${item.qty}">
+                           value="${item.qty}"
+                           placeholder="1">
 
                 </td>
 
@@ -736,7 +737,8 @@
                            step="0.01"
                            class="form-control form-control-sm itemPrice"
                            data-index="${index}"
-                           value="${item.sale_price}">
+                           value="${item.sale_price}"
+                           placeholder="0.00">
 
                 </td>
 
@@ -764,7 +766,8 @@
                                step="0.01"
                                class="form-control itemDiscountValue"
                                data-index="${index}"
-                               value="${item.discount_value}">
+                               value="${item.discount_value}"
+                               placeholder="0.00">
 
                     </div>
 

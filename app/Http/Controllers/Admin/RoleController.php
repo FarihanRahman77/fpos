@@ -35,33 +35,12 @@ class RoleController extends Controller
                         ? '<span class="badge bg-success">Active</span>'
                         : '<span class="badge bg-danger">Inactive</span>';
 
-            $actions = '';
-
-            $actions .= '
-                <button type="button"
-                        class="btn btn-sm btn-info editRole"
-                        data-id="' . $role->id . '"
-                        title="Edit">
-                    <i class="fa fa-edit"></i>
-                </button>
-            ';
-
-            $actions .= '
-                <a href="' . route('admin.roles.permissions', $role->id) . '"
-                class="btn btn-sm btn-primary"
-                title="Assign Permissions">
-                    <i class="fa fa-key"></i>
-                </a>
-            ';
-
-            $actions .= '
-                <button type="button"
-                        class="btn btn-sm btn-danger deleteRole"
-                        data-id="' . $role->id . '"
-                        title="Delete">
-                    <i class="fa fa-trash"></i>
-                </button>
-            ';
+            $actions = action_dropdown([
+                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'editRole', 'attrs' => ['data-id' => $role->id]],
+                ['label' => 'Assign Permissions', 'icon' => 'fas fa-key', 'href' => route('admin.roles.permissions', $role->id)],
+                ['divider' => true],
+                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteRole', 'attrs' => ['data-id' => $role->id]],
+            ]);
 
             $data[] = [
                 'id' => $role->id,

@@ -183,7 +183,7 @@
 
                             <div class="col-12" id="parentNameGroup" style="display:none">
                                 <label class="form-label" for="parent_label">Parent Account</label>
-                                <input type="text" id="parent_label" class="form-control" readonly>
+                                <input type="text" id="parent_label" class="form-control" placeholder="Select a parent account" readonly>
                             </div>
 
                             <div class="col-12">
@@ -224,7 +224,7 @@
                             <div class="col-md-6">
                                 <label class="form-label" for="opening_balance">Opening Balance</label>
                                 <input type="number" step="0.01" min="0" id="opening_balance" name="opening_balance"
-                                    class="form-control" value="0.00">
+                                    class="form-control" value="0.00" placeholder="0.00">
                                 <div class="text-danger small" id="opening_balance_error"></div>
                             </div>
 

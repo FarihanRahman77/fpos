@@ -60,6 +60,7 @@
                                 <input type="text"
                                        id="invoice_no"
                                        class="form-control"
+                                       placeholder="Invoice number"
                                        readonly>
 
                             </div>
@@ -74,6 +75,7 @@
                                 <input type="text"
                                        id="purchase_date"
                                        class="form-control"
+                                       placeholder="Purchase date"
                                        readonly>
 
                             </div>
@@ -88,6 +90,7 @@
                                 <input type="text"
                                        id="supplier_name"
                                        class="form-control"
+                                       placeholder="Supplier name"
                                        readonly>
 
                             </div>
@@ -507,6 +510,7 @@ $(document).ready(function () {
                         <input
                             type="number"
                             class="form-control returnQty"
+                            placeholder="0"
                             min="0"
                             max="${remaining}"
                             step="0.0001"

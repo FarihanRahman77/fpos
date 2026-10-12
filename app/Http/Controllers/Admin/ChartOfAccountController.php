@@ -700,23 +700,23 @@ class ChartOfAccountController extends Controller
     {
         $id    = (int) $a->id;
         $layer = (int) $a->layer_level;
-        $name  = e($a->account_name);
-        $btns  = [];
+        $items = [];
 
         // Add child: 1st layer -> 2nd layer, 2nd layer -> 3rd layer.
         if ($layer < 3 && $a->status === 'Active') {
-            $btns[] = '<button type="button" class="btn btn-outline-success coa-add-child" data-id="' . $id . '" title="Add child account"><i class="fas fa-plus"></i></button>';
+            $items[] = ['label' => 'Add Child Account', 'icon' => 'fas fa-plus', 'class' => 'coa-add-child', 'attrs' => ['data-id' => $id]];
         }
 
-        $btns[] = '<button type="button" class="btn btn-outline-primary coa-edit" data-id="' . $id . '" title="Edit"><i class="fas fa-edit"></i></button>';
+        $items[] = ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'coa-edit', 'attrs' => ['data-id' => $id]];
 
         if ($layer === 1 || (int) $a->is_system === 1) {
-            $btns[] = '<span class="btn btn-light disabled" title="This account cannot be deleted"><i class="fas fa-lock"></i></span>';
+            $items[] = ['label' => 'Locked (cannot delete)', 'icon' => 'fas fa-lock', 'class' => 'disabled text-muted'];
         } else {
-            $btns[] = '<button type="button" class="btn btn-outline-danger coa-delete" data-id="' . $id . '" data-name="' . $name . '" title="Delete"><i class="fas fa-trash"></i></button>';
+            $items[] = ['divider' => true];
+            $items[] = ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger coa-delete', 'attrs' => ['data-id' => $id, 'data-name' => $a->account_name]];
         }
 
-        return '<div class="btn-group btn-group-sm" role="group">' . implode('', $btns) . '</div>';
+        return action_dropdown($items);
     }
 
     /* ================================================================== */

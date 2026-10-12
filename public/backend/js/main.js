@@ -562,3 +562,49 @@
     updateToggleState();
   });
 })();
+
+/**
+ * Standard DataTable "Action" cell: a cog button opening a dropdown menu.
+ * PHP twin: action_dropdown() in app/Helpers/helpers.php - keep them in step.
+ *
+ * items: [{ label, icon, onclick | href, target, class, attrs: { 'data-id': 5 } } | { divider: true }]
+ */
+window.actionDropdown = function (items) {
+  function esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  var html =
+    '<div class="dropdown">' +
+      '<button type="button" class="btn btn-sm btn-primary dropdown-toggle" data-bs-toggle="dropdown"' +
+        " data-bs-popper-config='{\"strategy\":\"fixed\"}' aria-expanded=\"false\" title=\"Actions\">" +
+        '<i class="fas fa-cog"></i>' +
+      "</button>" +
+      '<ul class="dropdown-menu dropdown-menu-end">';
+
+  (items || []).forEach(function (item) {
+    if (item.divider) {
+      html += '<li><hr class="dropdown-divider"></li>';
+      return;
+    }
+
+    var attrs = "";
+    Object.keys(item.attrs || {}).forEach(function (name) {
+      attrs += " " + name + '="' + esc(item.attrs[name]) + '"';
+    });
+
+    var link = item.href
+      ? 'href="' + esc(item.href) + '"' + (item.target ? ' target="' + esc(item.target) + '"' : "")
+      : 'href="javascript:void(0)"' + (item.onclick ? ' onclick="' + esc(item.onclick) + '"' : "");
+
+    html +=
+      "<li><a " + link + ' class="dropdown-item' + (item.class ? " " + esc(item.class) : "") + '"' + attrs + ">" +
+        (item.icon ? '<i class="' + esc(item.icon) + ' me-2"></i>' : "") +
+        esc(item.label) +
+      "</a></li>";
+  });
+
+  return html + "</ul></div>";
+};

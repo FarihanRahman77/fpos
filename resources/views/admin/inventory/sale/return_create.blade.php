@@ -218,7 +218,8 @@ function renderReturnData(response) {
                            step="0.01"
                            class="form-control returnQty"
                            data-index="${index}"
-                           value="0">
+                           value="0"
+                           placeholder="0">
 
                 </td>
 
@@ -254,7 +255,8 @@ function renderReturnData(response) {
 
                 <textarea id="returnRemarks"
                           class="form-control"
-                          rows="3"></textarea>
+                          rows="3"
+                          placeholder="Optional reason or note for this return"></textarea>
 
             </div>
 

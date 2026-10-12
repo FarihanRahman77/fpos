@@ -203,7 +203,7 @@
                                     <tfoot>
                                         <tr>
                                             <td colspan="6" class="text-end fw-semibold pt-3">Subtotal</td>
-                                            <td class="pt-2"><input type="text" id="subtotal" class="form-control form-control-sm text-end" readonly value="0.00"></td>
+                                            <td class="pt-2"><input type="text" id="subtotal" class="form-control form-control-sm text-end" readonly value="0.00" placeholder="0.00"></td>
                                             <td></td>
                                         </tr>
                                         <tr>
@@ -216,7 +216,7 @@
                                         </tr>
                                         <tr>
                                             <td colspan="6" class="text-end fw-semibold pt-3">Grand Total (owed to supplier)</td>
-                                            <td class="pt-2"><input type="text" id="grand_total" class="form-control text-end acc-grand" readonly value="0.00"></td>
+                                            <td class="pt-2"><input type="text" id="grand_total" class="form-control text-end acc-grand" readonly value="0.00" placeholder="0.00"></td>
                                             <td></td>
                                         </tr>
                                     </tfoot>
@@ -376,11 +376,11 @@
                     '<div class="text-danger small field-error"></div></td>' +
                 '<td><input type="text" name="details[' + i + '][description]" class="form-control form-control-sm line-description" maxlength="255" placeholder="Description (optional)">' +
                     '<div class="text-danger small field-error"></div></td>' +
-                '<td><input type="number" step="0.01" min="0" name="details[' + i + '][qty]" class="form-control form-control-sm text-end line-qty" value="1">' +
+                '<td><input type="number" step="0.01" min="0" name="details[' + i + '][qty]" class="form-control form-control-sm text-end line-qty" value="1" placeholder="0">' +
                     '<div class="text-danger small field-error"></div></td>' +
                 '<td><input type="number" step="0.01" min="0" name="details[' + i + '][rate]" class="form-control form-control-sm text-end line-rate" placeholder="0.00">' +
                     '<div class="text-danger small field-error"></div></td>' +
-                '<td><input type="text" class="form-control form-control-sm text-end line-amount" readonly value="0.00"></td>' +
+                '<td><input type="text" class="form-control form-control-sm text-end line-amount" readonly value="0.00" placeholder="0.00"></td>' +
                 '<td><button type="button" class="btn btn-sm btn-outline-danger remove-line" title="Remove line"><i class="fas fa-times"></i></button></td>' +
                 '</tr>';
         }
@@ -626,10 +626,10 @@
                     '<td>' + Voucher.esc(p.payment_account_label) + '<div class="text-muted small">' + Voucher.esc(p.payment_group_label) + '</div></td>' +
                     '<td>' + Voucher.esc(p.reference_no || '-') + '</td>' +
                     '<td class="text-end">' + Voucher.money(p.amount) + '</td>' +
-                    '<td><div class="btn-group btn-group-sm">' +
-                        '<button type="button" class="btn btn-outline-primary" title="Edit" onclick="editBillPayment(' + p.id + ')"><i class="fas fa-edit"></i></button>' +
-                        '<button type="button" class="btn btn-outline-danger" title="Delete" onclick="deleteBillPayment(' + p.id + ')"><i class="fas fa-trash"></i></button>' +
-                    '</div></td>' +
+                    '<td>' + actionDropdown([
+                        { label: 'Edit', icon: 'fas fa-edit', onclick: 'editBillPayment(' + p.id + ')' },
+                        { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger', onclick: 'deleteBillPayment(' + p.id + ')' }
+                    ]) + '</td>' +
                     '</tr>';
             }).join('');
 

@@ -479,28 +479,10 @@ $(document).ready(function () {
                                     ${status}
                                 </td>
 
-                                <td>
-
-                                    <button type="button"
-                                            class="btn btn-sm btn-info editUser"
-                                            data-id="${user.id}"
-                                            title="Edit">
-
-                                        <i class="bi bi-pencil"></i>
-
-                                    </button>
-
-
-                                    <button type="button"
-                                            class="btn btn-sm btn-danger deleteUser"
-                                            data-id="${user.id}"
-                                            title="Delete">
-
-                                        <i class="bi bi-trash"></i>
-
-                                    </button>
-
-                                </td>
+                                <td>${actionDropdown([
+                                    { label: 'Edit', icon: 'fas fa-edit', class: 'editUser', attrs: { 'data-id': user.id } },
+                                    { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger deleteUser', attrs: { 'data-id': user.id } }
+                                ])}</td>
 
                             </tr>
 

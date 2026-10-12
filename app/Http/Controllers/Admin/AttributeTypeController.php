@@ -86,30 +86,10 @@ class AttributeTypeController extends Controller
                 }
 
 
-                $actions = '
-                    <div class="btn-group">
-
-                        <button type="button"
-                                class="btn btn-sm btn-primary editAttributeTypeBtn"
-                                data-id="' . $attributeType->id . '"
-                                title="Edit">
-
-                            <i class="fas fa-edit"></i>
-
-                        </button>
-
-
-                        <button type="button"
-                                class="btn btn-sm btn-danger deleteAttributeTypeBtn"
-                                data-id="' . $attributeType->id . '"
-                                title="Delete">
-
-                            <i class="fas fa-trash"></i>
-
-                        </button>
-
-                    </div>
-                ';
+                $actions = action_dropdown([
+                    ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'editAttributeTypeBtn', 'attrs' => ['data-id' => $attributeType->id]],
+                    ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteAttributeTypeBtn', 'attrs' => ['data-id' => $attributeType->id]],
+                ]);
 
 
                 $output['data'][] = [

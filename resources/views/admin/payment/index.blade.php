@@ -100,16 +100,26 @@
 
 
 
-                            <div class="col-md-4 mb-3">
-                                <label for="payment_method" class="form-label">Payment Method</label>
-                                <select class="form-control select2" id="payment_method" name="payment_method">
-                                    <option value="">Select Payment Method</option>
-                                    <option value="Cash">Cash</option>
-                                    <option value="Bank">Bank</option>
-                                    <option value="Mobile Banking">Mobile Banking</option>
-                                </select>
-                                <span class="text-danger error-text payment_method_error"></span>
-                            </div>
+                            @if ($type != 'Discount')
+                                <div class="col-md-4 mb-3">
+                                    <label for="payment_method" class="form-label">Payment Method</label>
+                                    <select class="form-control select2" id="payment_method" name="payment_method">
+                                        <option value="">Select Payment Method</option>
+                                        @foreach ($childCoas as $childCoa)
+                                            <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <span class="text-danger error-text payment_method_error"></span>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <label for="payment_method_account" class="form-label">Payment Account</label>
+                                    <select class="form-control select2" id="payment_method_account" name="payment_method_account">
+                                        <option value="">Select payment method first</option>
+                                    </select>
+                                    <span class="text-danger error-text payment_method_account_error"></span>
+                                </div>
+                            @endif
 
                             <div class="col-md-12 mb-3">
                                 <label for="remarks" class="form-label">Remarks</label>
@@ -217,6 +227,31 @@
                     error: function(xhr) {
                         //alert(JSON.stringify(xhr));
                         toastr.error('Could not load due amount.');
+                    }
+                });
+            });
+
+            // Load the accounts of the selected payment method (same as the sale page)
+            $('#payment_method').on('change', function() {
+                let paymentMethod = $(this).val();
+                let $account = $('#payment_method_account');
+
+                if (!paymentMethod) {
+                    $account.html('<option value="">Select payment method first</option>').trigger('change');
+                    return;
+                }
+
+                $.ajax({
+                    url: "{{ route('admin.getCoaChilds') }}",
+                    type: 'GET',
+                    data: {
+                        parent_id: paymentMethod
+                    },
+                    success: function(response) {
+                        $account.html(response).trigger('change');
+                    },
+                    error: function(xhr) {
+                        toastr.error('Could not load payment accounts.');
                     }
                 });
             });

@@ -114,9 +114,7 @@ class BillController extends Controller
 
                 $overdue = $due && (float) $bill->due_amount > 0 && $due->lt(now()->startOfDay());
 
-                $payButton = '<button type="button" class="btn btn-outline-success" title="Payments" onclick="openBillPayments(' . $id . ')">
-                        <i class="fas fa-money-bill-wave"></i>
-                    </button>';
+                $payButton = [['label' => 'Payments', 'icon' => 'fas fa-money-bill-wave', 'class' => 'text-success', 'onclick' => 'openBillPayments(' . $id . ')']];
 
                 $output['data'][] = [
                     $i++,

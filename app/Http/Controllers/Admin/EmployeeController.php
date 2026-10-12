@@ -107,14 +107,14 @@ class EmployeeController extends Controller
                 $statusBtn = '<button type="button" class="btn btn-sm badge border-0 ' . ($emp->status === 'Active' ? 'bg-success' : 'bg-secondary') . '"'
                     . ' title="Click to change" onclick="toggleEmployeeStatus(' . $id . ')">' . e($emp->status) . '</button>';
 
-                $actions = '
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-outline-secondary" title="View profile" onclick="viewEmployee(' . $id . ')"><i class="fas fa-eye"></i></button>
-                        <button type="button" class="btn btn-outline-primary" title="Edit" onclick="editEmployee(' . $id . ')"><i class="fas fa-edit"></i></button>
-                        <button type="button" class="btn btn-outline-info" title="ID card (PDF)" onclick="printIdCard(' . $id . ')"><i class="fas fa-id-badge"></i></button>
-                        <button type="button" class="btn btn-outline-dark" title="Profile (PDF)" onclick="printProfile(' . $id . ')"><i class="fas fa-file-pdf"></i></button>
-                        <button type="button" class="btn btn-outline-danger" title="Delete" onclick="deleteEmployee(' . $id . ')"><i class="fas fa-trash"></i></button>
-                    </div>';
+                $actions = action_dropdown([
+                    ['label' => 'View Profile', 'icon' => 'fas fa-eye', 'onclick' => 'viewEmployee(' . $id . ')'],
+                    ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'editEmployee(' . $id . ')'],
+                    ['label' => 'ID Card (PDF)', 'icon' => 'fas fa-id-badge', 'onclick' => 'printIdCard(' . $id . ')'],
+                    ['label' => 'Profile (PDF)', 'icon' => 'fas fa-file-pdf', 'onclick' => 'printProfile(' . $id . ')'],
+                    ['divider' => true],
+                    ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteEmployee(' . $id . ')'],
+                ]);
 
                 $output['data'][] = [
                     $i++,

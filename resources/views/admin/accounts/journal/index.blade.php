@@ -176,8 +176,8 @@
                                     <tfoot>
                                         <tr>
                                             <td colspan="4" class="text-end fw-semibold pt-3">Total</td>
-                                            <td class="pt-2"><input type="text" id="total_debit" class="form-control text-end acc-grand" readonly value="0.00"></td>
-                                            <td class="pt-2"><input type="text" id="total_credit" class="form-control text-end acc-grand" readonly value="0.00"></td>
+                                            <td class="pt-2"><input type="text" id="total_debit" class="form-control text-end acc-grand" readonly value="0.00" placeholder="0.00"></td>
+                                            <td class="pt-2"><input type="text" id="total_credit" class="form-control text-end acc-grand" readonly value="0.00" placeholder="0.00"></td>
                                             <td></td>
                                         </tr>
                                         <tr>

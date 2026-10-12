@@ -436,6 +436,7 @@
 
                         <input type="text"
                                name="city"
+                               placeholder="e.g. Dhaka"
                                class="form-control"
                                value="{{ old('city', $setting->city ?? '') }}">
 
@@ -450,6 +451,7 @@
 
                         <input type="text"
                                name="state"
+                               placeholder="e.g. Dhaka Division"
                                class="form-control"
                                value="{{ old('state', $setting->state ?? '') }}">
 
@@ -464,6 +466,7 @@
 
                         <input type="text"
                                name="country"
+                               placeholder="e.g. Bangladesh"
                                class="form-control"
                                value="{{ old('country', $setting->country ?? 'Bangladesh') }}">
 
@@ -478,6 +481,7 @@
 
                         <input type="text"
                                name="postal_code"
+                               placeholder="e.g. 1207"
                                class="form-control"
                                value="{{ old('postal_code', $setting->postal_code ?? '') }}">
 
@@ -507,6 +511,7 @@
 
                         <input type="text"
                                name="phone_two"
+                               placeholder="e.g. 01711000000"
                                class="form-control"
                                value="{{ old('phone_two', $setting->phone_two ?? '') }}">
 
@@ -521,6 +526,7 @@
 
                         <input type="email"
                                name="email"
+                               placeholder="e.g. info@example.com"
                                class="form-control"
                                value="{{ old('email', $setting->email ?? '') }}">
 
@@ -535,6 +541,7 @@
 
                         <input type="email"
                                name="email_two"
+                               placeholder="e.g. support@example.com"
                                class="form-control"
                                value="{{ old('email_two', $setting->email_two ?? '') }}">
 
@@ -588,6 +595,7 @@
 
                         <input type="text"
                                name="trade_license"
+                               placeholder="e.g. TRAD/DNCC/012345/2024"
                                class="form-control"
                                value="{{ old('trade_license', $setting->trade_license ?? '') }}">
 
@@ -602,6 +610,7 @@
 
                         <input type="text"
                                name="tin"
+                               placeholder="e.g. 123456789012"
                                class="form-control"
                                value="{{ old('tin', $setting->tin ?? '') }}">
 
@@ -616,6 +625,7 @@
 
                         <input type="text"
                                name="bin"
+                               placeholder="e.g. 000123456-0101"
                                class="form-control"
                                value="{{ old('bin', $setting->bin ?? '') }}">
 
@@ -630,6 +640,7 @@
 
                         <input type="text"
                                name="gst"
+                               placeholder="Enter GST number"
                                class="form-control"
                                value="{{ old('gst', $setting->gst ?? '') }}">
 
@@ -644,6 +655,7 @@
 
                         <input type="number"
                                name="tax_rate"
+                               placeholder="e.g. 15"
                                class="form-control"
                                step="0.01"
                                min="0"
@@ -931,6 +943,7 @@
 
                         <input type="text"
                                name="timezone"
+                               placeholder="e.g. Asia/Dhaka"
                                class="form-control"
                                value="{{ old('timezone', $setting->timezone ?? 'Asia/Dhaka') }}">
 
@@ -945,6 +958,7 @@
 
                         <input type="text"
                                name="date_format"
+                               placeholder="e.g. d-m-Y"
                                class="form-control"
                                value="{{ old('date_format', $setting->date_format ?? 'd-m-Y') }}">
 
@@ -959,6 +973,7 @@
 
                         <input type="text"
                                name="time_format"
+                               placeholder="e.g. h:i A"
                                class="form-control"
                                value="{{ old('time_format', $setting->time_format ?? 'h:i A') }}">
 

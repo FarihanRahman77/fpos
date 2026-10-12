@@ -175,7 +175,7 @@
                                     Purchase Price <span class="text-danger">*</span>
                                 </label>
                                 <input type="number" step="0.01" min="0" class="form-control border-dark"
-                                    name="purchase_price" id="purchase_price" value="0" required>
+                                    name="purchase_price" id="purchase_price" value="0" placeholder="0.00" required>
                             </div>
                         </div>
 
@@ -186,7 +186,7 @@
                                     Current Sale Price <span class="text-danger">*</span>
                                 </label>
                                 <input type="number" step="0.01" min="0" class="form-control border-dark"
-                                    name="sale_price" id="sale_price" value="0" required>
+                                    name="sale_price" id="sale_price" value="0" placeholder="0.00" required>
                             </div>
                         </div>
 
@@ -195,7 +195,7 @@
                             <div class="mb-3">
                                 <label for="old_sale_price" class="form-label">Old Sale Price</label>
                                 <input type="number" step="0.01" min="0" class="form-control border-dark"
-                                    name="old_sale_price" id="old_sale_price" value="0">
+                                    name="old_sale_price" id="old_sale_price" value="0" placeholder="0.00">
                             </div>
                         </div>
 
@@ -204,7 +204,7 @@
                             <div class="mb-3">
                                 <label for="discount" class="form-label">Discount</label>
                                 <input type="number" step="0.01" min="0" class="form-control border-dark"
-                                    name="discount" id="discount" value="0">
+                                    name="discount" id="discount" value="0" placeholder="0.00">
                             </div>
                         </div>
 
@@ -213,7 +213,7 @@
                             <div class="mb-3">
                                 <label for="stock_alert" class="form-label">Stock Alert</label>
                                 <input type="number" step="0.001" min="0" class="form-control border-dark"
-                                    name="stock_alert" id="stock_alert" value="0">
+                                    name="stock_alert" id="stock_alert" value="0" placeholder="0">
                             </div>
                         </div>
 
@@ -222,7 +222,7 @@
                             <div class="mb-3">
                                 <label for="opening_stock" class="form-label">Opening Stock</label>
                                 <input type="number" step="0.001" min="0" class="form-control border-dark"
-                                    name="opening_stock" id="opening_stock" value="0">
+                                    name="opening_stock" id="opening_stock" value="0" placeholder="0">
                                 <div id="currentStockText" class="form-text text-primary fw-bold"></div>
                             </div>
                         </div>
@@ -234,7 +234,7 @@
                                     SKU <small class="text-muted">(Automatic)</small>
                                 </label>
                                 <input type="text" class="form-control border-dark" name="sku" id="sku"
-                                    autocomplete="off" readonly>
+                                    autocomplete="off" placeholder="Auto generated" readonly>
                             </div>
                         </div>
 
@@ -245,7 +245,7 @@
                                     Barcode <small class="text-muted">(Automatic)</small>
                                 </label>
                                 <input type="text" class="form-control border-dark" name="barcode" id="barcode"
-                                    autocomplete="off" readonly>
+                                    autocomplete="off" placeholder="Auto generated" readonly>
                             </div>
                         </div>
 
@@ -941,7 +941,7 @@ function renderVariants($row, existingVariants = []) {
                     <label class="form-label small mb-1">Variant</label>
 
                     <input type="text" class="form-control form-control-sm border-dark"
-                        value="${escapeHtml(attributeName)}" readonly>
+                        value="${escapeHtml(attributeName)}" placeholder="Variant name" readonly>
 
                     <input type="hidden"
                         name="attributes_variants[${groupIndex}][${variantIndex}][attribute_id]"
@@ -1986,21 +1986,10 @@ $(document).ready(function () {
                     searchable: false,
                     render: function (data) {
 
-                        return `
-                            <div class="btn-group">
-
-                                <button type="button" class="btn btn-sm btn-primary editProductBtn"
-                                    data-id="${escapeHtml(data)}" title="Edit">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-
-                                <button type="button" class="btn btn-sm btn-danger deleteProductBtn"
-                                    data-id="${escapeHtml(data)}" title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-
-                            </div>
-                        `;
+                        return actionDropdown([
+                            { label: 'Edit', icon: 'fas fa-edit', class: 'editProductBtn', attrs: { 'data-id': data } },
+                            { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger deleteProductBtn', attrs: { 'data-id': data } }
+                        ]);
                     }
                 }
 

@@ -201,6 +201,7 @@
                                class="form-control border-dark"
                                name="name"
                                id="attribute_type_name"
+                               placeholder="e.g. Color"
                                autocomplete="off"
                                required>
 
@@ -220,6 +221,7 @@
                         <input type="text"
                                class="form-control border-dark"
                                id="attribute_type_slug"
+                               placeholder="Auto generated"
                                readonly>
 
                     </div>

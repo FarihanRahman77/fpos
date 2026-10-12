@@ -1,5 +1,66 @@
 <?php
 
+if (!function_exists('action_dropdown')) {
+
+    /**
+     * Standard DataTable "Action" cell: a cog button opening a dropdown menu.
+     * The JS twin is actionDropdown() in public/backend/js/main.js - keep them in step.
+     *
+     * Each item:
+     *   label   string  (required)
+     *   icon    string  e.g. 'fas fa-edit'
+     *   onclick string  JS call, e.g. 'editCategory(5)'          } one of
+     *   href    string  link URL                                  } these
+     *   target  string  e.g. '_blank' (with href)
+     *   class   string  extra classes, e.g. 'text-danger deleteBtn'
+     *   attrs   array   extra attributes, e.g. ['data-id' => 5]
+     *   divider bool    renders a separator instead of an item
+     */
+    function action_dropdown(array $items): string
+    {
+        $html = '
+                <div class="dropdown">
+                    <button type="button"
+                            class="btn btn-sm btn-primary dropdown-toggle"
+                            data-bs-toggle="dropdown"
+                            data-bs-popper-config=\'{"strategy":"fixed"}\'
+                            aria-expanded="false" title="Actions">
+                        <i class="fas fa-cog"></i>
+                    </button>
+
+                    <ul class="dropdown-menu dropdown-menu-end">';
+
+        foreach ($items as $item) {
+            if (!empty($item['divider'])) {
+                $html .= '<li><hr class="dropdown-divider"></li>';
+                continue;
+            }
+
+            $attrs = '';
+            foreach ($item['attrs'] ?? [] as $name => $value) {
+                $attrs .= ' ' . $name . '="' . e((string) $value) . '"';
+            }
+
+            $link = isset($item['href'])
+                ? 'href="' . e($item['href']) . '"' . (isset($item['target']) ? ' target="' . e($item['target']) . '"' : '')
+                : 'href="javascript:void(0)"' . (isset($item['onclick']) ? ' onclick="' . e($item['onclick']) . '"' : '');
+
+            $html .= '
+                        <li>
+                            <a ' . $link . '
+                               class="dropdown-item' . (isset($item['class']) ? ' ' . e($item['class']) : '') . '"' . $attrs . '>
+                                ' . (isset($item['icon']) ? '<i class="' . e($item['icon']) . ' me-2"></i>' : '') . '
+                                ' . e($item['label']) . '
+                            </a>
+                        </li>';
+        }
+
+        return $html . '
+                    </ul>
+                </div>';
+    }
+}
+
 if (!function_exists('amount_in_words')) {
 
     /**

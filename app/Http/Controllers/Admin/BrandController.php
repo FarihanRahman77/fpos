@@ -38,45 +38,10 @@ class BrandController extends Controller
                            style="cursor:pointer;">Inactive</span>';
 
 
-            $action = '
-                <div class="dropdown">
-
-                    <button type="button"
-                            class="btn btn-sm btn-primary dropdown-toggle"
-                            data-bs-toggle="dropdown">
-
-                        <i class="fas fa-cog"></i>
-
-                    </button>
-
-                    <ul class="dropdown-menu dropdown-menu-end">
-
-                        <li>
-                            <a href="javascript:void(0)"
-                               class="dropdown-item"
-                               onclick="editBrand(' . $brand->id . ')">
-
-                                <i class="fas fa-edit me-2"></i>
-                                Edit
-
-                            </a>
-                        </li>
-
-                        <li>
-                            <a href="javascript:void(0)"
-                               class="dropdown-item text-danger"
-                               onclick="deleteBrand(' . $brand->id . ')">
-
-                                <i class="fas fa-trash me-2"></i>
-                                Delete
-
-                            </a>
-                        </li>
-
-                    </ul>
-
-                </div>
-            ';
+            $action = action_dropdown([
+                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'editBrand(' . $brand->id . ')'],
+                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteBrand(' . $brand->id . ')'],
+            ]);
 
 
             $output['data'][] = [

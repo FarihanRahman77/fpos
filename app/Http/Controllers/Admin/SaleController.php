@@ -132,30 +132,12 @@ class SaleController extends Controller
                     <td class="text-end text-success">' . number_format((float) $row->paid_amount, 2, '.', '') . '</td>
                     <td class="text-end ' . ((float)$row->due_amount > 0 ? 'text-danger fw-bold' : '') . '">' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
                     <td class="text-center">' . e($row->account_name ?? '-') . '</td>
-                    <td class="text-center">
-                        <div class="dropdown">
-                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-cogs text-secondary me-1"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" href="' . $invoiceUrl . '" target="_blank">
-                                        <i class="fa fa-file-pdf text-danger me-2"></i> Invoice PDF
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item" href="' . $returnUrl . '">
-                                        <i class="fa fa-undo text-warning me-2"></i> Sale Return
-                                    </a>
-                                </li>
-                                <li>
-                                    <button type="button" class="dropdown-item text-danger deleteBtn" data-id="' . $row->id . '">
-                                        <i class="fa fa-trash me-2"></i> Delete
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </td>
+                    <td class="text-center">' . action_dropdown([
+                        ['label' => 'Invoice PDF', 'icon' => 'fas fa-file-pdf', 'href' => $invoiceUrl, 'target' => '_blank'],
+                        ['label' => 'Sale Return', 'icon' => 'fas fa-undo', 'href' => $returnUrl],
+                        ['divider' => true],
+                        ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteSaleBtn', 'attrs' => ['data-id' => $row->id]],
+                    ]) . '</td>
                 </tr>';
             }
 
@@ -827,26 +809,11 @@ class SaleController extends Controller
                     <td class="text-center"><span class="badge bg-secondary">' . e($row->sale_type) . '</span></td>
                     <td class="text-end fw-bold">' . number_format((float) $row->grand_total, 2, '.', '') . '</td>
                     <td class="text-center">' . $statusBadge . '</td>
-                    <td class="text-center">
-                        <div class="dropdown">
-                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-cogs text-secondary me-1"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item" href="' . $invoiceUrl . '" target="_blank">
-                                        <i class="fa fa-file-pdf text-danger me-2"></i> Credit Note PDF
-                                    </a>
-                                </li>
-
-                                <li>
-                                    <button type="button" class="dropdown-item text-danger deleteSaleReturnBtn" data-id="' . $row->id . '">
-                                        <i class="fa fa-trash me-2"></i> Delete
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </td>
+                    <td class="text-center">' . action_dropdown([
+                        ['label' => 'Credit Note PDF', 'icon' => 'fas fa-file-pdf', 'href' => $invoiceUrl, 'target' => '_blank'],
+                        ['divider' => true],
+                        ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteSaleReturnBtn', 'attrs' => ['data-id' => $row->id]],
+                    ]) . '</td>
                 </tr>';
             }
 
@@ -1231,36 +1198,19 @@ class SaleController extends Controller
                 // Only open orders can be delivered or cancelled
                 $isOpen = in_array($row->order_status, ['Pending', 'Confirmed', 'Partial']);
 
-                $actions = '
-                    <li>
-                        <a class="dropdown-item" href="' . $invoiceUrl . '" target="_blank">
-                            <i class="fa fa-file-pdf text-danger me-2"></i> Order PDF
-                        </a>
-                    </li>';
+                $actions = [
+                    ['label' => 'Order PDF', 'icon' => 'fas fa-file-pdf', 'href' => $invoiceUrl, 'target' => '_blank'],
+                ];
 
                 if ($isOpen) {
-                    $actions .= '
-                    <li>
-                        <a href="' . route('sales.orders.delivery_page', $row->id) . '"
-                        class="dropdown-item text-success">
-                            <i class="fa fa-truck me-2"></i> Delivery
-                        </a>
-                    </li>
-                    <li>
-                        <button type="button" class="dropdown-item text-warning cancelOrderBtn" data-id="' . $row->id . '">
-                            <i class="fa fa-ban me-2"></i> Cancel Order
-                        </button>
-                    </li>';
+                    $actions[] = ['label' => 'Delivery', 'icon' => 'fas fa-truck', 'class' => 'text-success', 'href' => route('sales.orders.delivery_page', $row->id)];
+                    $actions[] = ['label' => 'Cancel Order', 'icon' => 'fas fa-ban', 'class' => 'text-warning cancelOrderBtn', 'attrs' => ['data-id' => $row->id]];
                 }
 
                 // Delivered orders already created a sale, so they cannot be deleted here
                 if ($row->order_status !== 'Delivered') {
-                    $actions .= '
-                    <li>
-                        <button type="button" class="dropdown-item text-danger deleteOrderBtn" data-id="' . $row->id . '">
-                            <i class="fa fa-trash me-2"></i> Delete
-                        </button>
-                    </li>';
+                    $actions[] = ['divider' => true];
+                    $actions[] = ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteOrderBtn', 'attrs' => ['data-id' => $row->id]];
                 }
 
                 $html .= '
@@ -1279,16 +1229,7 @@ class SaleController extends Controller
                     <td class="text-end text-success">' . number_format((float) $row->advance_paid, 2, '.', '') . '</td>
                     <td class="text-end ' . ((float) $row->due_amount > 0 ? 'text-danger fw-bold' : '') . '">' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
                     <td class="text-center">' . $badge . '</td>
-                    <td class="text-center">
-                        <div class="dropdown">
-                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fa fa-cogs text-secondary me-1"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                ' . $actions . '
-                            </ul>
-                        </div>
-                    </td>
+                    <td class="text-center">' . action_dropdown($actions) . '</td>
                 </tr>';
             }
 

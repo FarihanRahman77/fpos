@@ -222,17 +222,17 @@
                                             </div>
                                             <div class="col-md-4">
                                                 <label class="form-label" for="father_name">Father's Name</label>
-                                                <input type="text" name="father_name" id="father_name" class="form-control" maxlength="150">
+                                                <input type="text" name="father_name" id="father_name" class="form-control" maxlength="150" placeholder="Enter father's name">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-4">
                                                 <label class="form-label" for="mother_name">Mother's Name</label>
-                                                <input type="text" name="mother_name" id="mother_name" class="form-control" maxlength="150">
+                                                <input type="text" name="mother_name" id="mother_name" class="form-control" maxlength="150" placeholder="Enter mother's name">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-4">
                                                 <label class="form-label" for="spouse_name">Spouse's Name</label>
-                                                <input type="text" name="spouse_name" id="spouse_name" class="form-control" maxlength="150">
+                                                <input type="text" name="spouse_name" id="spouse_name" class="form-control" maxlength="150" placeholder="Enter spouse's name (optional)">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
@@ -266,23 +266,23 @@
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="religion">Religion</label>
-                                                <input type="text" name="religion" id="religion" class="form-control" maxlength="50" list="religionList">
+                                                <input type="text" name="religion" id="religion" class="form-control" maxlength="50" list="religionList" placeholder="e.g. Islam">
                                                 <datalist id="religionList"><option value="Islam"><option value="Hinduism"><option value="Christianity"><option value="Buddhism"></datalist>
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="nationality">Nationality</label>
-                                                <input type="text" name="nationality" id="nationality" class="form-control" maxlength="50">
+                                                <input type="text" name="nationality" id="nationality" class="form-control" maxlength="50" placeholder="e.g. Bangladeshi">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="nid_no">NID No</label>
-                                                <input type="text" name="nid_no" id="nid_no" class="form-control" maxlength="50">
+                                                <input type="text" name="nid_no" id="nid_no" class="form-control" maxlength="50" placeholder="e.g. 1234567890">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="tin_no">TIN No</label>
-                                                <input type="text" name="tin_no" id="tin_no" class="form-control" maxlength="50">
+                                                <input type="text" name="tin_no" id="tin_no" class="form-control" maxlength="50" placeholder="e.g. 123456789012">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-12">
@@ -300,22 +300,22 @@
                                 <div class="row g-3">
                                     <div class="col-md-4">
                                         <label class="form-label" for="phone">Mobile <span class="text-danger">*</span></label>
-                                        <input type="text" name="phone" id="phone" class="form-control" maxlength="30">
+                                        <input type="text" name="phone" id="phone" class="form-control" maxlength="30" placeholder="e.g. 01711000000">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="alt_phone">Alternate Mobile</label>
-                                        <input type="text" name="alt_phone" id="alt_phone" class="form-control" maxlength="30">
+                                        <input type="text" name="alt_phone" id="alt_phone" class="form-control" maxlength="30" placeholder="e.g. 01811000000">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="email">Email</label>
-                                        <input type="email" name="email" id="email" class="form-control" maxlength="150">
+                                        <input type="email" name="email" id="email" class="form-control" maxlength="150" placeholder="e.g. employee@example.com">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label" for="present_address">Present Address</label>
-                                        <textarea name="present_address" id="present_address" class="form-control" rows="3" maxlength="1000"></textarea>
+                                        <textarea name="present_address" id="present_address" class="form-control" rows="3" maxlength="1000" placeholder="House, road, area, city"></textarea>
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-6">
@@ -325,24 +325,24 @@
                                                 <label class="form-check-label" for="sameAddress">Same as present</label>
                                             </span>
                                         </label>
-                                        <textarea name="permanent_address" id="permanent_address" class="form-control" rows="3" maxlength="1000"></textarea>
+                                        <textarea name="permanent_address" id="permanent_address" class="form-control" rows="3" maxlength="1000" placeholder="Village, upazila, district"></textarea>
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-12"><h6 class="mb-0 mt-2">Emergency Contact</h6></div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="emergency_contact_name">Name</label>
-                                        <input type="text" name="emergency_contact_name" id="emergency_contact_name" class="form-control" maxlength="150">
+                                        <input type="text" name="emergency_contact_name" id="emergency_contact_name" class="form-control" maxlength="150" placeholder="Enter contact person's name">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="emergency_contact_relation">Relation</label>
-                                        <input type="text" name="emergency_contact_relation" id="emergency_contact_relation" class="form-control" maxlength="50" list="relationList">
+                                        <input type="text" name="emergency_contact_relation" id="emergency_contact_relation" class="form-control" maxlength="50" list="relationList" placeholder="e.g. Father">
                                         <datalist id="relationList"><option value="Father"><option value="Mother"><option value="Spouse"><option value="Brother"><option value="Sister"><option value="Son"><option value="Daughter"></datalist>
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="emergency_contact_phone">Phone</label>
-                                        <input type="text" name="emergency_contact_phone" id="emergency_contact_phone" class="form-control" maxlength="30">
+                                        <input type="text" name="emergency_contact_phone" id="emergency_contact_phone" class="form-control" maxlength="30" placeholder="e.g. 01711000000">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                 </div>
@@ -353,12 +353,12 @@
                                 <div class="row g-3">
                                     <div class="col-md-4">
                                         <label class="form-label" for="designation">Designation <span class="text-danger">*</span></label>
-                                        <input type="text" name="designation" id="designation" class="form-control" maxlength="100" list="designationList">
+                                        <input type="text" name="designation" id="designation" class="form-control" maxlength="100" list="designationList" placeholder="e.g. Sales Executive">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="department">Department</label>
-                                        <input type="text" name="department" id="department" class="form-control" maxlength="100" list="departmentList">
+                                        <input type="text" name="department" id="department" class="form-control" maxlength="100" list="departmentList" placeholder="e.g. Sales">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
@@ -371,7 +371,7 @@
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label" for="work_shift">Work Shift</label>
-                                        <input type="text" name="work_shift" id="work_shift" class="form-control" maxlength="50" list="shiftList">
+                                        <input type="text" name="work_shift" id="work_shift" class="form-control" maxlength="50" list="shiftList" placeholder="e.g. Day (9 AM - 6 PM)">
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-8">
@@ -410,7 +410,7 @@
                                     @endforeach
                                     <div class="col-md-2">
                                         <label class="form-label" for="gross_salary_view">Gross Salary</label>
-                                        <input type="text" id="gross_salary_view" class="form-control text-end acc-grand" readonly value="0.00">
+                                        <input type="text" id="gross_salary_view" class="form-control text-end acc-grand" readonly value="0.00" placeholder="0.00">
                                     </div>
                                 </div>
                             </div>
@@ -430,22 +430,22 @@
                                         <div class="row g-3">
                                             <div class="col-md-3">
                                                 <label class="form-label" for="bank_name">Bank Name</label>
-                                                <input type="text" name="bank_name" id="bank_name" class="form-control" maxlength="100">
+                                                <input type="text" name="bank_name" id="bank_name" class="form-control" maxlength="100" placeholder="e.g. Dhaka Bank">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="bank_branch">Branch</label>
-                                                <input type="text" name="bank_branch" id="bank_branch" class="form-control" maxlength="100">
+                                                <input type="text" name="bank_branch" id="bank_branch" class="form-control" maxlength="100" placeholder="e.g. Motijheel Branch">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="bank_account_name">Account Name</label>
-                                                <input type="text" name="bank_account_name" id="bank_account_name" class="form-control" maxlength="150">
+                                                <input type="text" name="bank_account_name" id="bank_account_name" class="form-control" maxlength="150" placeholder="Name as on bank account">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="bank_account_no">Account Number</label>
-                                                <input type="text" name="bank_account_no" id="bank_account_no" class="form-control" maxlength="50">
+                                                <input type="text" name="bank_account_no" id="bank_account_no" class="form-control" maxlength="50" placeholder="e.g. 1234567890123">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                         </div>
@@ -454,13 +454,13 @@
                                         <div class="row g-3">
                                             <div class="col-md-3">
                                                 <label class="form-label" for="mobile_banking_provider">Provider</label>
-                                                <input type="text" name="mobile_banking_provider" id="mobile_banking_provider" class="form-control" maxlength="50" list="mfsList">
+                                                <input type="text" name="mobile_banking_provider" id="mobile_banking_provider" class="form-control" maxlength="50" list="mfsList" placeholder="e.g. bKash">
                                                 <datalist id="mfsList"><option value="bKash"><option value="Nagad"><option value="Rocket"><option value="Upay"></datalist>
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label" for="mobile_banking_no">Account Number</label>
-                                                <input type="text" name="mobile_banking_no" id="mobile_banking_no" class="form-control" maxlength="30">
+                                                <input type="text" name="mobile_banking_no" id="mobile_banking_no" class="form-control" maxlength="30" placeholder="e.g. 01711000000">
                                                 <div class="text-danger small field-error"></div>
                                             </div>
                                         </div>
@@ -580,8 +580,8 @@
         }
 
         /* ================= education / experience rows ================= */
-        function cell(name, value, attrs) {
-            return '<td><input name="' + name + '" class="form-control form-control-sm" value="' + Voucher.esc(value || '') + '" ' + (attrs || '') + '>' +
+        function cell(name, value, attrs, placeholder) {
+            return '<td><input name="' + name + '" class="form-control form-control-sm" value="' + Voucher.esc(value || '') + '" placeholder="' + Voucher.esc(placeholder || '') + '" ' + (attrs || '') + '>' +
                 '<div class="text-danger small field-error"></div></td>';
         }
 
@@ -591,11 +591,11 @@
             d = d || {};
             const i = eduIndex++;
             $('#educationBody').append('<tr>' +
-                cell('educations[' + i + '][degree]', d.degree, 'maxlength="100" placeholder="e.g. HSC, BSc"') +
-                cell('educations[' + i + '][institute]', d.institute, 'maxlength="150"') +
-                cell('educations[' + i + '][board_university]', d.board_university, 'maxlength="150"') +
-                cell('educations[' + i + '][passing_year]', d.passing_year, 'maxlength="10"') +
-                cell('educations[' + i + '][result]', d.result, 'maxlength="30" placeholder="GPA / Class"') +
+                cell('educations[' + i + '][degree]', d.degree, 'maxlength="100"', 'e.g. HSC, BSc') +
+                cell('educations[' + i + '][institute]', d.institute, 'maxlength="150"', 'e.g. Dhaka College') +
+                cell('educations[' + i + '][board_university]', d.board_university, 'maxlength="150"', 'e.g. Dhaka Board') +
+                cell('educations[' + i + '][passing_year]', d.passing_year, 'maxlength="10"', 'e.g. 2018') +
+                cell('educations[' + i + '][result]', d.result, 'maxlength="30"', 'GPA / Class') +
                 removeCell + '</tr>');
         }
 
@@ -603,11 +603,11 @@
             d = d || {};
             const i = expIndex++;
             $('#experienceBody').append('<tr>' +
-                cell('experiences[' + i + '][company_name]', d.company_name, 'maxlength="150"') +
-                cell('experiences[' + i + '][designation]', d.designation, 'maxlength="100"') +
+                cell('experiences[' + i + '][company_name]', d.company_name, 'maxlength="150"', 'Enter company name') +
+                cell('experiences[' + i + '][designation]', d.designation, 'maxlength="100"', 'e.g. Sales Officer') +
                 cell('experiences[' + i + '][from_date]', d.from_date, 'type="date"') +
                 cell('experiences[' + i + '][to_date]', d.to_date, 'type="date"') +
-                cell('experiences[' + i + '][responsibilities]', d.responsibilities, 'maxlength="500"') +
+                cell('experiences[' + i + '][responsibilities]', d.responsibilities, 'maxlength="500"', 'Main duties (optional)') +
                 removeCell + '</tr>');
         }
 
@@ -654,7 +654,7 @@
                             '<select name="documents[' + i + '][document_type]" class="form-select form-select-sm doc-type">' + docTypeOptions(d.document_type || 'NID') + '</select>' +
                             '<div class="text-danger small field-error"></div></div>' +
                         '<div class="col-md-3"><label class="form-label small">Document No</label>' +
-                            '<input name="documents[' + i + '][document_no]" class="form-control form-control-sm" maxlength="100" value="' + Voucher.esc(d.document_no || '') + '">' +
+                            '<input name="documents[' + i + '][document_no]" class="form-control form-control-sm" maxlength="100" placeholder="e.g. 1234567890" value="' + Voucher.esc(d.document_no || '') + '">' +
                             '<div class="text-danger small field-error"></div></div>' +
                         '<div class="col-md-2"><label class="form-label small">Issue Date</label>' +
                             '<input type="date" name="documents[' + i + '][issue_date]" class="form-control form-control-sm" value="' + (d.issue_date || '') + '">' +
@@ -663,12 +663,12 @@
                             '<input type="date" name="documents[' + i + '][expiry_date]" class="form-control form-control-sm" value="' + (d.expiry_date || '') + '">' +
                             '<div class="text-danger small field-error"></div></div>' +
                         '<div class="col-md-2"><label class="form-label small">Issued By</label>' +
-                            '<input name="documents[' + i + '][issued_by]" class="form-control form-control-sm" maxlength="150" value="' + Voucher.esc(d.issued_by || '') + '">' +
+                            '<input name="documents[' + i + '][issued_by]" class="form-control form-control-sm" maxlength="150" placeholder="e.g. Election Commission" value="' + Voucher.esc(d.issued_by || '') + '">' +
                             '<div class="text-danger small field-error"></div></div>' +
                         fileBox(i, 'file_front', 'Front side / Photo', d.file_front_url, d.front_is_image) +
                         fileBox(i, 'file_back', 'Back side', d.file_back_url, d.back_is_image) +
                         '<div class="col-md-6"><label class="form-label small">Remarks</label>' +
-                            '<textarea name="documents[' + i + '][remarks]" class="form-control form-control-sm" rows="4" maxlength="255">' + Voucher.esc(d.remarks || '') + '</textarea>' +
+                            '<textarea name="documents[' + i + '][remarks]" class="form-control form-control-sm" rows="4" maxlength="255" placeholder="Optional note about this document">' + Voucher.esc(d.remarks || '') + '</textarea>' +
                             '<div class="text-danger small field-error"></div></div>' +
                     '</div>' +
                 '</div>'

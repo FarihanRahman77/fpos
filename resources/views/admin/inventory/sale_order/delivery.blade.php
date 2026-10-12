@@ -356,6 +356,7 @@
                                            max="{{ $remainingQty }}"
                                            step="0.0001"
                                            data-max="{{ $remainingQty }}"
+                                           placeholder="0"
                                            {{ $remainingQty <= 0 ? 'disabled' : '' }}>
 
                                     <small class="text-danger qty-error d-none">

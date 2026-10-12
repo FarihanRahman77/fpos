@@ -46,39 +46,10 @@ class CategoryController extends Controller
             }
 
 
-            $button = '
-                <div class="dropdown">
-                    <button type="button"
-                            class="btn btn-sm btn-primary dropdown-toggle"
-                            data-bs-toggle="dropdown">
-                        <i class="fas fa-cog"></i>
-                    </button>
-
-                    <ul class="dropdown-menu dropdown-menu-end">
-
-                        <li>
-                            <a href="javascript:void(0)"
-                               class="dropdown-item"
-                               onclick="editCategory(' . $category->id . ')">
-
-                                <i class="fas fa-edit me-2"></i>
-                                Edit
-                            </a>
-                        </li>
-
-                        <li>
-                            <a href="javascript:void(0)"
-                               class="dropdown-item text-danger"
-                               onclick="deleteCategory(' . $category->id . ')">
-
-                                <i class="fas fa-trash me-2"></i>
-                                Delete
-                            </a>
-                        </li>
-
-                    </ul>
-                </div>
-            ';
+            $button = action_dropdown([
+                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'editCategory(' . $category->id . ')'],
+                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteCategory(' . $category->id . ')'],
+            ]);
 
 
             $output['data'][] = array(

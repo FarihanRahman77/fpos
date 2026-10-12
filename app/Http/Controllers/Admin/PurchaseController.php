@@ -87,8 +87,6 @@ class PurchaseController extends Controller
                     ? '<i class="fas fa-check-circle text-success" style="font-size:18px;"></i>'
                     : '<i class="fas fa-times-circle text-danger" style="font-size:18px;"></i>';
 
-                $editUrl = url('/admin/purchases/edit/' . $row->id);
-
                 $html .= '
                 <tr>
                     <td>' . ($index + 1) . '</td>
@@ -102,43 +100,12 @@ class PurchaseController extends Controller
                     <td>' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
                     <td>' . e($row->pmaccount_name ?? '') . ' - '.e($row->pmaaccount_name ?? '').'</td>
                     <td>' . $statusBadge . '</td>
-                    <td class="text-center">
-                        <div class="dropdown">
-                            <button type="button"
-                                    class="btn btn-sm btn-outline-secondary dropdown-toggle"
-                                    data-bs-toggle="dropdown"
-                                    aria-expanded="false">
-                                <i class="fa fa-cogs text-secondary me-2"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li>
-                                    <a class="dropdown-item"
-                                    href="' . url('/admin/purchases/invoice-pdf/' . $row->id) . '"
-                                    target="_blank">
-                                        <i class="fa fa-file-pdf text-secondary me-2"></i> Invoice
-                                    </a>
-                                </li>
-                                <li class="d-none">
-                                    <a class="dropdown-item" href="' . $editUrl . '">
-                                        <i class="fa fa-edit text-info me-2"></i> Edit
-                                    </a>
-                                </li>
-                                <li>
-                                    <a class="dropdown-item"
-                                    href="' . url('/admin/purchases/return/' . $row->id) . '">
-                                        <i class="fa fa-undo text-warning me-2"></i> Purchase Return
-                                    </a>
-                                </li>
-                                <li>
-                                    <button type="button"
-                                            class="dropdown-item text-danger deleteBtn"
-                                            data-id="' . $row->id . '">
-                                        <i class="fa fa-trash me-2"></i> Delete
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </td>
+                    <td class="text-center">' . action_dropdown([
+                        ['label' => 'Invoice', 'icon' => 'fas fa-file-pdf', 'href' => url('/admin/purchases/invoice-pdf/' . $row->id), 'target' => '_blank'],
+                        ['label' => 'Purchase Return', 'icon' => 'fas fa-undo', 'href' => url('/admin/purchases/return/' . $row->id)],
+                        ['divider' => true],
+                        ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteBtn', 'attrs' => ['data-id' => $row->id]],
+                    ]) . '</td>
                 </tr>';
             }
 
@@ -2068,87 +2035,12 @@ class PurchaseController extends Controller
                 |--------------------------------------------------------------------------
                 */
 
-                $action = '
-
-                    <div class="dropdown">
-
-                        <button
-                            class="btn btn-sm btn-primary dropdown-toggle"
-                            type="button"
-                            data-bs-toggle="dropdown">
-
-                            Action
-
-                        </button>
-
-
-                        <ul class="dropdown-menu">
-
-                            <li>
-
-                                <a
-                                    class="dropdown-item"
-                                    href="' .
-                    route(
-                        'purchases.return.view',
-                        $row->id
-                    ) .
-                    '">
-
-                                    <i class="fa fa-eye text-primary me-2"></i>
-
-                                    View
-
-                                </a>
-
-                            </li>
-
-
-                            <li>
-
-                                <a
-                                    class="dropdown-item"
-                                    href="' .
-                    route(
-                        'purchases.return.view',
-                        $row->id
-                    ) .
-                    '">
-
-                                    <i class="fa fa-file-pdf text-danger me-2"></i>
-
-                                    Invoice
-
-                                </a>
-
-                            </li>
-
-
-
-
-
-                            <li>
-
-                                <a
-                                    href="javascript:void(0)"
-                                    class="dropdown-item deleteReturnBtn"
-                                    data-id="' .
-                    $row->id .
-                    '">
-
-                                    <i class="fa fa-trash text-danger me-2"></i>
-
-                                    Delete
-
-                                </a>
-
-                            </li>
-
-                        </ul>
-
-                    </div>
-
-                ';
+                $action = action_dropdown([
+                    ['label' => 'View', 'icon' => 'fas fa-eye', 'href' => route('purchases.return.view', $row->id)],
+                    ['label' => 'Invoice', 'icon' => 'fas fa-file-pdf', 'href' => route('purchases.return.view', $row->id)],
+                    ['divider' => true],
+                    ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteReturnBtn', 'attrs' => ['data-id' => $row->id]],
+                ]);
 
 
                 $html .= '

@@ -61,7 +61,7 @@
                                 Current Supplier Due
                             </label>
 
-                            <input type="text" id="supplier_due" class="form-control" value="0.00" readonly>
+                            <input type="text" id="supplier_due" class="form-control" value="0.00" placeholder="0.00" readonly>
 
                         </div>
 
@@ -173,7 +173,7 @@
                                     <td colspan="2">
 
                                         <input type="text" id="subtotal" class="form-control text-end" value="0.00"
-                                            readonly>
+                                            placeholder="0.00" readonly>
 
                                     </td>
                                     <td></td>
@@ -210,7 +210,7 @@
                                             <div class="col-md-6">
 
                                                 <input type="number" step="0.01" min="0" id="discount_value"
-                                                    name="discount_value" class="form-control" value="0">
+                                                    name="discount_value" class="form-control" value="0" placeholder="0.00">
 
                                             </div>
 
@@ -232,7 +232,7 @@
                                     <td colspan="2">
 
                                         <input type="text" id="discount_amount" class="form-control text-end"
-                                            value="0.00" readonly>
+                                            value="0.00" placeholder="0.00" readonly>
 
                                     </td>
                                     <td></td>
@@ -249,7 +249,7 @@
                                     <td colspan="2">
 
                                         <input type="text" id="grand_total" class="form-control text-end fw-bold"
-                                            value="0.00" readonly>
+                                            value="0.00" placeholder="0.00" readonly>
 
                                     </td>
                                     <td></td>
@@ -311,7 +311,7 @@
                                     <td colspan="2">
 
                                         <input type="number" step="0.01" min="0" id="paid_amount"
-                                            name="paid_amount" class="form-control" value="0">
+                                            name="paid_amount" class="form-control" value="0" placeholder="0.00">
 
                                     </td>
                                     <td></td>
@@ -328,7 +328,7 @@
                                     <td colspan="2">
 
                                         <input type="text" id="due_amount" class="form-control text-end"
-                                            value="0.00" readonly>
+                                            value="0.00" placeholder="0.00" readonly>
 
                                     </td>
                                     <td></td>
@@ -356,7 +356,7 @@
                                 Remarks
                             </label>
 
-                            <textarea id="remarks" name="remarks" class="form-control" rows="3"></textarea>
+                            <textarea id="remarks" name="remarks" class="form-control" rows="3" placeholder="Optional note about this purchase"></textarea>
 
                         </div>
 
@@ -997,6 +997,7 @@
                             step="0.0001"
                             min="0.0001"
                             class="form-control qtyInput"
+                            placeholder="0"
                             data-index="${index}"
                             value="${item.qty}">
 
@@ -1010,6 +1011,7 @@
                             step="0.01"
                             min="0"
                             class="form-control priceInput"
+                            placeholder="0.00"
                             data-index="${index}"
                             value="${item.purchase_price}">
 
@@ -1048,6 +1050,7 @@
                             step="0.01"
                             min="0"
                             class="form-control itemDiscount"
+                            placeholder="0.00"
                             data-index="${index}"
                             value="${item.discount_value}">
 
@@ -1059,6 +1062,7 @@
                         <input
                             type="text"
                             class="form-control itemTotal"
+                            placeholder="0.00"
                             value="${calculateItemTotal(item).toFixed(2)}"
                             readonly>
 

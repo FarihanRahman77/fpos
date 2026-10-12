@@ -168,17 +168,11 @@ class ExpenseController extends Controller
                         . '<div class="text-muted small">' . e($expense->payment_group_name) . '</div>'
                     : '<span class="text-muted">-</span>';
 
-                $button = '
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-outline-primary" title="Edit"
-                                onclick="pdf(' . $id . ')">
-                            <i class="fas fa-file"></i>
-                        </button>
-                        <button type="button" class="btn btn-outline-danger" title="Delete"
-                                onclick="deleteExpense(' . $id . ')">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>';
+                $button = action_dropdown([
+                    ['label' => 'Print PDF', 'icon' => 'fas fa-file-pdf', 'onclick' => 'pdf(' . $id . ')'],
+                    ['divider' => true],
+                    ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteExpense(' . $id . ')'],
+                ]);
 
                 $output['data'][] = [
                     $i++,

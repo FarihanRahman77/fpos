@@ -104,7 +104,7 @@
                                 <tr>
                                     <td colspan="5" class="text-end fw-bold">Subtotal</td>
                                     <td colspan="3">
-                                        <input type="text" id="orderSubtotal" class="form-control" value="0.00" readonly>
+                                        <input type="text" id="orderSubtotal" class="form-control" value="0.00" placeholder="0.00" readonly>
                                     </td>
                                 </tr>
 
@@ -122,7 +122,8 @@
                                                    name="discount_value"
                                                    id="orderDiscountValue"
                                                    class="form-control"
-                                                   value="0">
+                                                   value="0"
+                                                   placeholder="0.00">
                                         </div>
                                     </td>
                                 </tr>
@@ -130,14 +131,14 @@
                                 <tr>
                                     <td colspan="5" class="text-end fw-bold">Discount Amount</td>
                                     <td colspan="3">
-                                        <input type="text" id="orderDiscountAmount" class="form-control" value="0.00" readonly>
+                                        <input type="text" id="orderDiscountAmount" class="form-control" value="0.00" placeholder="0.00" readonly>
                                     </td>
                                 </tr>
 
                                 <tr>
                                     <td colspan="5" class="text-end fw-bold">Grand Total</td>
                                     <td colspan="3">
-                                        <input type="text" id="orderGrandTotal" class="form-control fw-bold" value="0.00" readonly>
+                                        <input type="text" id="orderGrandTotal" class="form-control fw-bold" value="0.00" placeholder="0.00" readonly>
                                     </td>
                                 </tr>
                                 <tr>
@@ -187,21 +188,22 @@
                                                name="advance_paid"
                                                id="orderAdvancePaid"
                                                class="form-control"
-                                               value="0">
+                                               value="0"
+                                               placeholder="0.00">
                                     </td>
                                 </tr>
 
                                 <tr>
                                     <td colspan="5" class="text-end fw-bold">Due Amount</td>
                                     <td colspan="3">
-                                        <input type="text" id="orderDueAmount" class="form-control" value="0.00" readonly>
+                                        <input type="text" id="orderDueAmount" class="form-control" value="0.00" placeholder="0.00" readonly>
                                     </td>
                                 </tr>
 
                                 <tr>
                                     <td colspan="8">
                                         <label class="form-label">Remarks</label>
-                                        <textarea name="remarks" class="form-control" rows="3"></textarea>
+                                        <textarea name="remarks" class="form-control" rows="3" placeholder="Optional note about this order"></textarea>
                                     </td>
                                 </tr>
 
@@ -420,7 +422,8 @@ function renderOrderCart() {
                            step="0.01"
                            class="form-control orderQty"
                            data-index="${index}"
-                           value="${item.qty}">
+                           value="${item.qty}"
+                           placeholder="1">
                 </td>
 
                 <td>
@@ -429,7 +432,8 @@ function renderOrderCart() {
                            step="0.01"
                            class="form-control orderPrice"
                            data-index="${index}"
-                           value="${item.sale_price}">
+                           value="${item.sale_price}"
+                           placeholder="0.00">
                 </td>
 
                 <td>
@@ -447,7 +451,8 @@ function renderOrderCart() {
                                step="0.01"
                                class="form-control orderItemDiscountValue"
                                data-index="${index}"
-                               value="${item.discount_value}">
+                               value="${item.discount_value}"
+                               placeholder="0.00">
                     </div>
                 </td>
 

@@ -72,15 +72,15 @@
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Label Width (mm)</label>
-                            <input type="number" id="labelWidth" class="form-control" value="40" min="20" max="100">
+                            <input type="number" id="labelWidth" class="form-control" value="40" placeholder="40" min="20" max="100">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Label Height (mm)</label>
-                            <input type="number" id="labelHeight" class="form-control" value="30" min="15" max="100">
+                            <input type="number" id="labelHeight" class="form-control" value="30" placeholder="30" min="15" max="100">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Columns</label>
-                            <input type="number" id="columns" class="form-control" value="3" min="1" max="8">
+                            <input type="number" id="columns" class="form-control" value="3" placeholder="3" min="1" max="8">
                         </div>
                         <div class="col-md-2">
                             <label class="form-label d-block">Show</label>
@@ -228,7 +228,7 @@
                 <td>
                     <div class="input-group input-group-sm" style="max-width:150px">
                         <button class="btn btn-outline-secondary qty-minus" type="button" data-key="${key}">-</button>
-                        <input type="number" class="form-control text-center qty-input" min="1" max="500" value="${item.qty}" data-key="${key}">
+                        <input type="number" class="form-control text-center qty-input" placeholder="1" min="1" max="500" value="${item.qty}" data-key="${key}">
                         <button class="btn btn-outline-secondary qty-plus" type="button" data-key="${key}">+</button>
                     </div>
                 </td>

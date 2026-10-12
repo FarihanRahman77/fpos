@@ -64,7 +64,7 @@
                     <div class="row g-3">
                         <div class="col-md-4" id="codeWrap" style="display:none;">
                             <label class="form-label">Code</label>
-                            <input type="text" id="code" class="form-control" readonly>
+                            <input type="text" id="code" class="form-control" placeholder="Auto-generated" readonly>
                         </div>
                         <div class="col-md-8">
                             <label class="form-label">Name <span class="text-danger">*</span></label>
@@ -93,7 +93,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Opening Balance</label>
-                            <input type="number" step="0.01" min="0" id="opening_balance" class="form-control" value="0">
+                            <input type="number" step="0.01" min="0" id="opening_balance" class="form-control" value="0" placeholder="0.00">
                             <span class="text-danger" id="opening_balanceError"></span>
                         </div>
                         <div class="col-md-3">
@@ -111,7 +111,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Credit Limit</label>
-                            <input type="number" step="0.01" min="0" id="credit_limit" class="form-control" value="0">
+                            <input type="number" step="0.01" min="0" id="credit_limit" class="form-control" value="0" placeholder="0.00">
                             <span class="text-danger" id="credit_limitError"></span>
                         </div>
                         <div class="col-md-3">
@@ -217,10 +217,10 @@
                         <td class="text-end">${money(p.opening_balance)} <small class="text-muted">(${esc(p.opening_balance_type)})</small></td>
                         <td class="text-end">${money(p.credit_limit)}</td>
                         <td><span class="badge ${badge} btn-status" role="button" data-id="${p.id}">${esc(p.status)}</span></td>
-                        <td>
-                            <button class="btn btn-sm btn-info btn-edit" data-id="${p.id}"><i class="bi bi-pencil-square"></i></button>
-                            <button class="btn btn-sm btn-danger btn-delete" data-id="${p.id}"><i class="bi bi-trash"></i></button>
-                        </td>
+                        <td>${actionDropdown([
+                            { label: 'Edit', icon: 'fas fa-edit', class: 'btn-edit', attrs: { 'data-id': p.id } },
+                            { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger btn-delete', attrs: { 'data-id': p.id } }
+                        ])}</td>
                     </tr>`;
                 });
                 $('#partyBody').html(rows);
