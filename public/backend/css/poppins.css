@@ -1,0 +1,26 @@
+:root {
+  --font-sans: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bs-body-font-family: var(--font-sans);
+  --bs-font-sans-serif: var(--font-sans);
+}
+
+html,
+body,
+body.font-sans {
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-sans);
+}
+
+.select2-container,
+.select2-dropdown,
+.select2-results__option,
+.dataTables_wrapper,
+.swal2-container .swal2-popup {
+  font-family: var(--font-sans);
+}

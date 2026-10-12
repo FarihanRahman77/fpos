@@ -1,39 +1,16 @@
-<style>
-    .sidebar-nav ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-
-    .sidebar-nav .submenu {
-        padding-left: 0;
-    }
-
-    .sidebar-nav .submenu .nav-link {
-        padding-left: 50px;
-        font-size: 14px;
-    }
-
-    .sidebar-nav .submenu .nav-icon {
-        width: 22px;
-    }
-
-    .sidebar-nav .submenu-arrow {
-        transition: transform 0.2s ease;
-    }
-
-    .sidebar-nav .nav-link[aria-expanded="true"] .submenu-arrow {
-        transform: rotate(180deg);
-    }
-</style>
 <aside class="admin-sidebar" id="adminSidebar" aria-label="Main navigation">
     <div class="sidebar-header">
-        <a class="brand-mark" href="{{ route('dashboard') }}" aria-label="adminHMD dashboard">
+        <a class="brand-mark" href="{{ route('dashboard') }}" aria-label="LOOM dashboard">
             @if (!empty($generalSetting->logo))
-                <img src="{{ asset($generalSetting->logo) }}" alt="{{ $generalSetting->company_name }}"
-                    style="max-height: 30px;">
+                <img class="brand-logo" src="{{ asset($generalSetting->logo) }}" alt="{{ $generalSetting->company_name }}">
+            @else
+                <span class="brand-wordmark">LOOM</span>
             @endif
         </a>
+        <button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse-toggle
+            aria-controls="adminSidebar" aria-expanded="true" aria-label="Collapse sidebar">
+            <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        </button>
     </div>
 
     {{-- <nav class="sidebar-nav">
@@ -93,7 +70,7 @@
 
             {{-- Dashboard --}}
             <li class="nav-item">
-                <a class="nav-link active" href="{{ route('dashboard') }}" aria-current="page">
+                <a class="nav-link" href="{{ route('dashboard') }}" aria-label="Dashboard">
 
                     <span class="nav-icon">
                         <i class="bi bi-speedometer2"></i>
@@ -103,13 +80,13 @@
                 </a>
             </li>
 
-            <li class="nav-item">
+            <li class="nav-item nav-group">
 
-                <a class="nav-link" href="#inventorySubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="inventorySubmenu">
 
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-boxes"></i>
                     </span>
 
                     <span class="nav-text">Inventory</span>
@@ -118,50 +95,50 @@
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
 
-                </a>
+                </button>
 
 
                 {{-- inventory Sub Menu --}}
-                <ul class="collapse nav flex-column submenu" id="inventorySubmenu">
-                    <li class="nav-item">
+                <ul class="nav flex-column submenu" id="inventorySubmenu" aria-hidden="true" inert>
+                    <li class="nav-item nav-group">
                         <a class="nav-link" href="{{ route('products.index') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-box-seam"></i></span>
                             <span class="nav-text">Products</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.category.index') }}">
-                            <span class="nav-icon"><i class="bi bi-person-badge"></i></span>
+                            <span class="nav-icon"><i class="bi bi-folder2-open"></i></span>
                             <span class="nav-text">Category</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.brand.index') }}">
-                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-icon"><i class="bi bi-tags"></i></span>
                             <span class="nav-text">Brands</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.unit.index') }}">
-                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-icon"><i class="bi bi-rulers"></i></span>
                             <span class="nav-text">Units</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.barcode.index') }}">
-                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-icon"><i class="bi bi-upc-scan"></i></span>
                             <span class="nav-text">Barcodes</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.attribute_types.index') }}">
-                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-icon"><i class="bi bi-sliders"></i></span>
                             <span class="nav-text">Attribute Type</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.attribute.index') }}">
-                            <span class="nav-icon"><i class="bi bi-shield-check"></i></span>
+                            <span class="nav-icon"><i class="bi bi-list-check"></i></span>
                             <span class="nav-text">Attributes</span>
                         </a>
                     </li>
@@ -171,105 +148,105 @@
             </li>
 
 
-            <li class="nav-item">
-                <a class="nav-link" href="#purchaseSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="purchaseSubmenu">
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-cart-check"></i>
                     </span>
                     <span class="nav-text">Purchase</span>
                     <span class="ms-auto">
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
-                </a>
-                <ul class="collapse nav flex-column submenu" id="purchaseSubmenu">
-                    <li class="nav-item">
+                </button>
+                <ul class="nav flex-column submenu" id="purchaseSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item nav-group">
                         <a class="nav-link" href="{{ route('purchases.index') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-clipboard-check"></i></span>
                             <span class="nav-text">Purchase List</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('purchases.return.index') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-arrow-counterclockwise"></i></span>
                             <span class="nav-text">Purchase Return List</span>
                         </a>
                     </li>
                 </ul>
 
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#saleSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="saleSubmenu">
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-graph-up-arrow"></i>
                     </span>
                     <span class="nav-text">Sales</span>
                     <span class="ms-auto">
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
-                </a>
-                <ul class="collapse nav flex-column submenu" id="saleSubmenu">
-                    <li class="nav-item">
+                </button>
+                <ul class="nav flex-column submenu" id="saleSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item nav-group">
                         <a class="nav-link" href="{{ route('sales.index', ['type' => 'Walk-In']) }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-shop"></i></span>
                             <span class="nav-text">Walk-In Sale</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('sales.returns.index', ['type' => 'Walk-In']) }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-arrow-return-left"></i></span>
                             <span class="nav-text">Walk-In Sale Return</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('sales.index', ['type' => 'Wholesale']) }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-truck"></i></span>
                             <span class="nav-text">Whole Sale</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('sales.returns.index', ['type' => 'Wholesale']) }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-arrow-90deg-left"></i></span>
                             <span class="nav-text">Whole Sale Return</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('sales.orders.index') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-file-earmark-check"></i></span>
                             <span class="nav-text">Sale Order</span>
                         </a>
                     </li>
                 </ul>
 
             </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#CRMSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="CRMSubmenu">
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-person-lines-fill"></i>
                     </span>
                     <span class="nav-text">CRM</span>
                     <span class="ms-auto">
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
-                </a>
-                <ul class="collapse nav flex-column submenu" id="CRMSubmenu">
-                    <li class="nav-item">
+                </button>
+                <ul class="nav flex-column submenu" id="CRMSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item nav-group">
                         <a class="nav-link" href="{{ route('party.index','Customer') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-person"></i></span>
                             <span class="nav-text">Customer </span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('party.index','Walk-In Customer') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-person-vcard"></i></span>
                             <span class="nav-text">Walk-In Customer </span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('party.index','Supplier') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-truck-front"></i></span>
                             <span class="nav-text">Supplier </span>
                         </a>
                     </li>
@@ -279,13 +256,13 @@
             </li>
 
             {{-- Users --}}
-            <li class="nav-item">
+            <li class="nav-item nav-group">
 
-                <a class="nav-link" href="#usersSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="usersSubmenu">
 
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-person-gear"></i>
                     </span>
 
                     <span class="nav-text">User Management</span>
@@ -294,18 +271,18 @@
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
 
-                </a>
+                </button>
 
 
                 {{-- Users Sub Menu --}}
-                <ul class="collapse nav flex-column submenu" id="usersSubmenu">
+                <ul class="nav flex-column submenu" id="usersSubmenu" aria-hidden="true" inert>
 
-                    <li class="nav-item">
+                    <li class="nav-item nav-group">
 
                         <a class="nav-link" href="{{ route('admin.users.index') }}">
 
                             <span class="nav-icon">
-                                <i class="bi bi-list-ul"></i>
+                                <i class="bi bi-people"></i>
                             </span>
 
                             <span class="nav-text">Users</span>
@@ -318,7 +295,7 @@
                         <a class="nav-link" href="{{ route('admin.roles.index') }}">
 
                             <span class="nav-icon">
-                                <i class="bi bi-person-badge"></i>
+                                <i class="bi bi-shield-check"></i>
                             </span>
 
                             <span class="nav-text">Roles</span>
@@ -333,7 +310,7 @@
                         <a class="nav-link" href="{{ route('admin.permissions.index') }}">
 
                             <span class="nav-icon">
-                                <i class="bi bi-shield-check"></i>
+                                <i class="bi bi-key"></i>
                             </span>
 
                             <span class="nav-text">Permissions</span>
@@ -347,13 +324,13 @@
             </li>
 
             {{-- Payments --}}
-            <li class="nav-item">
+            <li class="nav-item nav-group">
 
-                <a class="nav-link" href="#paymentSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="paymentSubmenu">
 
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-wallet2"></i>
                     </span>
 
                     <span class="nav-text">Payments</span>
@@ -362,16 +339,16 @@
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
 
-                </a>
+                </button>
 
 
                 {{-- payment Sub Menu --}}
-                <ul class="collapse nav flex-column submenu" id="paymentSubmenu">
+                <ul class="nav flex-column submenu" id="paymentSubmenu" aria-hidden="true" inert>
 
-                    <li class="nav-item">
+                    <li class="nav-item nav-group">
                         <a class="nav-link" href="{{ route('admin.payment.index','Payment') }}">
                             <span class="nav-icon">
-                                <i class="bi bi-list-ul"></i>
+                                <i class="bi bi-cash-coin"></i>
                             </span>
                             <span class="nav-text">Payment</span>
                         </a>
@@ -379,7 +356,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.payment.index','Payment Receive') }}">
                             <span class="nav-icon">
-                                <i class="bi bi-list-ul"></i>
+                                <i class="bi bi-cash-stack"></i>
                             </span>
                             <span class="nav-text">Payment Receive</span>
                         </a>
@@ -387,7 +364,7 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.payment.index','Discount') }}">
                             <span class="nav-icon">
-                                <i class="bi bi-list-ul"></i>
+                                <i class="bi bi-percent"></i>
                             </span>
                             <span class="nav-text">Discount</span>
                         </a>
@@ -397,33 +374,72 @@
 
             </li>
 
-            <li class="nav-item">
-                <a class="nav-link" href="#accountsSubmenu" data-bs-toggle="collapse" role="button" aria-expanded="false"
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="accountsSubmenu">
                     <span class="nav-icon">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-bank"></i>
                     </span>
                     <span class="nav-text">Accounts</span>
                     <span class="ms-auto">
                         <i class="bi bi-chevron-down submenu-arrow"></i>
                     </span>
-                </a>
-                <ul class="collapse nav flex-column submenu" id="accountsSubmenu">
+                </button>
+                <ul class="nav flex-column submenu" id="accountsSubmenu" aria-hidden="true" inert>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.chart-of-accounts.page') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-journal-bookmark"></i></span>
                             <span class="nav-text">Chart Of Accounts</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.expense.index') }}">
-                            <span class="nav-icon"><i class="bi bi-list-ul"></i></span>
+                            <span class="nav-icon"><i class="bi bi-receipt"></i></span>
                             <span class="nav-text">Expense</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.bill.index') }}">
+                            <span class="nav-icon"><i class="bi bi-file-earmark-text"></i></span>
+                            <span class="nav-text">Bill</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.journal.index') }}">
+                            <span class="nav-icon"><i class="bi bi-journal-text"></i></span>
+                            <span class="nav-text">Journal</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.transfer.index') }}">
+                            <span class="nav-icon"><i class="bi bi-arrow-left-right"></i></span>
+                            <span class="nav-text">Amount Transfer</span>
                         </a>
                     </li>
 
                 </ul>
 
+            </li>
+
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
+                    aria-controls="payrollSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-people"></i>
+                    </span>
+                    <span class="nav-text">Payroll</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </button>
+                <ul class="nav flex-column submenu" id="payrollSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.employee.index') }}">
+                            <span class="nav-icon"><i class="bi bi-person-badge"></i></span>
+                            <span class="nav-text">Employees</span>
+                        </a>
+                    </li>
+                </ul>
             </li>
 
 
@@ -433,7 +449,7 @@
                 <a class="nav-link" href="profile.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-person-badge"></i>
+                        <i class="bi bi-person-circle"></i>
                     </span>
 
                     <span class="nav-text">Profile</span>
@@ -449,7 +465,7 @@
                 <a class="nav-link" href="charts.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-bar-chart-line"></i>
+                        <i class="bi bi-bar-chart"></i>
                     </span>
 
                     <span class="nav-text">Charts</span>
@@ -481,7 +497,7 @@
                 <a class="nav-link" href="forms.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-ui-checks-grid"></i>
+                        <i class="bi bi-file-earmark-text"></i>
                     </span>
 
                     <span class="nav-text">Forms</span>
@@ -497,7 +513,7 @@
                 <a class="nav-link" href="components.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-grid-3x3-gap"></i>
+                        <i class="bi bi-puzzle"></i>
                     </span>
 
                     <span class="nav-text">Components</span>
@@ -513,7 +529,7 @@
                 <a class="nav-link" href="alerts.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-exclamation-triangle"></i>
+                        <i class="bi bi-bell"></i>
                     </span>
 
                     <span class="nav-text">Alerts</span>
@@ -529,7 +545,7 @@
                 <a class="nav-link" href="modals.html">
 
                     <span class="nav-icon">
-                        <i class="bi bi-window-stack"></i>
+                        <i class="bi bi-window"></i>
                     </span>
 
                     <span class="nav-text">Modals</span>

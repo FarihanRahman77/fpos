@@ -234,6 +234,7 @@ class ChartOfAccountController extends Controller
                 $id = DB::table('chart_of_accounts')->insertGetId([
                     'account_code'    => $code,
                     'account_name'    => $name,
+                    'slug'            => strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name), '-')),
                     'layer_level'     => $newLayer,
                     'parent_id'       => $parent->id,
                     'account_type'    => $root->account_type,
@@ -310,6 +311,8 @@ class ChartOfAccountController extends Controller
                     $name = trim((string) $request->input('account_name'));
                     $this->assertUniqueName($account->parent_id, $name, (int) $account->id);
                     $updates['account_name'] = $name;
+                    $updates['slug'] = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name), '-'));
+
                 }
 
                 if ($request->exists('status') && $request->input('status') !== $account->status) {
@@ -607,14 +610,15 @@ class ChartOfAccountController extends Controller
 
     private function postedBalance(int $accountId): float
     {
-        if (!Schema::hasTable('journal_entry_lines') || !Schema::hasTable('journal_entries')) {
+        if (!Schema::hasTable('journal_details') || !Schema::hasTable('journals')) {
             return 0.0;
         }
 
-        return (float) DB::table('journal_entry_lines as line')
-            ->join('journal_entries as entry', 'entry.id', '=', 'line.journal_entry_id')
+        return (float) DB::table('journal_details as line')
+            ->join('journals as entry', 'entry.id', '=', 'line.journal_id')
             ->where('line.account_id', $accountId)
-            ->where('entry.status', 'Posted')
+            ->where('line.deleted', 'No')
+            ->where('entry.deleted', 'No')
             ->selectRaw('COALESCE(SUM(line.debit), 0) - COALESCE(SUM(line.credit), 0) AS balance')
             ->value('balance');
     }
@@ -757,5 +761,43 @@ class ChartOfAccountController extends Controller
             'file'  => $e->getFile(),
             'line'  => $e->getLine(),
         ];
+    }
+
+
+
+    /** JSON: active 3rd layer accounts under a 2nd layer group (Journal / Bill / Transfer dropdowns). */
+    public function ledgers(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->query(), [
+            'parent_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => 'A valid group is required.', 'data' => []], 422);
+        }
+
+        $rows = DB::table('chart_of_accounts')
+            ->where('parent_id', (int) $request->query('parent_id'))
+            ->where('layer_level', 3)
+            ->where('deleted', 'No')
+            ->where('status', 'Active')
+            ->orderBy('account_code')
+            ->get(['id', 'account_code', 'account_name', 'current_balance']);
+
+        return response()->json(['status' => true, 'data' => $rows]);
+    }
+
+    function getCoaChilds(Request $request){
+        $childs=DB::table('chart_of_accounts')
+            ->where('parent_id',$request->parent_id)
+            ->where('deleted', 'No')
+            ->where('status', 'Active')
+            ->orderBy('account_code')
+            ->get(['id', 'account_code', 'account_name']);
+        $html='<option value="">Select Account</option>';
+        foreach($childs as $child){
+            $html .='<option value="'.$child->id.'">'.$child->account_name.'</option>';
+        }
+        return $html;
     }
 }

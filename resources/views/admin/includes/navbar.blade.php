@@ -1,6 +1,6 @@
-<nav class="navbar admin-navbar navbar-expand bg-white">
+<nav class="navbar admin-navbar navbar-expand">
     <div class="container-fluid px-3 px-lg-4">
-        <button class="sidebar-toggle" type="button" data-sidebar-toggle aria-controls="adminSidebar" aria-expanded="true"
+        <button class="sidebar-toggle" type="button" data-sidebar-toggle aria-controls="adminSidebar" aria-expanded="false"
             aria-label="Toggle sidebar">
             <span></span>
             <span></span>

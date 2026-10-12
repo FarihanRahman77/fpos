@@ -12,6 +12,7 @@ use App\Models\Admin\ProductVariant;
 use App\Models\Admin\Stock;
 use App\Models\Admin\Party;
 use App\Models\Admin\Payment;
+use App\Models\Admin\ChartOfAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -21,10 +22,11 @@ use PDF;
 use Exception;
 use App\Traits\PartyDueTrait;
 use App\Traits\PaymentTrait;
+use App\Traits\SequentialCodeTrait;
 
 class PurchaseController extends Controller
 {
-    use PartyDueTrait, PaymentTrait;
+    use PartyDueTrait, PaymentTrait, SequentialCodeTrait;
     public function index()
     {
         return view('admin.inventory.purchase.index');
@@ -48,7 +50,9 @@ class PurchaseController extends Controller
             ->orderBy('name',)
             ->get();
 
-        return view('admin.inventory.purchase.create', compact('suppliers', 'products'));
+        $coa=ChartOfAccount::where('slug','liquid-asset')->where('deleted','No')->first();
+        $childCoas=ChartOfAccount::where('deleted','No')->where('parent_id',$coa->id)->get();
+        return view('admin.inventory.purchase.create', compact('suppliers', 'products','childCoas'));
     }
 
 
@@ -63,9 +67,13 @@ class PurchaseController extends Controller
 
             $purchases = DB::table('purchases')
                 ->leftJoin('parties', 'parties.id', '=', 'purchases.supplier_id')
+                ->leftJoin('chart_of_accounts as pm', 'pm.id', '=', 'purchases.payment_method')
+                ->leftJoin('chart_of_accounts as pma', 'pma.id', '=', 'purchases.payment_method_account')
                 ->select(
                     'purchases.*',
-                    'parties.name as supplier_name'
+                    'parties.name as supplier_name',
+                    'pm.account_name as pmaccount_name',
+                    'pma.account_name as pmaaccount_name'
                 )
                 ->where('purchases.deleted', 'No')
                 ->orderByDesc('purchases.id')
@@ -92,7 +100,7 @@ class PurchaseController extends Controller
                     <td>' . number_format((float) $row->grand_total, 2, '.', '') . '</td>
                     <td>' . number_format((float) $row->paid_amount, 2, '.', '') . '</td>
                     <td>' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
-                    <td>' . e($row->payment_method ?? '') . '</td>
+                    <td>' . e($row->pmaccount_name ?? '') . ' - '.e($row->pmaaccount_name ?? '').'</td>
                     <td>' . $statusBadge . '</td>
                     <td class="text-center">
                         <div class="dropdown">
@@ -271,6 +279,7 @@ class PurchaseController extends Controller
     */
     public function store(Request $request)
     {
+        //return $request;
         $validator = Validator::make($request->all(), [
 
             'supplier_id' => 'required|integer',
@@ -281,7 +290,8 @@ class PurchaseController extends Controller
 
             'paid_amount' => 'nullable|numeric|min:0',
 
-            'payment_method' => 'nullable|string|max:100',
+            'payment_method' => 'required|integer|exists:chart_of_accounts,id',
+            'payment_method_account' => 'required|integer|exists:chart_of_accounts,id',
 
             'items' => 'required|array|min:1',
 
@@ -416,9 +426,7 @@ class PurchaseController extends Controller
             | Invoice Number
             |--------------------------------------------------------------------------
             */
-            $last = Purchase::where('deleted', 'No')->max('invoice_no');
-            $next = $last ? ((int) substr($last, 4)) + 1 : 1;
-            $invoiceNo = 'PUR-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+            $invoiceNo = $this->nextSequentialCode(Purchase::class, 'invoice_no', 'PUR');
 
 
             /*
@@ -444,6 +452,7 @@ class PurchaseController extends Controller
             $purchase->due_amount = round($dueAmount, 2);
 
             $purchase->payment_method = $request->payment_method;
+            $purchase->payment_method_account = $request->payment_method_account;
             $purchase->remarks = $request->remarks;
 
             $purchase->deleted = 'No';
@@ -547,9 +556,8 @@ class PurchaseController extends Controller
 
                 $stock->date = $request->purchase_date;
 
-                if (isset($stock->reference_type)) {
-                    $stock->reference_type = 'Purchase';
-                }
+                $stock->reference_type = 'Purchase';
+                $stock->reference_id = $purchase->id;
 
                 $stock->created_at = Carbon::now();
                 $stock->updated_at = Carbon::now();
@@ -565,7 +573,8 @@ class PurchaseController extends Controller
                     'datetime'       => $request->purchase_date,
                     'debit'          => $grandTotal,
                     'purchase_id'    => $purchase->id,
-                    'payment_method' => $request->payment_method,
+                    'payment_method' => '',
+                    'payment_method_account' => '',
                 ]);
             }
 
@@ -578,6 +587,8 @@ class PurchaseController extends Controller
                     'credit'         => $paidAmount,
                     'purchase_id'    => $purchase->id,
                     'payment_method' => $request->payment_method,
+                    'payment_method_account' => $request->payment_method_account,
+                    
                 ]);
             }
 
@@ -683,6 +694,9 @@ class PurchaseController extends Controller
 
             'paid_amount' => 'nullable|numeric|min:0',
 
+            'payment_method' => 'nullable|integer|exists:chart_of_accounts,id',
+            'payment_method_account' => 'nullable|integer|exists:chart_of_accounts,id',
+
             'items' => 'required|array|min:1',
 
             'items.*.product_id' => 'required|integer',
@@ -722,13 +736,19 @@ class PurchaseController extends Controller
                 throw new Exception('Purchase not found.');
             }
 
+            // Return items point at these purchase items; rebuilding them would orphan the return.
+            if (PurchaseReturn::where('purchase_id', $purchase->id)->where('deleted', 'No')->exists()) {
+
+                throw new Exception('This purchase has returns. Delete its returns before editing it.');
+            }
+
 
             /*
             |--------------------------------------------------------------------------
-            | Reverse Old Stock
+            | Reverse Old Stock (purchase rows only, not return rows)
             |--------------------------------------------------------------------------
             */
-            Stock::where('purchase_id', $purchase->id)->delete();
+            Stock::where('purchase_id', $purchase->id)->whereNull('purchase_return_id')->delete();
 
 
             /*
@@ -841,7 +861,8 @@ class PurchaseController extends Controller
             $purchase->paid_amount = round($paidAmount, 2);
             $purchase->due_amount = round($dueAmount, 2);
 
-            $purchase->payment_method = $request->payment_method;
+            $purchase->payment_method = $request->payment_method ?: null;
+            $purchase->payment_method_account = $request->payment_method_account ?: null;
             $purchase->remarks = $request->remarks;
 
             $purchase->updated_by = auth()->id();
@@ -944,14 +965,57 @@ class PurchaseController extends Controller
 
                 $stock->date = $request->purchase_date;
 
-                if (isset($stock->reference_type)) {
-                    $stock->reference_type = 'Purchase';
-                }
+                $stock->reference_type = 'Purchase';
+                $stock->reference_id = $purchase->id;
 
                 $stock->created_at = Carbon::now();
                 $stock->updated_at = Carbon::now();
 
                 $stock->save();
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Re-post Supplier Ledger (purchase rows only, not return rows)
+            |--------------------------------------------------------------------------
+            */
+            Payment::where('purchase_id', $purchase->id)
+                ->whereNull('purchase_return_id')
+                ->where('deleted', 'No')
+                ->update([
+                    'deleted'          => 'Yes',
+                    'status'           => 'Inactive',
+                    'deleted_by'       => auth()->id(),
+                    'updated_by'       => auth()->id(),
+                    'updated_datetime' => now(),
+                    'deleted_datetime' => now(),
+                ]);
+
+            if ($grandTotal > 0) {
+                $this->storeDebitPayment([
+                    'party_id'       => $request->supplier_id,
+                    'party_type'     => 'Supplier',
+                    'payment_type'   => 'Purchase',
+                    'datetime'       => $request->purchase_date,
+                    'debit'          => $grandTotal,
+                    'purchase_id'    => $purchase->id,
+                    'payment_method' => '',
+                    'payment_method_account' => '',
+                ]);
+            }
+
+            if ($paidAmount > 0) {
+                $this->storeCreditPayment([
+                    'party_id'       => $request->supplier_id,
+                    'party_type'     => 'Supplier',
+                    'payment_type'   => 'Purchase Payment',
+                    'datetime'       => $request->purchase_date,
+                    'credit'         => $paidAmount,
+                    'purchase_id'    => $purchase->id,
+                    'payment_method' => $request->payment_method,
+                    'payment_method_account' => $request->payment_method_account,
+                ]);
             }
 
 
@@ -1520,7 +1584,7 @@ class PurchaseController extends Controller
 
             $discountAmount = 0;
 
-           
+
 
             if ((float) $purchase->subtotal > 0) {
 
@@ -1552,27 +1616,7 @@ class PurchaseController extends Controller
         |--------------------------------------------------------------------------
         */
 
-            $lastReturn =
-                PurchaseReturn::where(
-                    'deleted',
-                    'No'
-                )->max('return_no');
-
-
-            $nextReturn =
-                $lastReturn
-                ? ((int) substr($lastReturn, 4)) + 1
-                : 1;
-
-
-            $returnNo =
-                'PRE-' .
-                str_pad(
-                    $nextReturn,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
+            $returnNo = $this->nextSequentialCode(PurchaseReturn::class, 'return_no', 'PRE');
 
 
             /*

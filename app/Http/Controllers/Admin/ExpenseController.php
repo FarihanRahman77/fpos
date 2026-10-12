@@ -17,20 +17,12 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 use PDF;
 use App\Traits\PaymentTrait;
+use App\Traits\AccountBalanceTrait;
 
-/**
- * Expense (header) + expense_details (lines).
- *
- * - Each line carries an Expense head: 2nd layer id + 3rd layer id.
- * - Each expense has ONE payment source: Liquid Asset 2nd layer id + 3rd layer id.
- * - Posting (chart_of_accounts.current_balance):
- *      payment account (Liquid Asset)  -> CREDIT  (total)
- *      expense heads                   -> DEBIT   (each line)
- *   The same movement is rolled up to each account's 2nd and 1st layer parents.
- */
+
 class ExpenseController extends Controller
 {
-    use PaymentTrait;
+    use PaymentTrait, AccountBalanceTrait;
 
     private const EXPENSE_TYPE = 'Expense';
     private const PAYMENT_TYPE = 'Liquid Asset';
@@ -42,6 +34,7 @@ class ExpenseController extends Controller
 
     public function index()
     {
+        // $this->groups(self::PAYMENT_TYPE);
         return view('admin.accounts.expense.index', [
             'employees' => DB::table('employees')
                 ->where('deleted', 'No')->where('status', 'Active')
@@ -343,7 +336,7 @@ class ExpenseController extends Controller
 
                 // FIX 3: deleted rows are included (expense_no is unique, so a number must never be reused)
                 // and the read is locked so two simultaneous saves cannot get the same number.
-                $expenseCode=Expense::max('expense_no');
+                $expenseCode=Expense::lockForUpdate()->max('expense_no');
                 $expenseCode++;
                 $expenseCode=str_pad((string) $expenseCode,6,'0',STR_PAD_LEFT);
 
@@ -470,71 +463,7 @@ class ExpenseController extends Controller
     /*  Balance posting                                                   */
     /* ================================================================== */
 
-    /**
-     * Applies (direction = 1) or reverses (direction = -1) a posting on
-     * chart_of_accounts.current_balance.
-     *
-     * $debits / $credits: [3rd layer account id => amount]
-     *
-     * An account whose normal balance is Debit goes up on debit and down on credit
-     * (Credit-normal accounts are the opposite). The same movement is added to the
-     * account's 2nd and 1st layer parents so group / root totals stay in step.
-     */
-    private function postBalances(array $debits, array $credits, int $direction): void
-    {
-        $ledgerIds = array_values(array_unique(array_merge(array_keys($debits), array_keys($credits))));
-
-        if (!$ledgerIds) {
-            return;
-        }
-
-        $ledgers = DB::table('chart_of_accounts')->whereIn('id', $ledgerIds)
-            ->get(['id', 'parent_id', 'balance'])->keyBy('id');
-
-        $groups = DB::table('chart_of_accounts')
-            ->whereIn('id', $ledgers->pluck('parent_id')->filter()->unique())
-            ->get(['id', 'parent_id'])->keyBy('id');
-
-        $totals = [];
-
-        $collect = function (array $map, int $side) use (&$totals, $ledgers, $groups, $direction) {
-            foreach ($map as $id => $amount) {
-                $ledger = $ledgers->get($id);
-
-                if (!$ledger) {
-                    continue;
-                }
-
-                $normal = $ledger->balance === 'Credit' ? -1 : 1;
-                $delta  = (float) $amount * $side * $normal * $direction;
-
-                $chain = [$id, $ledger->parent_id, $groups->get($ledger->parent_id)->parent_id ?? null];
-
-                foreach (array_filter($chain) as $accountId) {
-                    $totals[$accountId] = ($totals[$accountId] ?? 0) + $delta;
-                }
-            }
-        };
-
-        $collect($debits, 1);     // debit  side
-        $collect($credits, -1);   // credit side
-
-        ksort($totals);           // fixed lock order avoids deadlocks
-
-        DB::table('chart_of_accounts')->whereIn('id', array_keys($totals))
-            ->orderBy('id')->lockForUpdate()->pluck('id');
-
-        foreach ($totals as $accountId => $delta) {
-            $delta = round($delta, 2);
-
-            if (abs($delta) < 0.005) {
-                continue;
-            }
-
-            DB::table('chart_of_accounts')->where('id', $accountId)
-                ->increment('current_balance', number_format($delta, 2, '.', ''));
-        }
-    }
+    // postBalances() comes from AccountBalanceTrait.
 
     /** [account id => summed amount] from detail rows (objects or arrays). */
     private function sumByAccount($rows): array
@@ -567,10 +496,7 @@ class ExpenseController extends Controller
             ->get(['id', 'account_code', 'account_name']);
     }
 
-    /**
-     * Account of the given layer + type. Must be Active unless it is the one already
-     * saved on the record being edited. Optional parent restriction.
-     */
+
     private function coaRule(int $layer, string $type, $keepId = null, $parentId = null)
     {
         return Rule::exists('chart_of_accounts', 'id')->where(function ($q) use ($layer, $type, $keepId, $parentId) {

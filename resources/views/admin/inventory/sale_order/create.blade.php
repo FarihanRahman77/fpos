@@ -140,6 +140,43 @@
                                         <input type="text" id="orderGrandTotal" class="form-control fw-bold" value="0.00" readonly>
                                     </td>
                                 </tr>
+                                <tr>
+                                        <td colspan="5" class="text-end">
+                                            <strong>Payment Method</strong>
+                                        </td>
+
+                                        <td colspan="3">
+                                            <select id="payment_method" name="payment_method" class="form-control">
+
+                                                <option value="">
+                                                    Select Payment Method
+                                                </option>
+                                                @foreach ($childCoas as $childCoa)
+                                                    <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
+                                                @endforeach
+                                            </select>
+                                        </td>
+                                    </tr>
+                                <tr>
+
+                                    <td colspan="5" class="text-end">
+                                        <strong>Payment Account</strong>
+                                    </td>
+
+                                    <td colspan="3">
+
+                                        <select id="payment_method_account" name="payment_method_account"
+                                            class="form-control">
+
+                                            <option value="">
+                                                Select Payment Method Account
+                                            </option>
+                                            
+                                        </select>
+                                    </td>
+                                    <td></td>
+
+                                </tr>
 
                                 <tr>
                                     <td colspan="5" class="text-end fw-bold">Advance Paid</td>
@@ -720,6 +757,25 @@ $(document).ready(function () {
 
     });
 
+});
+
+$('#payment_method').on('change', function() {
+    var payment_method = $(this).val();
+
+    $.ajax({
+        url: "{{ route('admin.getCoaChilds') }}",
+        type: 'GET',
+        data: {
+            parent_id: payment_method
+        },
+        success: function(response) {
+            //alert(JSON.stringify(response));
+            $('#payment_method_account').html(response);
+        },
+        error: function(xhr) {
+            //alert(JSON.stringify(xhr));
+        }
+    });
 });
 
 </script>

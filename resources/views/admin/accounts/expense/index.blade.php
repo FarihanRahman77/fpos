@@ -5,6 +5,7 @@
 @endsection
 
 @push('styles')
+
     <style>
         .exp-stat, .exp-card { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(30, 41, 59, .07); }
         .exp-stat .icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
@@ -19,6 +20,13 @@
         #detailsTable thead th { font-size: .75rem; text-transform: uppercase; color: #64748b; }
         #detailsTable td { vertical-align: top; }
         .exp-grand { font-size: 1.15rem; font-weight: 700; }
+
+        /* Select2 */
+        .select2-container { width: 100% !important; }
+        #detailsTable .select2-container { min-width: 160px; }
+        /* keep dropdown above the Bootstrap modal */
+        .select2-container--open .select2-dropdown { z-index: 1065; }
+        .select2-dropdown { z-index: 1065; }
     </style>
 @endpush
 
@@ -263,6 +271,8 @@
 @endsection
 
 @push('scripts')
+    
+
     <script>
         let expenseTable;
         let expenseModal;
@@ -280,6 +290,39 @@
                 'Accept': 'application/json'
             }
         });
+
+        /* ---------- select2 helpers ---------- */
+        // inModal = true -> dropdown is attached to the modal so search works
+        // and it is not clipped by the modal / .table-responsive wrapper.
+        function initSelect2($els, inModal) {
+            $els.each(function() {
+                const $s = $(this);
+
+                if ($s.hasClass('select2-hidden-accessible')) return; // already initialised
+
+                const opts = { theme: 'bootstrap-5', width: '100%' };
+
+                if (inModal) {
+                    opts.dropdownParent = $('#expenseModal');
+                }
+
+                $s.select2(opts);
+            });
+        }
+
+        // Tells Select2 the underlying <select> changed programmatically.
+        // 'change.select2' does NOT fire our own 'change' handlers.
+        function refreshSelect2($s) {
+            $s.trigger('change.select2');
+        }
+
+        function destroySelect2($els) {
+            $els.each(function() {
+                if ($(this).hasClass('select2-hidden-accessible')) {
+                    $(this).select2('destroy');
+                }
+            });
+        }
 
         /* ---------- errors ---------- */
         function clearExpenseErrors() {
@@ -324,6 +367,7 @@
             ensureOption($select, selectedId, fallbackLabel);
 
             $select.val(selectedId ? String(selectedId) : '').prop('disabled', false);
+            refreshSelect2($select);
         }
 
         function loadChildren(parentId) {
@@ -349,11 +393,13 @@
                 $select.empty()
                     .append(new Option(placeholder || 'Select group first', ''))
                     .prop('disabled', true);
+                refreshSelect2($select);
 
                 return $.Deferred().resolve().promise();
             }
 
             $select.prop('disabled', true).empty().append(new Option('Loading...', ''));
+            refreshSelect2($select);
 
             return loadChildren(groupId).then(function(items) {
                 fillSelect($select, items || [], 'Select account', selectedId, fallbackLabel);
@@ -406,6 +452,7 @@
             const $tr = $(lineHtml(i));
 
             $('#detailsBody').append($tr);
+            initSelect2($tr.find('select'), true);
             renumberLines();
 
             if (!data) {
@@ -416,6 +463,7 @@
 
             ensureOption($group, data.expense_group_id, data.group_label);
             $group.val(String(data.expense_group_id));
+            refreshSelect2($group);
 
             $tr.find('.line-description').val(data.description || '');
             $tr.find('.line-amount').val(data.amount);
@@ -435,9 +483,12 @@
             clearExpenseErrors();
 
             $('#expense_id').val('');
+
+            destroySelect2($('#detailsBody').find('select')); // clean up old lines
             $('#detailsBody').empty();
             lineIndex = 0;
 
+            refreshSelect2($('#employee_id, #payment_group_id')); // native reset() doesn't update Select2
             loadAccounts($('#payment_account_id'), '', '', '', 'Select payment group first');
         }
 
@@ -476,9 +527,11 @@
 
                     ensureOption($('#employee_id'), d.employee_id, d.employee_label);
                     $('#employee_id').val(d.employee_id ? String(d.employee_id) : '');
+                    refreshSelect2($('#employee_id'));
 
                     ensureOption($('#payment_group_id'), d.payment_group_id, d.payment_group_label);
                     $('#payment_group_id').val(String(d.payment_group_id));
+                    refreshSelect2($('#payment_group_id'));
 
                     const jobs = [
                         loadAccounts($('#payment_account_id'), d.payment_group_id, d.payment_account_id, d.payment_account_label)
@@ -520,7 +573,6 @@
                     },
 
                     error: function(xhr) {
-                        alert(JSON.stringify(xhr));
                         toastr.error(xhr.responseJSON?.message || 'Unable to delete expense.');
                     }
                 });
@@ -546,6 +598,19 @@
         /* ---------- ready ---------- */
         $(document).ready(function() {
             expenseModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('expenseModal'));
+
+            /* ===== Select2 ===== */
+            // Filters (page level)
+            initSelect2($('#filterEmployee, #filterAccount'), false);
+
+            // Modal fields (dropdown attached to the modal)
+            initSelect2($('#employee_id, #payment_group_id, #payment_account_id'), true);
+
+            // Auto-focus the search box when a dropdown opens
+            $(document).on('select2:open', function() {
+                const search = document.querySelector('.select2-container--open .select2-search__field');
+                if (search) search.focus();
+            });
 
             // Summary cards come back in the same response as the rows.
             $('#expenseTable').on('xhr.dt', function(e, settings, json) {
@@ -589,7 +654,8 @@
             });
 
             $('#resetFilters').on('click', function() {
-                $('#filterFrom, #filterTo, #filterEmployee, #filterAccount').val('');
+                $('#filterFrom, #filterTo').val('');
+                $('#filterEmployee, #filterAccount').val('').trigger('change.select2');
                 expenseTable.ajax.url(expenseListUrl).load();
             });
 
@@ -612,14 +678,15 @@
             $('#detailsBody').on('input', '.line-amount', calcTotal);
 
             $('#detailsBody').on('click', '.remove-line', function() {
+                const $tr = $(this).closest('tr');
+
                 if ($('#detailsBody tr').length === 1) {
                     // keep one empty line instead of removing the last one
-                    const $tr = $(this).closest('tr');
-
-                    $tr.find('.line-group').val('').trigger('change');
+                    $tr.find('.line-group').val('').trigger('change'); // real change -> resets account select
                     $tr.find('input').val('');
                 } else {
-                    $(this).closest('tr').remove();
+                    destroySelect2($tr.find('select'));
+                    $tr.remove();
                 }
 
                 renumberLines();
@@ -648,7 +715,6 @@
                     },
 
                     success: function(response) {
-                      //  alert(JSON.stringify(response));
                         if (response.status) {
                             expenseModal.hide();
                             toastr.success(response.message);
@@ -659,7 +725,6 @@
                     },
 
                     error: function(xhr) {
-                       // alert(JSON.stringify(xhr.responseJSON));
                         if (xhr.status === 422 && xhr.responseJSON?.errors) {
                             showExpenseErrors(xhr.responseJSON.errors);
                         } else {
@@ -674,8 +739,7 @@
             });
         });
 
-
-         function pdf(id) {
+        function pdf(id) {
             window.open("{{ route('admin.expense.pdf') }}?id=" + encodeURIComponent(id), '_blank');
         }
     </script>

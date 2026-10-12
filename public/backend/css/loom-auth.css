@@ -1,0 +1,845 @@
+:root {
+  color-scheme: light;
+  --loom-page: #f8f7f3;
+  --loom-surface: #ffffff;
+  --loom-text: #292820;
+  --loom-muted: #6f6e65;
+  --loom-border: #deddd4;
+  --loom-field: #fffefa;
+  --loom-field-hover: #ffffff;
+  --loom-gold: #c18a2d;
+  --loom-gold-deep: #78500e;
+  --loom-gold-wash: rgba(193, 138, 45, 0.11);
+  --loom-ring: rgba(174, 117, 24, 0.23);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --loom-page: #171815;
+  --loom-surface: #1d1f1a;
+  --loom-text: #f3f0e7;
+  --loom-muted: #aaa99f;
+  --loom-border: #3c3e36;
+  --loom-field: #22241f;
+  --loom-field-hover: #282a24;
+  --loom-gold: #e2b761;
+  --loom-gold-deep: #f0ca7b;
+  --loom-gold-wash: rgba(226, 183, 97, 0.12);
+  --loom-ring: rgba(226, 183, 97, 0.24);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body.loom-auth-body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--loom-page);
+  color: var(--loom-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.loom-auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(420px, 0.96fr);
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.loom-brand-panel {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(2rem, 5.5vw, 5.5rem) clamp(2rem, 6.4vw, 6.5rem) 2.25rem;
+  background:
+    radial-gradient(ellipse at 80% 65%, rgba(183, 132, 48, 0.13), transparent 43%),
+    radial-gradient(ellipse at 5% 100%, rgba(196, 157, 87, 0.08), transparent 45%),
+    #171915;
+  color: #f2efe7;
+  isolation: isolate;
+}
+
+.loom-brand-panel::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-position: center;
+  background-size: 52px 52px;
+  content: "";
+  mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+}
+
+.loom-brand-lockup {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.85rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.loom-brand-lockup:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid #e0b660;
+  outline-offset: 6px;
+}
+
+.loom-brand-symbol {
+  width: 2.45rem;
+  height: 2.45rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.loom-wordmark {
+  color: #e3b45c;
+  font-family: var(--font-sans);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  line-height: 1;
+}
+
+.loom-brand-divider {
+  width: 1px;
+  height: 1.7rem;
+  margin-inline: 0.1rem;
+  background: rgba(226, 219, 200, 0.26);
+}
+
+.loom-brand-category {
+  color: #c1beb3;
+  font-size: 0.63rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+}
+
+.loom-brand-message {
+  position: relative;
+  z-index: 1;
+  max-width: 36rem;
+  margin-top: clamp(4rem, 10vh, 8.2rem);
+  animation: loom-rise-in 700ms both;
+}
+
+.loom-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0;
+  color: var(--loom-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.loom-brand-message .loom-eyebrow {
+  color: #c8bd9d;
+}
+
+.loom-brand-message .loom-eyebrow span {
+  width: 1.4rem;
+  height: 1px;
+  background: #d6a84f;
+}
+
+.loom-brand-message h1 {
+  margin: 1.45rem 0 1.2rem;
+  color: #f5f1e8;
+  font-family: var(--font-sans);
+  font-size: clamp(2.9rem, 4.6vw, 4.45rem);
+  font-weight: 600;
+  letter-spacing: -0.065em;
+  line-height: 1.08;
+}
+
+.loom-brand-message h1 em {
+  color: #dfb45f;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.loom-brand-description {
+  max-width: 25rem;
+  margin: 0;
+  color: #b9b8ae;
+  font-size: 0.98rem;
+  line-height: 1.8;
+}
+
+.loom-weave-scene {
+  position: relative;
+  width: min(100%, 43rem);
+  height: clamp(12rem, 25vw, 19rem);
+  margin: auto 0 0 -1.5rem;
+}
+
+.loom-weave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: #e1b45d;
+  opacity: 0.68;
+}
+
+.loom-thread {
+  stroke: #cca456;
+  stroke-linecap: round;
+  stroke-width: 1;
+  opacity: 0.28;
+}
+
+.loom-thread-one,
+.loom-thread-five {
+  animation: loom-thread-breathe 9s ease-in-out infinite alternate;
+}
+
+.loom-thread-two,
+.loom-thread-four {
+  animation: loom-thread-breathe 11s ease-in-out -4s infinite alternate-reverse;
+}
+
+.loom-thread-three,
+.loom-thread-six {
+  animation: loom-thread-breathe 13s ease-in-out -2s infinite alternate;
+}
+
+.loom-product-note {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(233, 218, 183, 0.15);
+  border-radius: 0.8rem;
+  background: rgba(31, 33, 28, 0.78);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
+  color: #f3eee2;
+  backdrop-filter: blur(14px);
+  animation: loom-card-float 7s ease-in-out infinite;
+}
+
+.loom-product-note span:last-child {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.loom-product-note strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.loom-product-note small {
+  color: #b2b0a5;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.loom-product-note-sales {
+  top: 16%;
+  right: 5%;
+}
+
+.loom-product-note-stock {
+  bottom: 12%;
+  left: 20%;
+  animation-delay: -3.5s;
+}
+
+.loom-note-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid rgba(226, 183, 97, 0.27);
+  border-radius: 0.55rem;
+  color: #e5b65c;
+  font-size: 1.1rem;
+}
+
+.loom-note-icon-grid {
+  grid-template-columns: repeat(2, 4px);
+  grid-template-rows: repeat(2, 4px);
+  gap: 3px;
+}
+
+.loom-note-icon-grid i {
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: #e5b65c;
+}
+
+.loom-scene-caption {
+  position: absolute;
+  right: 2%;
+  bottom: 4%;
+  color: #908c7e;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.loom-brand-footer {
+  position: relative;
+  z-index: 1;
+  margin: 1.2rem 0 0;
+  color: #a19f94;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.loom-form-panel {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(5.5rem, 9vh, 7rem) clamp(2rem, 7.2vw, 7.5rem) 2rem;
+  background: var(--loom-page);
+  transition: background-color 220ms ease;
+}
+
+.loom-theme-toggle {
+  position: absolute;
+  top: 1.6rem;
+  right: 1.8rem;
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--loom-border);
+  border-radius: 50%;
+  background: var(--loom-surface);
+  color: var(--loom-text);
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.loom-theme-toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--loom-gold);
+  color: var(--loom-gold-deep);
+}
+
+.loom-theme-toggle:focus-visible,
+.loom-password-toggle:focus-visible,
+.loom-submit-button:focus-visible,
+.loom-text-link:focus-visible,
+.loom-signup-link a:focus-visible {
+  outline: 3px solid var(--loom-ring);
+  outline-offset: 3px;
+}
+
+.loom-theme-toggle i {
+  font-size: 1.05rem;
+}
+
+.loom-form-content {
+  width: min(100%, 27rem);
+  animation: loom-rise-in 600ms 80ms both;
+}
+
+.loom-form-heading {
+  margin-bottom: 2.35rem;
+}
+
+.loom-form-eyebrow {
+  margin-bottom: 1rem;
+  color: var(--loom-gold-deep);
+  font-size: 0.62rem;
+}
+
+.loom-form-heading h2 {
+  margin: 0;
+  color: var(--loom-text);
+  font-family: var(--font-sans);
+  font-size: clamp(2.6rem, 4vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  line-height: 1.12;
+}
+
+.loom-form-heading h2 span {
+  color: var(--loom-gold);
+}
+
+.loom-form-heading > p:last-child {
+  margin: 0.8rem 0 0;
+  color: var(--loom-muted);
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.loom-status {
+  margin: -0.8rem 0 1.4rem;
+  color: #277456;
+  font-size: 0.86rem;
+}
+
+html[data-theme="dark"] .loom-status {
+  color: #86d2aa;
+}
+
+.loom-login-form {
+  display: grid;
+  gap: 1.45rem;
+}
+
+.loom-field-group {
+  min-width: 0;
+}
+
+.loom-field-label {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: var(--loom-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.loom-input-wrap {
+  position: relative;
+}
+
+.loom-input-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  transform: translateY(-50%);
+  color: var(--loom-muted);
+  pointer-events: none;
+  transition: color 180ms ease;
+}
+
+.loom-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 3.4rem;
+  padding: 0.75rem 1rem 0.75rem 2.85rem;
+  border: 1px solid var(--loom-border);
+  border-radius: 5px;
+  outline: none;
+  background: var(--loom-field);
+  color: var(--loom-text);
+  font: inherit;
+  font-size: 0.9rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.loom-input::placeholder {
+  color: var(--loom-muted);
+  opacity: 1;
+}
+
+.loom-input-wrap:focus-within .loom-input-icon {
+  color: var(--loom-gold-deep);
+}
+
+.loom-input:hover {
+  background: var(--loom-field-hover);
+}
+
+.loom-input:focus {
+  border-color: var(--loom-gold);
+  box-shadow: 0 0 0 3px var(--loom-ring);
+}
+
+.loom-input[aria-invalid="true"] {
+  border-color: #b64a3f;
+}
+
+.loom-password-input {
+  padding-right: 3.3rem;
+}
+
+.loom-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--loom-muted);
+  cursor: pointer;
+}
+
+.loom-password-toggle:hover {
+  color: var(--loom-gold-deep);
+}
+
+.loom-password-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.loom-field-errors {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  color: #a43830;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  list-style: none;
+}
+
+html[data-theme="dark"] .loom-field-errors {
+  color: #f0a097;
+}
+
+.loom-form-options {
+  display: flex;
+  min-height: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: -0.25rem;
+}
+
+.loom-remember {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--loom-muted);
+  cursor: pointer;
+  font-size: 0.81rem;
+}
+
+.loom-remember input {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--loom-gold-deep);
+  cursor: pointer;
+}
+
+.loom-remember input:focus-visible {
+  outline: 3px solid var(--loom-ring);
+  outline-offset: 2px;
+}
+
+.loom-text-link,
+.loom-signup-link a {
+  color: var(--loom-gold-deep);
+  font-size: 0.81rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-underline-offset: 3px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.loom-text-link:hover,
+.loom-signup-link a:hover {
+  color: var(--loom-text);
+  text-decoration: underline;
+}
+
+.loom-submit-button {
+  display: flex;
+  width: 100%;
+  min-height: 3.45rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-top: 0.15rem;
+  padding: 0.8rem 1.15rem;
+  border: 1px solid #bc862b;
+  border-radius: 0.55rem;
+  background: #c18a2d;
+  color: #241c0e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+html[data-theme="dark"] .loom-submit-button {
+  border-color: #dcb156;
+  background: #e0b65f;
+}
+
+.loom-submit-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #d09b3d;
+  box-shadow: 0 8px 20px rgba(149, 100, 18, 0.19);
+}
+
+html[data-theme="dark"] .loom-submit-button:hover:not(:disabled) {
+  background: #ecc778;
+}
+
+.loom-submit-button:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+
+.loom-submit-button svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.loom-submit-button [data-submit-spinner] {
+  animation: loom-spin 850ms linear infinite;
+}
+
+.loom-submit-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.loom-signup-link {
+  margin: 1.7rem 0 0;
+  color: var(--loom-muted);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.loom-signup-link a {
+  margin-left: 0.2rem;
+  font-size: inherit;
+}
+
+.loom-privacy-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin: auto 0 0;
+  padding-top: 2.3rem;
+  color: var(--loom-muted);
+  font-size: 0.72rem;
+}
+
+.loom-privacy-note svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--loom-gold-deep);
+}
+
+@keyframes loom-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes loom-card-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes loom-thread-breathe {
+  from {
+    opacity: 0.2;
+  }
+
+  to {
+    opacity: 0.47;
+  }
+}
+
+@keyframes loom-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 900px) {
+  .loom-auth-shell {
+    grid-template-columns: minmax(0, 0.95fr) minmax(370px, 1.05fr);
+  }
+
+  .loom-brand-panel {
+    padding-inline: clamp(1.6rem, 4vw, 3rem);
+  }
+
+  .loom-brand-category {
+    font-size: 0.56rem;
+    letter-spacing: 0.11em;
+  }
+
+  .loom-brand-message h1 {
+    font-size: clamp(3rem, 6vw, 4.3rem);
+  }
+
+  .loom-form-panel {
+    padding-inline: clamp(1.75rem, 5vw, 3rem);
+  }
+}
+
+@media (max-width: 760px) {
+  .loom-auth-shell {
+    display: block;
+  }
+
+  .loom-brand-panel {
+    min-height: 0;
+    padding: 1.4rem clamp(1.35rem, 6vw, 2.5rem) 1.5rem;
+  }
+
+  .loom-brand-lockup {
+    gap: 0.65rem;
+  }
+
+  .loom-brand-symbol {
+    width: 1.9rem;
+    height: 1.9rem;
+  }
+
+  .loom-wordmark {
+    font-size: 2rem;
+  }
+
+  .loom-brand-divider {
+    height: 1.35rem;
+  }
+
+  .loom-brand-category {
+    font-size: 0.54rem;
+  }
+
+  .loom-brand-message {
+    margin-top: 1.8rem;
+  }
+
+  .loom-brand-message .loom-eyebrow {
+    font-size: 0.58rem;
+  }
+
+  .loom-brand-message h1 {
+    margin: 0.75rem 0 0.55rem;
+    font-size: clamp(2.25rem, 8vw, 3rem);
+    line-height: 0.94;
+  }
+
+  .loom-brand-description {
+    max-width: 32rem;
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+
+  .loom-weave-scene,
+  .loom-brand-footer {
+    display: none;
+  }
+
+  .loom-form-panel {
+    min-height: calc(100vh - 195px);
+    min-height: calc(100svh - 195px);
+    justify-content: flex-start;
+    padding: 3.35rem clamp(1.35rem, 6vw, 2.5rem) 2.5rem;
+  }
+
+  .loom-theme-toggle {
+    top: 0.8rem;
+    right: clamp(1rem, 4vw, 1.5rem);
+    width: 2.4rem;
+    height: 2.4rem;
+  }
+
+  .loom-form-content {
+    max-width: 30rem;
+  }
+
+  .loom-form-heading {
+    margin-bottom: 1.8rem;
+  }
+
+  .loom-form-heading h2 {
+    font-size: 3.15rem;
+  }
+
+  .loom-privacy-note {
+    margin-top: auto;
+    padding-top: 2.1rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .loom-brand-panel {
+    padding-inline: 1.15rem;
+  }
+
+  .loom-brand-category {
+    font-size: 0.48rem;
+    letter-spacing: 0.09em;
+  }
+
+  .loom-brand-divider {
+    margin-inline: 0;
+  }
+
+  .loom-form-panel {
+    padding-inline: 1.15rem;
+  }
+
+  .loom-form-options {
+    gap: 0.5rem;
+  }
+
+  .loom-remember,
+  .loom-text-link {
+    font-size: 0.76rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

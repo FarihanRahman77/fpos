@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Admin\Party;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -76,14 +77,18 @@ class PartyController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        $party = new Party();
-        $this->fill($party, $request);
-        $party->code         = $this->generateCode($request->type);
-        $party->type         = $request->type;
-        $party->deleted      = 'No';
-        $party->created_by   = auth()->id();
-        $party->created_date = now();
-        $party->save();
+        $party = DB::transaction(function () use ($request) {
+            $party = new Party();
+            $this->fill($party, $request);
+            $party->code         = $this->generateCode($request->type);
+            $party->type         = $request->type;
+            $party->deleted      = 'No';
+            $party->created_by   = auth()->id();
+            $party->created_date = now();
+            $party->save();
+
+            return $party;
+        });
 
         return response()->json(['message' => $request->type . ' created successfully', 'data' => $party]);
     }
@@ -186,7 +191,7 @@ class PartyController extends Controller
 
     private function generateCode(string $type): string
     {
-        $next = (Party::max('id') ?? 0) + 1;
+        $next = (Party::lockForUpdate()->max('id') ?? 0) + 1;
 
         return $this->prefixes[$type] . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
     }

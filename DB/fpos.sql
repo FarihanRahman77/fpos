@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 11, 2026 at 05:58 PM
+-- Generation Time: Oct 12, 2026 at 08:46 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `fpos`
+-- Database: `cspos`
 --
 
 -- --------------------------------------------------------
@@ -157,6 +157,7 @@ CREATE TABLE `chart_of_accounts` (
   `id` bigint(20) UNSIGNED NOT NULL,
   `account_code` varchar(50) NOT NULL,
   `account_name` varchar(150) NOT NULL,
+  `slug` varchar(191) DEFAULT NULL,
   `layer_level` tinyint(3) UNSIGNED NOT NULL COMMENT '1 = Root, 2 = Group, 3 = Ledger',
   `parent_id` bigint(20) UNSIGNED DEFAULT NULL,
   `account_type` enum('Asset','Liability','Equity','Income','Expense','Liquid Asset') NOT NULL,
@@ -181,25 +182,25 @@ CREATE TABLE `chart_of_accounts` (
 -- Dumping data for table `chart_of_accounts`
 --
 
-INSERT INTO `chart_of_accounts` (`id`, `account_code`, `account_name`, `layer_level`, `parent_id`, `account_type`, `balance`, `current_balance`, `opening_balance`, `opening_balance_entry_datetime`, `is_system`, `deleted`, `status`, `created_by`, `updated_by`, `deleted_by`, `created_date`, `updated_date`, `deleted_date`, `created_at`, `updated_at`) VALUES
-(1, '10000000', 'Assets', 1, NULL, 'Asset', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-09 19:42:06'),
-(2, '20000000', 'Liabilities', 1, NULL, 'Liability', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-09 19:42:06'),
-(3, '30000000', 'Equity', 1, NULL, 'Equity', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-09 19:42:06'),
-(4, '40000000', 'Income', 1, NULL, 'Income', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-10 15:58:45'),
-(5, '50000000', 'Expense', 1, NULL, 'Expense', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-10 15:58:51'),
-(6, '60000000', 'Liquid Asset', 1, NULL, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 19:42:06', '2026-10-09 19:42:06'),
-(9, '10100000', 'Current Asset', 2, 1, 'Asset', 'Debit', NULL, 1500000.00, '2026-10-10 21:57:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 09:57:25', '2026-10-10 09:57:25'),
-(10, '50100000', 'Utility', 2, 5, 'Expense', 'Credit', NULL, 0.00, '2026-10-10 22:54:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:54:48', '2026-10-10 10:54:48'),
-(11, '50200000', 'COGS', 2, 5, 'Expense', 'Credit', NULL, 0.00, '2026-10-10 22:55:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:55:22', '2026-10-10 10:55:22'),
-(12, '50101000', 'Electric', 3, 10, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:55:33', '2026-10-10 10:55:33'),
-(13, '50102000', 'Wifi', 3, 10, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:55:44', '2026-10-10 10:55:44'),
-(14, '50201000', 'Packaging', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:56:16', '2026-10-10 10:56:16'),
-(15, '50202000', 'Transport Cost', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:56:37', '2026-10-10 10:56:37'),
-(16, '50203000', 'Payment Transaction Fee', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 10:56:59', '2026-10-10 10:56:59'),
-(17, '60100000', 'Bank', 2, 6, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 12:22:51', '2026-10-10 12:22:51'),
-(18, '60101000', 'NCC Bank AC-123456', 3, 17, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 12:23:12', '2026-10-10 12:23:12'),
-(19, '60200000', 'Cash', 2, 6, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 12:23:26', '2026-10-10 12:23:26'),
-(20, '60201000', 'Shop Cash', 3, 19, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-10', NULL, '2026-10-10 12:25:02', '2026-10-10 12:25:02');
+INSERT INTO `chart_of_accounts` (`id`, `account_code`, `account_name`, `slug`, `layer_level`, `parent_id`, `account_type`, `balance`, `current_balance`, `opening_balance`, `opening_balance_entry_datetime`, `is_system`, `deleted`, `status`, `created_by`, `updated_by`, `deleted_by`, `created_date`, `updated_date`, `deleted_date`, `created_at`, `updated_at`) VALUES
+(1, '10000000', 'Assets', 'assets', 1, NULL, 'Asset', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:31:48'),
+(2, '20000000', 'Liabilities', 'liabilities', 1, NULL, 'Liability', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:32:03'),
+(3, '30000000', 'Equity', 'equity', 1, NULL, 'Equity', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:32:06'),
+(4, '40000000', 'Income', 'income', 1, NULL, 'Income', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:32:11'),
+(5, '50000000', 'Expense', 'expense', 1, NULL, 'Expense', 'Credit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:33:26'),
+(6, '60000000', 'Liquid Asset', 'liquid-asset', 1, NULL, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 1, 'No', 'Active', NULL, 1, NULL, NULL, '2026-10-11', NULL, '2026-10-09 19:42:06', '2026-10-11 11:32:45'),
+(9, '10100000', 'Current Asset', 'current-asset', 2, 1, 'Asset', 'Debit', NULL, 1500000.00, '2026-10-10 21:57:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 09:57:25', '2026-10-11 11:31:57'),
+(10, '50100000', 'Utility', 'utility', 2, 5, 'Expense', 'Credit', NULL, 0.00, '2026-10-10 22:54:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:54:48', '2026-10-11 11:32:14'),
+(11, '50200000', 'COGS', 'cogs', 2, 5, 'Expense', 'Credit', NULL, 0.00, '2026-10-10 22:55:00', 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:55:22', '2026-10-11 11:32:27'),
+(12, '50101000', 'Electric', 'electric', 3, 10, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:55:33', '2026-10-11 11:32:17'),
+(13, '50102000', 'Wifi', 'wifi', 3, 10, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:55:44', '2026-10-11 11:32:22'),
+(14, '50201000', 'Packaging', 'packaging', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:56:16', '2026-10-11 11:32:31'),
+(15, '50202000', 'Transport Cost', 'transport-cost', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:56:37', '2026-10-11 11:32:35'),
+(16, '50203000', 'Payment Transaction Fee', 'payment-transaction-fee', 3, 11, 'Expense', 'Credit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 10:56:59', '2026-10-11 11:32:40'),
+(17, '60100000', 'Bank', 'bank', 2, 6, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 12:22:51', '2026-10-11 11:32:55'),
+(18, '60101000', 'NCC Bank AC-123456', 'ncc-bank-ac-123456', 3, 17, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 12:23:12', '2026-10-11 11:33:00'),
+(19, '60200000', 'Cash', 'cash', 2, 6, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 12:23:26', '2026-10-11 11:33:03'),
+(20, '60201000', 'Shop Cash', 'shop-cash', 3, 19, 'Liquid Asset', 'Debit', NULL, 0.00, NULL, 0, 'No', 'Active', 1, 1, NULL, '2026-10-10', '2026-10-11', NULL, '2026-10-10 12:25:02', '2026-10-11 11:33:07');
 
 -- --------------------------------------------------------
 
@@ -442,8 +443,6 @@ CREATE TABLE `payments` (
   `bill_id` bigint(20) DEFAULT NULL,
   `payment_method` varchar(191) DEFAULT NULL,
   `payment_method_id` bigint(20) DEFAULT NULL,
-  `payment_method_source` varchar(191) DEFAULT NULL,
-  `payment_method_source_id` bigint(20) DEFAULT NULL,
   `payment_method_account` varchar(191) DEFAULT NULL,
   `payment_method_account_id` bigint(20) DEFAULT NULL,
   `order_id` bigint(20) DEFAULT NULL,
@@ -464,22 +463,33 @@ CREATE TABLE `payments` (
 -- Dumping data for table `payments`
 --
 
-INSERT INTO `payments` (`id`, `party_id`, `party_type`, `code`, `payment_type`, `datetime`, `debit`, `credit`, `purchase_id`, `purchase_return_id`, `sale_id`, `sale_return_id`, `expense_id`, `bill_id`, `payment_method`, `payment_method_id`, `payment_method_source`, `payment_method_source_id`, `payment_method_account`, `payment_method_account_id`, `order_id`, `remarks`, `deleted`, `status`, `created_by`, `updated_by`, `deleted_by`, `created_datetime`, `updated_datetime`, `deleted_datetime`, `created_at`, `updated_at`) VALUES
-(1, 5, 'Supplier', 'VO-000001', 'Purchase', '2026-10-09 00:00:00', 150000.00, 0.00, 14, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:19:51', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
-(2, 5, 'Supplier', 'VO-000002', 'Purchase Payment', '2026-10-09 00:00:00', 0.00, 100000.00, 14, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:19:51', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
-(3, 5, 'Supplier', 'VO-000003', 'Payment', '2026-10-09 17:24:15', 0.00, 20000.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:24:15', NULL, NULL, '2026-10-09 11:24:15', '2026-10-09 11:24:15'),
-(4, 4, 'Walk-In Customer', 'VO-000004', 'Walk-In', '2026-10-09 17:26:32', 0.00, 22000.00, NULL, NULL, 10, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
-(5, 4, 'Walk-In Customer', 'VO-000005', 'Walk-In Payment Receive', '2026-10-09 17:26:32', 10000.00, 0.00, NULL, NULL, 10, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
-(6, 3, 'Customer', 'VO-000006', 'Wholesale', '2026-10-09 17:56:08', 0.00, 28000.00, NULL, NULL, 11, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
-(7, 3, 'Customer', 'VO-000007', 'Wholesale Payment Receive', '2026-10-09 17:56:08', 11100.00, 0.00, NULL, NULL, 11, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
-(8, 3, 'Customer', 'VO-000008', 'Payment Receive', '2026-10-09 17:58:45', 18000.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Yes', 'Active', 1, NULL, 1, '2026-10-09 17:58:45', NULL, '2026-10-09 18:09:03', '2026-10-09 11:58:45', '2026-10-09 12:09:03'),
-(9, 3, 'Customer', 'VO-000009', 'Discount', '2026-10-09 18:09:35', 500.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:09:35', NULL, NULL, '2026-10-09 12:09:35', '2026-10-09 12:09:35'),
-(10, 3, 'Customer', 'VO-000010', 'Payment Receive', '2026-10-09 18:09:49', 17500.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:09:49', NULL, NULL, '2026-10-09 12:09:49', '2026-10-09 12:09:49'),
-(11, 5, 'Supplier', 'VO-000011', 'Payment', '2026-10-09 18:10:23', 0.00, 29500.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:10:23', NULL, NULL, '2026-10-09 12:10:23', '2026-10-09 12:10:23'),
-(13, 5, 'Supplier', 'VO-000012', 'Discount', '2026-10-09 18:11:32', 0.00, 500.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:11:32', NULL, NULL, '2026-10-09 12:11:32', '2026-10-09 12:11:32'),
-(14, 1, 'Employee', 'VO-000013', 'Expense', '2026-10-11 00:00:00', 0.00, 780.00, NULL, NULL, NULL, NULL, 1, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Yes', 'Active', 1, NULL, 1, '2026-10-10 19:11:04', NULL, '2026-10-10 19:36:07', '2026-10-10 13:11:04', '2026-10-10 13:11:04'),
-(15, 1, 'Employee', 'VO-000014', 'Expense', '2026-10-11 00:00:00', 0.00, 900.00, NULL, NULL, NULL, NULL, 2, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-10 19:39:33', NULL, NULL, '2026-10-10 13:39:33', '2026-10-10 13:39:33'),
-(16, 1, 'Employee', 'VO-000015', 'Expense', '2026-10-11 00:00:00', 0.00, 1000.00, NULL, NULL, NULL, NULL, 3, NULL, '', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Yes', 'Inactive', 1, NULL, 1, '2026-10-10 19:41:50', NULL, '2026-10-10 19:42:06', '2026-10-10 13:41:50', '2026-10-10 13:41:50');
+INSERT INTO `payments` (`id`, `party_id`, `party_type`, `code`, `payment_type`, `datetime`, `debit`, `credit`, `purchase_id`, `purchase_return_id`, `sale_id`, `sale_return_id`, `expense_id`, `bill_id`, `payment_method`, `payment_method_id`, `payment_method_account`, `payment_method_account_id`, `order_id`, `remarks`, `deleted`, `status`, `created_by`, `updated_by`, `deleted_by`, `created_datetime`, `updated_datetime`, `deleted_datetime`, `created_at`, `updated_at`) VALUES
+(1, 5, 'Supplier', 'VO-000001', 'Purchase', '2026-10-09 00:00:00', 150000.00, 0.00, 14, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:19:51', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
+(2, 5, 'Supplier', 'VO-000002', 'Purchase Payment', '2026-10-09 00:00:00', 0.00, 100000.00, 14, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:19:51', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
+(3, 5, 'Supplier', 'VO-000003', 'Payment', '2026-10-09 17:24:15', 0.00, 20000.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:24:15', NULL, NULL, '2026-10-09 11:24:15', '2026-10-09 11:24:15'),
+(4, 4, 'Walk-In Customer', 'VO-000004', 'Walk-In', '2026-10-09 17:26:32', 0.00, 22000.00, NULL, NULL, 10, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
+(5, 4, 'Walk-In Customer', 'VO-000005', 'Walk-In Payment Receive', '2026-10-09 17:26:32', 10000.00, 0.00, NULL, NULL, 10, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
+(6, 3, 'Customer', 'VO-000006', 'Wholesale', '2026-10-09 17:56:08', 0.00, 28000.00, NULL, NULL, 11, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
+(7, 3, 'Customer', 'VO-000007', 'Wholesale Payment Receive', '2026-10-09 17:56:08', 11100.00, 0.00, NULL, NULL, 11, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
+(8, 3, 'Customer', 'VO-000008', 'Payment Receive', '2026-10-09 17:58:45', 18000.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'Yes', 'Active', 1, NULL, 1, '2026-10-09 17:58:45', NULL, '2026-10-09 18:09:03', '2026-10-09 11:58:45', '2026-10-09 12:09:03'),
+(9, 3, 'Customer', 'VO-000009', 'Discount', '2026-10-09 18:09:35', 500.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:09:35', NULL, NULL, '2026-10-09 12:09:35', '2026-10-09 12:09:35'),
+(10, 3, 'Customer', 'VO-000010', 'Payment Receive', '2026-10-09 18:09:49', 17500.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:09:49', NULL, NULL, '2026-10-09 12:09:49', '2026-10-09 12:09:49'),
+(11, 5, 'Supplier', 'VO-000011', 'Payment', '2026-10-09 18:10:23', 0.00, 29500.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Cash', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:10:23', NULL, NULL, '2026-10-09 12:10:23', '2026-10-09 12:10:23'),
+(13, 5, 'Supplier', 'VO-000012', 'Discount', '2026-10-09 18:11:32', 0.00, 500.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-09 18:11:32', NULL, NULL, '2026-10-09 12:11:32', '2026-10-09 12:11:32'),
+(14, 1, 'Employee', 'VO-000013', 'Expense', '2026-10-11 00:00:00', 0.00, 780.00, NULL, NULL, NULL, NULL, 1, NULL, '', NULL, NULL, NULL, NULL, NULL, 'Yes', 'Active', 1, NULL, 1, '2026-10-10 19:11:04', NULL, '2026-10-10 19:36:07', '2026-10-10 13:11:04', '2026-10-10 13:11:04'),
+(15, 1, 'Employee', 'VO-000014', 'Expense', '2026-10-11 00:00:00', 0.00, 900.00, NULL, NULL, NULL, NULL, 2, NULL, '', NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-10 19:39:33', NULL, NULL, '2026-10-10 13:39:33', '2026-10-10 13:39:33'),
+(16, 1, 'Employee', 'VO-000015', 'Expense', '2026-10-11 00:00:00', 0.00, 1000.00, NULL, NULL, NULL, NULL, 3, NULL, '', NULL, NULL, NULL, NULL, NULL, 'Yes', 'Inactive', 1, NULL, 1, '2026-10-10 19:41:50', NULL, '2026-10-10 19:42:06', '2026-10-10 13:41:50', '2026-10-10 13:41:50'),
+(19, 5, 'Supplier', 'VO-000016', 'Purchase', '2026-10-11 00:00:00', 25000.00, 0.00, 16, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 18:56:48', NULL, NULL, '2026-10-11 12:56:48', '2026-10-11 12:56:48'),
+(20, 5, 'Supplier', 'VO-000017', 'Purchase Payment', '2026-10-11 00:00:00', 0.00, 20000.00, 16, NULL, NULL, NULL, NULL, NULL, 'Bank', 17, 'NCC Bank AC-123456', 18, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 18:56:48', NULL, NULL, '2026-10-11 12:56:48', '2026-10-11 12:56:48'),
+(21, 5, 'Supplier', 'VO-000018', 'Purchase', '2026-10-11 00:00:00', 20000.00, 0.00, 17, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:05:19', NULL, NULL, '2026-10-11 13:05:19', '2026-10-11 13:05:19'),
+(22, 5, 'Supplier', 'VO-000019', 'Purchase Payment', '2026-10-11 00:00:00', 0.00, 15000.00, 17, NULL, NULL, NULL, NULL, NULL, 'Cash', 19, 'Shop Cash', 20, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:05:19', NULL, NULL, '2026-10-11 13:05:19', '2026-10-11 13:05:19'),
+(23, 4, 'Walk-In Customer', 'VO-000020', 'Walk-In', '2026-10-11 19:26:11', 0.00, 22000.00, NULL, NULL, 12, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:26:11', NULL, NULL, '2026-10-11 13:26:11', '2026-10-11 13:26:11'),
+(24, 4, 'Walk-In Customer', 'VO-000021', 'Walk-In Payment Receive', '2026-10-11 19:26:11', 20000.00, 0.00, NULL, NULL, 12, NULL, NULL, NULL, 'Bank', 17, 'NCC Bank AC-123456', 18, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:26:11', NULL, NULL, '2026-10-11 13:26:11', '2026-10-11 13:26:11'),
+(25, 4, 'Customer', 'VO-000022', 'Sale Order', '2026-10-11 19:38:50', 0.00, 22000.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 12, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:38:50', NULL, NULL, '2026-10-11 13:38:50', '2026-10-11 13:38:50'),
+(28, 3, 'Customer', 'VO-000023', 'Sale Order', '2026-10-11 19:42:45', 0.00, 28599.00, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 15, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:42:45', NULL, NULL, '2026-10-11 13:42:45', '2026-10-11 13:42:45'),
+(29, 3, 'Customer', 'VO-000024', 'Sale Order Payment Receive', '2026-10-11 19:42:45', 28000.00, 0.00, NULL, NULL, NULL, NULL, NULL, NULL, 'Bank', 17, 'NCC Bank AC-123456', 18, 15, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-11 19:42:45', NULL, NULL, '2026-10-11 13:42:45', '2026-10-11 13:42:45'),
+(30, 5, 'Supplier', 'VO-000025', 'Purchase', '2026-10-12 00:00:00', 39900.00, 0.00, 18, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-12 16:17:12', NULL, NULL, '2026-10-12 10:17:12', '2026-10-12 10:17:12'),
+(31, 5, 'Supplier', 'VO-000026', 'Purchase Payment', '2026-10-12 00:00:00', 39900.00, 0.00, 18, 11, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'No', 'Active', 1, NULL, NULL, '2026-10-12 16:17:55', NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55');
 
 -- --------------------------------------------------------
 
@@ -695,6 +705,7 @@ CREATE TABLE `purchases` (
   `paid_amount` decimal(18,2) NOT NULL DEFAULT 0.00,
   `due_amount` decimal(18,2) NOT NULL DEFAULT 0.00,
   `payment_method` varchar(100) DEFAULT NULL,
+  `payment_method_account` int(20) DEFAULT NULL,
   `remarks` text DEFAULT NULL,
   `deleted` enum('Yes','No') NOT NULL DEFAULT 'No',
   `deleted_by` bigint(20) UNSIGNED DEFAULT NULL,
@@ -711,17 +722,20 @@ CREATE TABLE `purchases` (
 -- Dumping data for table `purchases`
 --
 
-INSERT INTO `purchases` (`id`, `supplier_id`, `invoice_no`, `purchase_date`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `grand_total`, `paid_amount`, `due_amount`, `payment_method`, `remarks`, `deleted`, `deleted_by`, `created_date`, `created_by`, `status`, `updated_by`, `updated_date`, `created_at`, `updated_at`) VALUES
-(1, 1, NULL, '2026-09-28', 200000.00, 'Amount', 0.00, 0.00, 200000.00, 180000.00, 20000.00, 'Cash', NULL, 'Yes', 1, '2026-09-28 17:05:33', 1, 'Inactive', 1, '2026-09-28 19:41:13', '2026-09-28 11:05:33', '2026-09-28 13:41:13'),
-(6, 1, 'PUR-000001', '2026-09-28', 250000.00, 'Amount', 0.00, 0.00, 250000.00, 150000.00, 100000.00, 'Cash', NULL, 'Yes', 1, '2026-09-28 19:48:40', 1, 'Inactive', 1, '2026-09-28 19:49:01', '2026-09-28 13:48:40', '2026-09-28 13:49:01'),
-(7, 1, 'PUR-000001', '2026-09-28', 260000.00, 'Amount', 0.00, 0.00, 200000.00, 190000.00, 10000.00, 'Cash', NULL, 'No', NULL, '2026-09-28 19:49:40', 1, 'Active', 1, '2026-09-30 16:45:58', '2026-09-28 13:49:40', '2026-09-30 10:45:58'),
-(8, 1, 'PUR-000002', '2026-09-28', 75000.00, 'Amount', 0.00, 0.00, 15000.00, 15000.00, 0.00, 'Cash', NULL, 'Yes', 1, '2026-09-28 19:50:15', 1, 'Inactive', 1, '2026-09-29 16:33:20', '2026-09-28 13:50:15', '2026-09-29 10:33:20'),
-(9, 1, 'PUR-000003', '2026-09-29', 390600.00, 'Amount', 0.00, 0.00, 390600.00, 0.00, 390600.00, NULL, NULL, 'Yes', 1, '2026-09-29 16:23:33', 1, 'Inactive', 1, '2026-09-29 16:31:12', '2026-09-29 10:23:33', '2026-09-29 10:31:12'),
-(10, 1, 'PUR-000004', '2026-09-29', 450000.00, 'Amount', 0.00, 0.00, 450000.00, 0.00, 450000.00, NULL, NULL, 'Yes', 1, '2026-09-29 16:28:07', 1, 'Inactive', 1, '2026-09-29 16:31:02', '2026-09-29 10:28:07', '2026-09-29 10:31:02'),
-(11, 5, 'PUR-000002', '2026-10-04', 8520000.00, 'Amount', 0.00, 0.00, 8520000.00, 0.00, 8520000.00, 'Cash', NULL, 'No', NULL, '2026-10-04 16:46:08', 1, 'Active', NULL, NULL, '2026-10-04 10:46:08', '2026-10-04 10:46:08'),
-(12, 5, 'PUR-000003', '2026-10-09', 125000.00, 'Amount', 0.00, 0.00, 125000.00, 100000.00, 25000.00, NULL, NULL, 'No', NULL, '2026-10-09 14:19:28', 1, 'Active', NULL, NULL, '2026-10-09 08:19:28', '2026-10-09 08:19:28'),
-(13, 5, 'PUR-000004', '2026-10-09', 150000.00, 'Amount', 0.00, 0.00, 150000.00, 100000.00, 50000.00, 'Cash', NULL, 'No', NULL, '2026-10-09 17:17:16', 1, 'Active', NULL, NULL, '2026-10-09 11:17:16', '2026-10-09 11:17:16'),
-(14, 5, 'PUR-000005', '2026-10-09', 150000.00, 'Amount', 0.00, 0.00, 150000.00, 100000.00, 50000.00, 'Cash', NULL, 'No', NULL, '2026-10-09 17:19:51', 1, 'Active', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51');
+INSERT INTO `purchases` (`id`, `supplier_id`, `invoice_no`, `purchase_date`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `grand_total`, `paid_amount`, `due_amount`, `payment_method`, `payment_method_account`, `remarks`, `deleted`, `deleted_by`, `created_date`, `created_by`, `status`, `updated_by`, `updated_date`, `created_at`, `updated_at`) VALUES
+(1, 1, NULL, '2026-09-28', 200000.00, 'Amount', 0.00, 0.00, 200000.00, 180000.00, 20000.00, 'Cash', NULL, NULL, 'Yes', 1, '2026-09-28 17:05:33', 1, 'Inactive', 1, '2026-09-28 19:41:13', '2026-09-28 11:05:33', '2026-09-28 13:41:13'),
+(6, 1, 'PUR-000001', '2026-09-28', 250000.00, 'Amount', 0.00, 0.00, 250000.00, 150000.00, 100000.00, 'Cash', NULL, NULL, 'Yes', 1, '2026-09-28 19:48:40', 1, 'Inactive', 1, '2026-09-28 19:49:01', '2026-09-28 13:48:40', '2026-09-28 13:49:01'),
+(7, 1, 'PUR-000001', '2026-09-28', 260000.00, 'Amount', 0.00, 0.00, 200000.00, 190000.00, 10000.00, 'Cash', NULL, NULL, 'No', NULL, '2026-09-28 19:49:40', 1, 'Active', 1, '2026-09-30 16:45:58', '2026-09-28 13:49:40', '2026-09-30 10:45:58'),
+(8, 1, 'PUR-000002', '2026-09-28', 75000.00, 'Amount', 0.00, 0.00, 15000.00, 15000.00, 0.00, 'Cash', NULL, NULL, 'Yes', 1, '2026-09-28 19:50:15', 1, 'Inactive', 1, '2026-09-29 16:33:20', '2026-09-28 13:50:15', '2026-09-29 10:33:20'),
+(9, 1, 'PUR-000003', '2026-09-29', 390600.00, 'Amount', 0.00, 0.00, 390600.00, 0.00, 390600.00, NULL, NULL, NULL, 'Yes', 1, '2026-09-29 16:23:33', 1, 'Inactive', 1, '2026-09-29 16:31:12', '2026-09-29 10:23:33', '2026-09-29 10:31:12'),
+(10, 1, 'PUR-000004', '2026-09-29', 450000.00, 'Amount', 0.00, 0.00, 450000.00, 0.00, 450000.00, NULL, NULL, NULL, 'Yes', 1, '2026-09-29 16:28:07', 1, 'Inactive', 1, '2026-09-29 16:31:02', '2026-09-29 10:28:07', '2026-09-29 10:31:02'),
+(11, 5, 'PUR-000002', '2026-10-04', 8520000.00, 'Amount', 0.00, 0.00, 8520000.00, 0.00, 8520000.00, 'Cash', NULL, NULL, 'No', NULL, '2026-10-04 16:46:08', 1, 'Active', NULL, NULL, '2026-10-04 10:46:08', '2026-10-04 10:46:08'),
+(12, 5, 'PUR-000003', '2026-10-09', 125000.00, 'Amount', 0.00, 0.00, 125000.00, 100000.00, 25000.00, NULL, NULL, NULL, 'No', NULL, '2026-10-09 14:19:28', 1, 'Active', NULL, NULL, '2026-10-09 08:19:28', '2026-10-09 08:19:28'),
+(13, 5, 'PUR-000004', '2026-10-09', 150000.00, 'Amount', 0.00, 0.00, 150000.00, 100000.00, 50000.00, 'Cash', NULL, NULL, 'No', NULL, '2026-10-09 17:17:16', 1, 'Active', NULL, NULL, '2026-10-09 11:17:16', '2026-10-09 11:17:16'),
+(14, 5, 'PUR-000005', '2026-10-09', 150000.00, 'Amount', 0.00, 0.00, 150000.00, 100000.00, 50000.00, 'Cash', NULL, NULL, 'No', NULL, '2026-10-09 17:19:51', 1, 'Active', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
+(16, 5, 'PUR-000006', '2026-10-11', 25000.00, 'Amount', 0.00, 0.00, 25000.00, 20000.00, 5000.00, '17', NULL, NULL, 'No', NULL, '2026-10-11 18:56:48', 1, 'Active', NULL, NULL, '2026-10-11 12:56:48', '2026-10-11 12:56:48'),
+(17, 5, 'PUR-000007', '2026-10-11', 20000.00, 'Amount', 0.00, 0.00, 20000.00, 15000.00, 5000.00, '19', 20, NULL, 'No', NULL, '2026-10-11 19:05:19', 1, 'Active', NULL, NULL, '2026-10-11 13:05:19', '2026-10-11 13:05:19'),
+(18, 5, 'PUR-000008', '2026-10-12', 40000.00, 'Amount', 100.00, 100.00, 0.00, 0.00, 0.00, '17', 18, NULL, 'No', NULL, '2026-10-12 16:17:12', 1, 'Active', 1, '2026-10-12 16:17:55', '2026-10-12 10:17:12', '2026-10-12 10:17:55');
 
 -- --------------------------------------------------------
 
@@ -769,7 +783,11 @@ INSERT INTO `purchase_items` (`id`, `purchase_id`, `product_id`, `product_varian
 (10, 11, 3, 4, 100.0000, 25000.00, 'Amount', 0.00, 0.00, 2500000.00, 2500000.00, 'No', NULL, '2026-10-04 16:46:08', 1, 'Active', NULL, NULL, '2026-10-04 10:46:08', '2026-10-04 10:46:08'),
 (11, 12, 3, 4, 5.0000, 25000.00, 'Amount', 0.00, 0.00, 125000.00, 125000.00, 'No', NULL, '2026-10-09 14:19:28', 1, 'Active', NULL, NULL, '2026-10-09 08:19:28', '2026-10-09 08:19:28'),
 (12, 13, 2, NULL, 10.0000, 15000.00, 'Amount', 0.00, 0.00, 150000.00, 150000.00, 'No', NULL, '2026-10-09 17:17:16', 1, 'Active', NULL, NULL, '2026-10-09 11:17:16', '2026-10-09 11:17:16'),
-(13, 14, 2, NULL, 10.0000, 15000.00, 'Amount', 0.00, 0.00, 150000.00, 150000.00, 'No', NULL, '2026-10-09 17:19:51', 1, 'Active', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51');
+(13, 14, 2, NULL, 10.0000, 15000.00, 'Amount', 0.00, 0.00, 150000.00, 150000.00, 'No', NULL, '2026-10-09 17:19:51', 1, 'Active', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
+(15, 16, 3, 4, 1.0000, 25000.00, 'Amount', 0.00, 0.00, 25000.00, 25000.00, 'No', NULL, '2026-10-11 18:56:48', 1, 'Active', NULL, NULL, '2026-10-11 12:56:48', '2026-10-11 12:56:48'),
+(16, 17, 1, 1, 1.0000, 20000.00, 'Amount', 0.00, 0.00, 20000.00, 20000.00, 'No', NULL, '2026-10-11 19:05:19', 1, 'Active', NULL, NULL, '2026-10-11 13:05:19', '2026-10-11 13:05:19'),
+(17, 18, 2, NULL, 1.0000, 15000.00, 'Amount', 0.00, 0.00, 15000.00, 15000.00, 'No', NULL, '2026-10-12 16:17:12', 1, 'Active', NULL, NULL, '2026-10-12 10:17:12', '2026-10-12 10:17:12'),
+(18, 18, 3, 4, 1.0000, 25000.00, 'Amount', 0.00, 0.00, 25000.00, 25000.00, 'No', NULL, '2026-10-12 16:17:12', 1, 'Active', NULL, NULL, '2026-10-12 10:17:12', '2026-10-12 10:17:12');
 
 -- --------------------------------------------------------
 
@@ -808,7 +826,8 @@ CREATE TABLE `purchase_returns` (
 INSERT INTO `purchase_returns` (`id`, `return_no`, `purchase_id`, `supplier_id`, `datetime`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `grand_total`, `remarks`, `deleted`, `deleted_by`, `created_datetime`, `created_by`, `status`, `updated_by`, `updated_datetime`, `deleted_datetime`, `created_at`, `updated_at`) VALUES
 (8, 'PRE-000001', 8, 1, '2026-09-28 00:00:00', 30000.00, 'Amount', 0.00, 0.00, 30000.00, NULL, 'Yes', NULL, '2026-09-28 20:23:34', 1, 'Active', NULL, NULL, '2026-09-28 20:54:40', '2026-09-28 14:23:34', '2026-09-28 14:54:40'),
 (9, 'PRE-000001', 8, 1, '2026-09-29 00:00:00', 30000.00, 'Amount', 0.00, 0.00, 30000.00, NULL, 'No', NULL, '2026-09-29 15:29:39', 1, 'Active', NULL, NULL, NULL, '2026-09-29 09:29:39', '2026-09-29 09:29:39'),
-(10, 'PRE-000002', 7, 1, '2026-09-30 00:00:00', 60000.00, 'Amount', 0.00, 0.00, 60000.00, NULL, 'No', NULL, '2026-09-30 16:45:58', 1, 'Active', NULL, NULL, NULL, '2026-09-30 10:45:58', '2026-09-30 10:45:58');
+(10, 'PRE-000002', 7, 1, '2026-09-30 00:00:00', 60000.00, 'Amount', 0.00, 0.00, 60000.00, NULL, 'No', NULL, '2026-09-30 16:45:58', 1, 'Active', NULL, NULL, NULL, '2026-09-30 10:45:58', '2026-09-30 10:45:58'),
+(11, 'PRE-000003', 18, 5, '2026-10-12 00:00:00', 40000.00, 'Amount', 100.00, 100.00, 39900.00, NULL, 'No', NULL, '2026-10-12 16:17:55', 1, 'Active', NULL, NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55');
 
 -- --------------------------------------------------------
 
@@ -849,7 +868,9 @@ CREATE TABLE `purchase_return_items` (
 INSERT INTO `purchase_return_items` (`id`, `purchase_return_id`, `purchase_id`, `purchase_item_id`, `product_id`, `product_variant_id`, `qty`, `purchase_price`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `total`, `deleted`, `deleted_by`, `created_datetime`, `created_by`, `status`, `updated_by`, `updated_datetime`, `deleted_datetime`, `created_at`, `updated_at`) VALUES
 (3, 8, 8, 4, 2, NULL, 2.0000, 15000.00, 30000.00, NULL, 0.00, 0.00, 30000.00, 'Yes', NULL, '2026-09-28 20:23:34', 1, 'Active', NULL, NULL, '2026-09-28 20:54:40', '2026-09-28 14:23:34', '2026-09-28 14:54:40'),
 (4, 9, 8, 4, 2, NULL, 2.0000, 15000.00, 30000.00, NULL, 0.00, 0.00, 30000.00, 'No', NULL, '2026-09-29 15:29:39', 1, 'Active', NULL, NULL, NULL, '2026-09-29 09:29:39', '2026-09-29 09:29:39'),
-(5, 10, 7, 3, 1, 1, 3.0000, 20000.00, 60000.00, NULL, 0.00, 0.00, 60000.00, 'No', NULL, '2026-09-30 16:45:58', 1, 'Active', NULL, NULL, NULL, '2026-09-30 10:45:58', '2026-09-30 10:45:58');
+(5, 10, 7, 3, 1, 1, 3.0000, 20000.00, 60000.00, NULL, 0.00, 0.00, 60000.00, 'No', NULL, '2026-09-30 16:45:58', 1, 'Active', NULL, NULL, NULL, '2026-09-30 10:45:58', '2026-09-30 10:45:58'),
+(6, 11, 18, 17, 2, NULL, 1.0000, 15000.00, 15000.00, NULL, 0.00, 0.00, 15000.00, 'No', NULL, '2026-10-12 16:17:55', 1, 'Active', NULL, NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55'),
+(7, 11, 18, 18, 3, 4, 1.0000, 25000.00, 25000.00, NULL, 0.00, 0.00, 25000.00, 'No', NULL, '2026-10-12 16:17:55', 1, 'Active', NULL, NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55');
 
 -- --------------------------------------------------------
 
@@ -930,6 +951,7 @@ CREATE TABLE `sales` (
   `paid_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
   `due_amount` decimal(15,2) NOT NULL DEFAULT 0.00,
   `payment_method` varchar(50) DEFAULT NULL,
+  `payment_method_account` int(11) DEFAULT NULL,
   `remarks` longtext DEFAULT NULL,
   `deleted` enum('Yes','No') NOT NULL DEFAULT 'No',
   `deleted_by` bigint(20) UNSIGNED DEFAULT NULL,
@@ -946,13 +968,14 @@ CREATE TABLE `sales` (
 -- Dumping data for table `sales`
 --
 
-INSERT INTO `sales` (`id`, `invoice_no`, `sale_type`, `customer_id`, `sale_date`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `grand_total`, `paid_amount`, `due_amount`, `payment_method`, `remarks`, `deleted`, `deleted_by`, `status`, `created_by`, `created_date`, `updated_by`, `updated_date`, `created_at`, `updated_at`) VALUES
-(6, 'INV-000001', 'Walk-In', 4, '2026-09-30', 28000.00, 'Percentage', 5.00, 1400.00, 26600.00, 25000.00, 1600.00, 'Cash', NULL, 'No', NULL, 'Active', 1, '2026-09-30 18:51:18', NULL, NULL, '2026-09-30 12:51:18', '2026-09-30 12:51:18'),
-(7, 'INV-000002', 'Walk-In', 4, '2026-10-04', 28000.00, 'Amount', 0.00, 0.00, 28000.00, 25000.00, 3000.00, 'Cash', NULL, 'No', NULL, 'Active', 1, '2026-10-04 16:21:02', NULL, NULL, '2026-10-04 10:21:02', '2026-10-04 10:21:02'),
-(8, 'INV-000003', 'Wholesale', 2, '2026-10-04', 22000.00, 'Amount', 500.00, 500.00, 21500.00, 0.00, 21500.00, 'Cash', NULL, 'No', NULL, 'Active', 1, '2026-10-04 16:47:48', NULL, NULL, '2026-10-04 10:47:48', '2026-10-04 10:47:48'),
-(9, 'INV-000004', 'Wholesale', 2, '2026-10-05', 28000.00, 'Amount', 500.00, 500.00, 27500.00, 25000.00, 2500.00, 'Cash', 'Delivered from Sale Order SO-000003', 'No', NULL, 'Active', 1, '2026-10-05 18:30:33', NULL, NULL, '2026-10-05 12:30:33', '2026-10-05 12:30:33'),
-(10, 'INV-000005', 'Walk-In', 4, '2026-10-09', 22000.00, 'Amount', 0.00, 0.00, 22000.00, 10000.00, 12000.00, 'Cash', NULL, 'No', NULL, 'Active', 1, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
-(11, 'INV-000006', 'Wholesale', 3, '2026-10-09', 28000.00, 'Amount', 0.00, 0.00, 28000.00, 11100.00, 16900.00, 'Cash', NULL, 'No', NULL, 'Active', 1, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08');
+INSERT INTO `sales` (`id`, `invoice_no`, `sale_type`, `customer_id`, `sale_date`, `subtotal`, `discount_type`, `discount_value`, `discount_amount`, `grand_total`, `paid_amount`, `due_amount`, `payment_method`, `payment_method_account`, `remarks`, `deleted`, `deleted_by`, `status`, `created_by`, `created_date`, `updated_by`, `updated_date`, `created_at`, `updated_at`) VALUES
+(6, 'INV-000001', 'Walk-In', 4, '2026-09-30', 28000.00, 'Percentage', 5.00, 1400.00, 26600.00, 25000.00, 1600.00, 'Cash', NULL, NULL, 'No', NULL, 'Active', 1, '2026-09-30 18:51:18', NULL, NULL, '2026-09-30 12:51:18', '2026-09-30 12:51:18'),
+(7, 'INV-000002', 'Walk-In', 4, '2026-10-04', 28000.00, 'Amount', 0.00, 0.00, 28000.00, 25000.00, 3000.00, 'Cash', NULL, NULL, 'No', NULL, 'Active', 1, '2026-10-04 16:21:02', NULL, NULL, '2026-10-04 10:21:02', '2026-10-04 10:21:02'),
+(8, 'INV-000003', 'Wholesale', 2, '2026-10-04', 22000.00, 'Amount', 500.00, 500.00, 21500.00, 0.00, 21500.00, 'Cash', NULL, NULL, 'No', NULL, 'Active', 1, '2026-10-04 16:47:48', NULL, NULL, '2026-10-04 10:47:48', '2026-10-04 10:47:48'),
+(9, 'INV-000004', 'Wholesale', 2, '2026-10-05', 28000.00, 'Amount', 500.00, 500.00, 27500.00, 25000.00, 2500.00, 'Cash', NULL, 'Delivered from Sale Order SO-000003', 'No', NULL, 'Active', 1, '2026-10-05 18:30:33', NULL, NULL, '2026-10-05 12:30:33', '2026-10-05 12:30:33'),
+(10, 'INV-000005', 'Walk-In', 4, '2026-10-09', 22000.00, 'Amount', 0.00, 0.00, 22000.00, 10000.00, 12000.00, 'Cash', NULL, NULL, 'No', NULL, 'Active', 1, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
+(11, 'INV-000006', 'Wholesale', 3, '2026-10-09', 28000.00, 'Amount', 0.00, 0.00, 28000.00, 11100.00, 16900.00, 'Cash', NULL, NULL, 'No', NULL, 'Active', 1, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
+(12, 'INV-000007', 'Walk-In', 4, '2026-10-11', 22000.00, 'Amount', 0.00, 0.00, 22000.00, 20000.00, 2000.00, '17', 18, NULL, 'No', NULL, 'Active', 1, '2026-10-11 19:26:11', NULL, NULL, '2026-10-11 13:26:11', '2026-10-11 13:26:11');
 
 -- --------------------------------------------------------
 
@@ -994,7 +1017,8 @@ INSERT INTO `sale_items` (`id`, `sale_id`, `product_id`, `product_variant_id`, `
 (8, 8, 2, NULL, 1.0000, 22000.00, 15000.00, 'Amount', 0.00, 0.00, 22000.00, 22000.00, 'No', NULL, 'Active', 1, '2026-10-04 16:47:48', NULL, NULL, '2026-10-04 10:47:48', '2026-10-04 10:47:48'),
 (9, 9, 1, 1, 1.0000, 28000.00, 20000.00, 'Amount', 0.00, 0.00, 28000.00, 28000.00, 'No', NULL, 'Active', 1, '2026-10-05 18:30:33', NULL, NULL, '2026-10-05 12:30:33', '2026-10-05 12:30:33'),
 (10, 10, 2, NULL, 1.0000, 22000.00, 15000.00, 'Amount', 0.00, 0.00, 22000.00, 22000.00, 'No', NULL, 'Active', 1, '2026-10-09 17:26:32', NULL, NULL, '2026-10-09 11:26:32', '2026-10-09 11:26:32'),
-(11, 11, 1, 1, 1.0000, 28000.00, 20000.00, 'Amount', 0.00, 0.00, 28000.00, 28000.00, 'No', NULL, 'Active', 1, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08');
+(11, 11, 1, 1, 1.0000, 28000.00, 20000.00, 'Amount', 0.00, 0.00, 28000.00, 28000.00, 'No', NULL, 'Active', 1, '2026-10-09 17:56:08', NULL, NULL, '2026-10-09 11:56:08', '2026-10-09 11:56:08'),
+(12, 12, 2, NULL, 1.0000, 22000.00, 15000.00, 'Amount', 0.00, 0.00, 22000.00, 22000.00, 'No', NULL, 'Active', 1, '2026-10-11 19:26:11', NULL, NULL, '2026-10-11 13:26:11', '2026-10-11 13:26:11');
 
 -- --------------------------------------------------------
 
@@ -1044,7 +1068,9 @@ INSERT INTO `sale_orders` (`id`, `order_no`, `customer_id`, `order_date`, `deliv
 (7, 'SO-000006', 2, '2026-10-07', NULL, 28000.00, 'Amount', 0.00, 0.00, 28000.00, 20000.00, 8000.00, 'Delivered', '2026-10-07 19:49:12', NULL, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-07 19:42:43', 1, '2026-10-07 19:49:12', '2026-10-07 13:42:43', '2026-10-07 13:49:12'),
 (8, 'SO-000007', 3, '2026-10-07', NULL, 28000.00, 'Amount', 0.00, 0.00, 28000.00, 0.00, 28000.00, 'Pending', NULL, NULL, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-07 19:54:46', NULL, NULL, '2026-10-07 13:54:46', '2026-10-07 13:54:46'),
 (9, 'SO-000008', 2, '2026-10-07', NULL, 85797.00, 'Amount', 0.00, 0.00, 85797.00, 80000.00, 5797.00, 'Partial', '2026-10-07 19:59:23', NULL, NULL, 'Yes', 1, NULL, 'Active', 1, '2026-10-07 19:57:25', 1, '2026-10-07 19:59:23', '2026-10-07 13:57:25', '2026-10-07 14:00:32'),
-(11, 'SO-000009', 2, '2026-10-07', NULL, 114396.00, 'Amount', 0.00, 0.00, 114396.00, 100000.00, 14396.00, 'Partial', '2026-10-07 20:15:09', NULL, NULL, 'Yes', 1, '2026-10-07', 'Inactive', 1, '2026-10-07 20:14:44', 1, '2026-10-07 20:15:09', '2026-10-07 14:14:44', '2026-10-07 14:16:22');
+(11, 'SO-000009', 2, '2026-10-07', NULL, 114396.00, 'Amount', 0.00, 0.00, 114396.00, 100000.00, 14396.00, 'Partial', '2026-10-07 20:15:09', NULL, NULL, 'Yes', 1, '2026-10-07', 'Inactive', 1, '2026-10-07 20:14:44', 1, '2026-10-07 20:15:09', '2026-10-07 14:14:44', '2026-10-07 14:16:22'),
+(12, 'SO-000010', 4, '2026-10-11', NULL, 22000.00, 'Amount', 0.00, 0.00, 22000.00, 0.00, 22000.00, 'Pending', NULL, NULL, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-11 19:38:50', NULL, NULL, '2026-10-11 13:38:50', '2026-10-11 13:38:50'),
+(15, 'SO-000011', 3, '2026-10-11', NULL, 28599.00, 'Amount', 0.00, 0.00, 28599.00, 28000.00, 599.00, 'Pending', NULL, NULL, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-11 19:42:45', NULL, NULL, '2026-10-11 13:42:45', '2026-10-11 13:42:45');
 
 -- --------------------------------------------------------
 
@@ -1092,7 +1118,9 @@ INSERT INTO `sale_order_items` (`id`, `sale_order_id`, `product_id`, `product_va
 (8, 7, 1, 1, 1.0000, 1, 28000.00, 'Amount', 0.00, 0.00, 28000.00, 28000.00, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-07 19:42:43', NULL, NULL, '2026-10-07 13:42:43', '2026-10-07 13:49:12'),
 (9, 8, 1, 1, 1.0000, NULL, 28000.00, 'Amount', 0.00, 0.00, 28000.00, 28000.00, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-07 19:54:46', NULL, NULL, '2026-10-07 13:54:46', '2026-10-07 13:54:46'),
 (10, 9, 3, 4, 3.0000, 2, 28599.00, 'Amount', 0.00, 0.00, 85797.00, 85797.00, NULL, 'Yes', 1, NULL, 'Active', 1, '2026-10-07 19:57:25', NULL, NULL, '2026-10-07 13:57:25', '2026-10-07 14:00:32'),
-(11, 11, 3, 4, 4.0000, 2, 28599.00, 'Amount', 0.00, 0.00, 114396.00, 114396.00, NULL, 'Yes', 1, '2026-10-07', 'Inactive', 1, '2026-10-07 20:14:44', NULL, NULL, '2026-10-07 14:14:44', '2026-10-07 14:16:22');
+(11, 11, 3, 4, 4.0000, 2, 28599.00, 'Amount', 0.00, 0.00, 114396.00, 114396.00, NULL, 'Yes', 1, '2026-10-07', 'Inactive', 1, '2026-10-07 20:14:44', NULL, NULL, '2026-10-07 14:14:44', '2026-10-07 14:16:22'),
+(12, 12, 2, NULL, 1.0000, NULL, 22000.00, 'Amount', 0.00, 0.00, 22000.00, 22000.00, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-11 19:38:50', NULL, NULL, '2026-10-11 13:38:50', '2026-10-11 13:38:50'),
+(15, 15, 3, 4, 1.0000, NULL, 28599.00, 'Amount', 0.00, 0.00, 28599.00, 28599.00, NULL, 'No', NULL, NULL, 'Active', 1, '2026-10-11 19:42:45', NULL, NULL, '2026-10-11 13:42:45', '2026-10-11 13:42:45');
 
 -- --------------------------------------------------------
 
@@ -1301,7 +1329,14 @@ INSERT INTO `stocks` (`id`, `product_id`, `product_variant_id`, `in_qty`, `out_q
 (44, 2, NULL, 10.000, 0.000, 13, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-09 11:17:16', '2026-10-09 11:17:16'),
 (45, 2, NULL, 10.000, 0.000, 14, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-09 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-09 11:19:51', '2026-10-09 11:19:51'),
 (46, 2, NULL, 0.000, 1.000, NULL, 10, NULL, NULL, NULL, NULL, 'Sale', 10, NULL, NULL, '2026-10-09 00:00:00', 'Sale: INV-000005', 'No', NULL, NULL, '2026-10-09 17:26:32', 1, 'Active', NULL, NULL, NULL, NULL),
-(47, 1, 1, 0.000, 1.000, NULL, 11, NULL, NULL, NULL, NULL, 'Sale', 11, NULL, NULL, '2026-10-09 00:00:00', 'Sale: INV-000006', 'No', NULL, NULL, '2026-10-09 17:56:08', 1, 'Active', NULL, NULL, NULL, NULL);
+(47, 1, 1, 0.000, 1.000, NULL, 11, NULL, NULL, NULL, NULL, 'Sale', 11, NULL, NULL, '2026-10-09 00:00:00', 'Sale: INV-000006', 'No', NULL, NULL, '2026-10-09 17:56:08', 1, 'Active', NULL, NULL, NULL, NULL),
+(49, 3, 4, 1.000, 0.000, 16, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-11 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-11 12:56:48', '2026-10-11 12:56:48'),
+(50, 1, 1, 1.000, 0.000, 17, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-11 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-11 13:05:19', '2026-10-11 13:05:19'),
+(51, 2, NULL, 0.000, 1.000, NULL, 12, NULL, NULL, NULL, NULL, 'Sale', 12, NULL, NULL, '2026-10-11 00:00:00', 'Sale: INV-000007', 'No', NULL, NULL, '2026-10-11 19:26:11', 1, 'Active', NULL, NULL, NULL, NULL),
+(52, 2, NULL, 1.000, 0.000, 18, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-12 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-12 10:17:12', '2026-10-12 10:17:12'),
+(53, 3, 4, 1.000, 0.000, 18, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-12 00:00:00', NULL, 'No', NULL, NULL, NULL, NULL, 'Active', NULL, NULL, '2026-10-12 10:17:12', '2026-10-12 10:17:12'),
+(54, 2, NULL, 0.000, 1.000, 18, NULL, NULL, 11, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-12 00:00:00', NULL, 'No', NULL, NULL, NULL, 1, 'Active', NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55'),
+(55, 3, 4, 0.000, 1.000, 18, NULL, NULL, 11, NULL, NULL, NULL, NULL, NULL, NULL, '2026-10-12 00:00:00', NULL, 'No', NULL, NULL, NULL, 1, 'Active', NULL, NULL, '2026-10-12 10:17:55', '2026-10-12 10:17:55');
 
 -- --------------------------------------------------------
 
@@ -1404,7 +1439,7 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `image`, `name`, `designation`, `role_id`, `status`, `deleted`, `email`, `email_verified_at`, `password`, `remember_token`, `created_at`, `updated_at`, `created_by`, `updated_by`, `deleted_by`, `created_date`, `updated_date`, `deleted_date`) VALUES
-(1, 'uploads/users/1789401688_6aa81a589ad00.jpg', 'Farhan', 'Superadmin', 1, 'Active', 'No', 'admin@gmail.com', NULL, '$2y$12$mcZoP9WCe7p2YBzmE901MOg.ysj87VTyLwxCXbq7zWQfotNEm405m', 'ticTlzzBP5OFpzXqpexHxOBojZmEvMVfPMer6rfPH05Oe6ni1xjKVTbp1bIq', '2026-09-13 10:48:50', '2026-09-14 10:01:28', NULL, 1, NULL, NULL, '2026-09-14 16:01:28', NULL),
+(1, 'uploads/users/1789401688_6aa81a589ad00.jpg', 'Farhan', 'Superadmin', 1, 'Active', 'No', 'admin@gmail.com', NULL, '$2y$12$mcZoP9WCe7p2YBzmE901MOg.ysj87VTyLwxCXbq7zWQfotNEm405m', '5eBKnc7G1loBZ1i51JP2IyKkoO5HALUxxLqv6hHA4SE0eveT62aa16lnyVRs', '2026-09-13 10:48:50', '2026-09-14 10:01:28', NULL, 1, NULL, NULL, '2026-09-14 16:01:28', NULL),
 (2, 'uploads/users/1789324656_6aa6ed7084d5f.jpg', 'Mahrab', NULL, 1, 'Active', 'Yes', 'mahrab@gmail.com', NULL, '$2y$12$02r2YpEUOncSyMn.3aWKW.xmpYE8f/8YLsV4NddrlKtwpA3Ne6NSm', NULL, '2026-09-13 12:37:36', '2026-09-14 09:55:30', 1, NULL, 1, '2026-09-13 18:37:36', NULL, '2026-09-14 15:55:30');
 
 --
@@ -1746,7 +1781,7 @@ ALTER TABLE `parties`
 -- AUTO_INCREMENT for table `payments`
 --
 ALTER TABLE `payments`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
 
 --
 -- AUTO_INCREMENT for table `permissions`
@@ -1788,25 +1823,25 @@ ALTER TABLE `product_variants`
 -- AUTO_INCREMENT for table `purchases`
 --
 ALTER TABLE `purchases`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `purchase_items`
 --
 ALTER TABLE `purchase_items`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `purchase_returns`
 --
 ALTER TABLE `purchase_returns`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `purchase_return_items`
 --
 ALTER TABLE `purchase_return_items`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `roles`
@@ -1824,25 +1859,25 @@ ALTER TABLE `role_permissions`
 -- AUTO_INCREMENT for table `sales`
 --
 ALTER TABLE `sales`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `sale_items`
 --
 ALTER TABLE `sale_items`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
 -- AUTO_INCREMENT for table `sale_orders`
 --
 ALTER TABLE `sale_orders`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `sale_order_items`
 --
 ALTER TABLE `sale_order_items`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `sale_returns`
@@ -1866,7 +1901,7 @@ ALTER TABLE `settings`
 -- AUTO_INCREMENT for table `stocks`
 --
 ALTER TABLE `stocks`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=48;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=56;
 
 --
 -- AUTO_INCREMENT for table `suppliers`

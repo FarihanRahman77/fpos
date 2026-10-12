@@ -264,31 +264,37 @@
                                     </td>
 
                                     <td colspan="2">
-
                                         <select id="payment_method" name="payment_method" class="form-control">
 
                                             <option value="">
                                                 Select Payment Method
                                             </option>
-
-                                            <option value="Cash">
-                                                Cash
-                                            </option>
-
-                                            <option value="Bank">
-                                                Bank
-                                            </option>
-
-                                            <option value="Mobile Banking">
-                                                Mobile Banking
-                                            </option>
-
-                                            <option value="Other">
-                                                Other
-                                            </option>
-
+                                            @foreach ($childCoas as $childCoa)
+                                                <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
+                                            @endforeach
                                         </select>
+                                    </td>
+                                    <td></td>
 
+                                </tr>
+                                <tr>
+
+                                    <td colspan="5" class="text-end">
+                                        <strong>Payment Account</strong>
+                                    </td>
+
+                                    <td colspan="2">
+
+                                        <select id="payment_method_account" name="payment_method_account"
+                                            class="form-control">
+
+                                            <option value="">
+                                                Select Payment Method Account
+                                            </option>
+                                            {{-- @foreach ($childCoas as $childCoa)
+                                            <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
+                                            @endforeach --}}
+                                        </select>
                                     </td>
                                     <td></td>
 
@@ -437,6 +443,73 @@
 
             });
 
+
+            $('#product_id').select2({
+
+                placeholder: 'Select Product',
+
+                allowClear: true,
+
+                width: '100%',
+
+                ajax: {
+
+                    url: productSearchUrl,
+
+                    type: 'GET',
+
+                    dataType: 'json',
+
+                    delay: 300,
+
+                    data: function(params) {
+
+                        return {
+
+                            search: params.term || ''
+
+                        };
+
+                    },
+
+                    processResults: function(response) {
+
+                        let results = [];
+
+                        if (response && response.data) {
+
+                            $.each(response.data, function(index, product) {
+
+                                results.push({
+
+                                    id: product.id,
+
+                                    text: product.name +
+                                        (
+                                            product.sku ?
+                                            ' - ' + product.sku :
+                                            ''
+                                        )
+
+                                });
+
+                            });
+
+                        }
+
+                        return {
+
+                            results: results
+
+                        };
+
+                    },
+
+                    cache: true
+
+                }
+
+            });
 
             /*
             |--------------------------------------------------------------------------
@@ -1507,6 +1580,7 @@
                         paid_amount: $('#paid_amount').val(),
 
                         payment_method: $('#payment_method').val(),
+                        payment_method_account: $('#payment_method_account').val(),
 
                         remarks: $('#remarks').val(),
 
@@ -1540,7 +1614,7 @@
                         data: formData,
 
                         success: function(response) {
-
+                          //  alert(JSON.stringify(response));
                             if (response && response.status) {
 
                                 toastr.success(
@@ -1569,7 +1643,7 @@
                         },
 
                         error: function(xhr) {
-
+                           // alert(JSON.stringify(xhr));
                             let message =
                                 'Something went wrong.';
 
@@ -1604,6 +1678,25 @@
             */
 
             renderCart();
+
+            $('#payment_method').on('change', function() {
+                var payment_method = $(this).val();
+
+                $.ajax({
+                    url: "{{ route('admin.getCoaChilds') }}",
+                    type: 'GET',
+                    data: {
+                        parent_id: payment_method
+                    },
+                    success: function(response) {
+                        //alert(JSON.stringify(response));
+                        $('#payment_method_account').html(response);
+                    },
+                    error: function(xhr) {
+                        //alert(JSON.stringify(xhr));
+                    }
+                });
+            });
 
         });
     </script>

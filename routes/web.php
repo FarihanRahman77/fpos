@@ -21,6 +21,10 @@ use App\Http\Controllers\Admin\SaleController;
 use App\Http\Controllers\Admin\ChartOfAccountController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\ExpenseController;
+use App\Http\Controllers\Admin\JournalController;
+use App\Http\Controllers\Admin\BillController;
+use App\Http\Controllers\Admin\AmountTransferController;
+use App\Http\Controllers\Admin\EmployeeController;
 
 
 
@@ -402,6 +406,50 @@ Route::middleware('auth')->group(function () {
         Route::get('/expense/show/', [ExpenseController::class, 'show'])->name('admin.expense.show');
         Route::get('/expense/children/', [ExpenseController::class, 'children'])->name('admin.expense.children');
         Route::get('/expense/pdf/', [ExpenseController::class, 'pdf'])->name('admin.expense.pdf');
+
+        // Journal
+        Route::get('/journal/index', [JournalController::class, 'index'])->name('admin.journal.index');
+        Route::get('/journal/list', [JournalController::class, 'list'])->name('admin.journal.list');
+        Route::get('/journal/show', [JournalController::class, 'show'])->name('admin.journal.show');
+        Route::post('/journal/store', [JournalController::class, 'store'])->name('admin.journal.store');
+        Route::get('/journal/delete', [JournalController::class, 'delete'])->name('admin.journal.delete');
+
+        // Bill + bill payments
+        Route::get('/bill/index', [BillController::class, 'index'])->name('admin.bill.index');
+        Route::get('/bill/list', [BillController::class, 'list'])->name('admin.bill.list');
+        Route::get('/bill/show', [BillController::class, 'show'])->name('admin.bill.show');
+        Route::post('/bill/store', [BillController::class, 'store'])->name('admin.bill.store');
+        Route::get('/bill/delete', [BillController::class, 'delete'])->name('admin.bill.delete');
+        Route::post('/bill/payment/store', [BillController::class, 'paymentStore'])->name('admin.bill.payment.store');
+        Route::get('/bill/payment/delete', [BillController::class, 'paymentDelete'])->name('admin.bill.payment.delete');
+
+        // Amount transfer (account to account)
+        Route::get('/amount-transfer/index', [AmountTransferController::class, 'index'])->name('admin.transfer.index');
+        Route::get('/amount-transfer/list', [AmountTransferController::class, 'list'])->name('admin.transfer.list');
+        Route::get('/amount-transfer/show', [AmountTransferController::class, 'show'])->name('admin.transfer.show');
+        Route::post('/amount-transfer/store', [AmountTransferController::class, 'store'])->name('admin.transfer.store');
+        Route::get('/amount-transfer/delete', [AmountTransferController::class, 'delete'])->name('admin.transfer.delete');
+
+        // Payroll: employees
+        Route::get('/employee/index', [EmployeeController::class, 'index'])->name('admin.employee.index');
+        Route::get('/employee/list', [EmployeeController::class, 'list'])->name('admin.employee.list');
+        Route::get('/employee/show', [EmployeeController::class, 'show'])->name('admin.employee.show');
+        Route::get('/employee/search', [EmployeeController::class, 'search'])->name('admin.employee.search');
+        Route::post('/employee/store', [EmployeeController::class, 'store'])->name('admin.employee.store');
+        Route::post('/employee/status', [EmployeeController::class, 'status'])->name('admin.employee.status');
+        Route::get('/employee/delete', [EmployeeController::class, 'delete'])->name('admin.employee.delete');
+        Route::get('/employee/id-card', [EmployeeController::class, 'idCard'])->name('admin.employee.id-card');
+        Route::get('/employee/profile-pdf', [EmployeeController::class, 'profilePdf'])->name('admin.employee.profile-pdf');
+
+        // 3rd layer accounts of a 2nd layer group (JSON, used by the account dropdowns)
+        Route::get('/chart-of-accounts/ledgers', [ChartOfAccountController::class, 'ledgers'])->name('admin.coa.ledgers');
+
+
+
+
+
+        //common routes
+        Route::get('/getCoaChilds', [ChartOfAccountController::class, 'getCoaChilds'])->name('admin.getCoaChilds');
 
     });
 });

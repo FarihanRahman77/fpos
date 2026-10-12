@@ -14,6 +14,7 @@ use App\Models\Admin\ProductVariant;
 use App\Models\Admin\Stock;
 use App\Models\Admin\Party;
 use App\Models\Admin\Payment;
+use App\Models\Admin\ChartOfAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -23,10 +24,11 @@ use PDF;
 use Exception;
 use App\Traits\PartyDueTrait;
 use App\Traits\PaymentTrait;
+use App\Traits\SequentialCodeTrait;
 
 class SaleController extends Controller
 {
-    use PartyDueTrait, PaymentTrait;
+    use PartyDueTrait, PaymentTrait, SequentialCodeTrait;
     /*
     |--------------------------------------------------------------------------
     | Sales Index / List Page
@@ -70,8 +72,9 @@ class SaleController extends Controller
             ->where('status', 'Active')
             ->orderBy('name')
             ->get();
-
-        return view('admin.inventory.sale.create', compact('sale_type', 'party_type', 'customers', 'products'));
+        $coa=ChartOfAccount::where('slug','liquid-asset')->where('deleted','No')->first();
+        $childCoas=ChartOfAccount::where('deleted','No')->where('parent_id',$coa->id)->get();
+        return view('admin.inventory.sale.create', compact('sale_type', 'party_type', 'customers', 'products','childCoas'));
     }
 
     /*
@@ -86,10 +89,12 @@ class SaleController extends Controller
 
             $query = DB::table('sales')
                 ->leftJoin('parties', 'parties.id', '=', 'sales.customer_id')
+                ->leftJoin('chart_of_accounts', 'chart_of_accounts.id', '=', 'sales.payment_method_account')
                 ->select(
                     'sales.*',
                     'parties.name as customer_name',
-                    'parties.phone as customer_phone'
+                    'parties.phone as customer_phone',
+                    'chart_of_accounts.account_name'
                 )
                 ->where('sales.deleted', 'No');
 
@@ -126,7 +131,7 @@ class SaleController extends Controller
                     <td class="text-end fw-bold">' . number_format((float) $row->grand_total, 2, '.', '') . '</td>
                     <td class="text-end text-success">' . number_format((float) $row->paid_amount, 2, '.', '') . '</td>
                     <td class="text-end ' . ((float)$row->due_amount > 0 ? 'text-danger fw-bold' : '') . '">' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
-                    <td class="text-center">' . e($row->payment_method ?? 'Cash') . '</td>
+                    <td class="text-center">' . e($row->account_name ?? '-') . '</td>
                     <td class="text-center">
                         <div class="dropdown">
                             <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -398,8 +403,13 @@ class SaleController extends Controller
 
             'payment_method' => [
                 'nullable',
-                'string',
-                'max:100'
+                'integer',
+                'exists:chart_of_accounts,id'
+            ],
+            'payment_method_account' => [
+                'nullable',
+                'integer',
+                'exists:chart_of_accounts,id'
             ],
 
             'items' => 'required|array|min:1',
@@ -537,9 +547,7 @@ class SaleController extends Controller
             $dueAmount = $grandTotal - $paidAmount;
 
             // Generate Invoice No: INV-XXXXXX
-            $last = Sale::max('invoice_no');
-            $next = $last ? ((int) preg_replace('/[^0-9]/', '', $last)) + 1 : 1;
-            $invoiceNo = 'INV-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+            $invoiceNo = $this->nextSequentialCode(Sale::class, 'invoice_no', 'INV');
 
             // Create Sale
             $sale = new Sale();
@@ -554,7 +562,8 @@ class SaleController extends Controller
             $sale->grand_total      = round($grandTotal, 2);
             $sale->paid_amount      = round($paidAmount, 2);
             $sale->due_amount       = round($dueAmount, 2);
-            $sale->payment_method   = $request->payment_method ?: 'Cash';
+            $sale->payment_method   = $request->payment_method ?: null;
+            $sale->payment_method_account   = $request->payment_method_account ?: null;
             $sale->remarks          = $request->remarks;
             $sale->deleted          = 'No';
             $sale->status           = 'Active';
@@ -563,6 +572,8 @@ class SaleController extends Controller
             $sale->save();
 
             // Save Sale Items & Deduct Stock
+            $purchasePrices = Product::whereIn('id', array_column($items, 'product_id'))->pluck('purchase_price', 'id');
+
             foreach ($items as $item) {
                 $qty = (float) $item['qty'];
                 $price = (float) $item['sale_price'];
@@ -580,7 +591,7 @@ class SaleController extends Controller
                 $saleItem->product_variant_id = !empty($item['product_variant_id']) ? $item['product_variant_id'] : null;
                 $saleItem->qty                = $qty;
                 $saleItem->sale_price         = $price;
-                $saleItem->purchase_price     = (float) (Product::find($item['product_id'])->purchase_price ?? 0);
+                $saleItem->purchase_price     = (float) ($purchasePrices[$item['product_id']] ?? 0);
                 $saleItem->discount_type      = $dType;
                 $saleItem->discount_value     = $dVal;
                 $saleItem->discount_amount    = $itemDisc;
@@ -623,7 +634,8 @@ class SaleController extends Controller
                     'datetime'       => $paymentDateTime,
                     'credit'         => $grandTotal,
                     'sale_id'        => $sale->id,
-                    'payment_method' => $paymentMethod,
+                    'payment_method' => '',
+                    'payment_method_account' => '',
                 ]);
             }
 
@@ -635,7 +647,8 @@ class SaleController extends Controller
                     'datetime'       => $paymentDateTime,
                     'debit'          => $paidAmount,
                     'sale_id'        => $sale->id,
-                    'payment_method' => $paymentMethod,
+                    'payment_method' => $request->payment_method,
+                    'payment_method_account' => $request->payment_method_account,
                 ]);
             }
 
@@ -966,9 +979,7 @@ class SaleController extends Controller
             }
 
             // Generate Return No: SR-XXXXXX
-            $last = SaleReturn::max('return_no');
-            $next = $last ? ((int) preg_replace('/[^0-9]/', '', $last)) + 1 : 1;
-            $returnNo = 'SR-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+            $returnNo = $this->nextSequentialCode(SaleReturn::class, 'return_no', 'SR');
 
             $saleReturn = new SaleReturn();
             $saleReturn->return_no       = $returnNo;
@@ -1026,7 +1037,8 @@ class SaleController extends Controller
             // Adjust Customer Balance via PaymentTrait
             if ($subtotal > 0) {
                 $partyType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
-                $returnPaymentType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Sale Return' : 'Wholesale Sale Return';
+                // Must match the payments.payment_type enum values.
+                $returnPaymentType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Sale Return' : 'Wholesale Return';
 
                 $this->storeDebitPayment([
                     'party_id'       => $sale->customer_id,
@@ -1035,7 +1047,6 @@ class SaleController extends Controller
                     'datetime'       => $request->datetime ?: (date('Y-m-d H:i:s')),
                     'debit'          => $subtotal,
                     'sale_return_id' => $saleReturn->id,
-                    'payment_method' => 'Cash',
                 ]);
             }
 
@@ -1176,8 +1187,9 @@ class SaleController extends Controller
             ->where('status', 'Active')
             ->orderBy('name')
             ->get();
-
-        return view('admin.inventory.sale_order.create', compact('party_type', 'customers', 'products'));
+        $coa=ChartOfAccount::where('slug','liquid-asset')->where('deleted','No')->first();
+        $childCoas=ChartOfAccount::where('deleted','No')->where('parent_id',$coa->id)->get();
+        return view('admin.inventory.sale_order.create', compact('party_type', 'customers', 'products','childCoas'));
     }
 
     /*
@@ -1325,6 +1337,9 @@ class SaleController extends Controller
             'advance_paid'   => 'nullable|numeric|min:0',
             'remarks'        => 'nullable|string',
 
+            'payment_method' => 'nullable|numeric',
+            'payment_method_account' => 'nullable|numeric',
+
             'items'                      => 'required|array|min:1',
             'items.*.product_id'         => 'required|integer|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer',
@@ -1386,9 +1401,7 @@ class SaleController extends Controller
             $dueAmount = max(0, $grandTotal - $advancePaid);
 
             // Order No: SO-XXXXXX
-            $last    = SaleOrder::max('order_no');
-            $next    = $last ? ((int) preg_replace('/[^0-9]/', '', $last)) + 1 : 1;
-            $orderNo = 'SO-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+            $orderNo = $this->nextSequentialCode(SaleOrder::class, 'order_no', 'SO');
 
             // Create order
             $order = new SaleOrder();
@@ -1445,7 +1458,8 @@ class SaleController extends Controller
                 $orderItem->save();
             }
             $paymentDateTime = $request->order_date . ' ' . date('H:i:s');
-            $paymentMethod = $request->payment_method ?: 'Cash';
+            $paymentMethod = $request->payment_method ?: '';
+            $paymentMethodAccount = $request->payment_method_account ?: '';
 
             if ($grandTotal > 0) {
                 $this->storeCreditPayment([
@@ -1455,7 +1469,8 @@ class SaleController extends Controller
                     'datetime'       => $paymentDateTime,
                     'credit'         => $grandTotal,
                     'order_id'       => $order->id,
-                    'payment_method' => $paymentMethod,
+                    'payment_method' => null,
+                    'payment_method_account' => null,
                 ]);
             }
 
@@ -1463,11 +1478,12 @@ class SaleController extends Controller
                 $this->storeDebitPayment([
                     'party_id'       => $request->customer_id,
                     'party_type'     => 'Customer',
-                    'payment_type'   => 'Sale Order Advance Receive',
+                    'payment_type'   => 'Sale Order Payment Receive',
                     'datetime'       => $paymentDateTime,
                     'debit'          => $advancePaid,
                     'order_id'       => $order->id,
                     'payment_method' => $paymentMethod,
+                    'payment_method_account' => $paymentMethodAccount,
                 ]);
             }
             DB::commit();
@@ -2268,7 +2284,7 @@ class SaleController extends Controller
             'Supplier'         => 'SUP',
         ];
         $prefix = $prefixes[$type] ?? 'WIC';
-        $next = (Party::max('id') ?? 0) + 1;
+        $next = (Party::lockForUpdate()->max('id') ?? 0) + 1;
 
         return $prefix . '-' . str_pad($next, 5, '0', STR_PAD_LEFT);
     }

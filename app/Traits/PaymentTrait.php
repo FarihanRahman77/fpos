@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Models\Admin\Payment;
+use App\Models\Admin\ChartOfAccount;
 use Carbon\Carbon;
 use Exception;
 
@@ -16,8 +17,12 @@ trait PaymentTrait
      */
     public function generatePaymentCode(int $offset = 0): string
     {
-        $lastPayment = Payment::max('code');
-        $nextP = $lastPayment ? ((int) preg_replace('/[^0-9]/', '', $lastPayment)) + 1 : 1;
+        // Locked read: callers run inside a DB transaction, so concurrent saves wait instead of colliding.
+        $lastPayment = Payment::where('code', 'like', 'VO-%')->lockForUpdate()->max('code');
+        $nextP = 1;
+        if ($lastPayment && preg_match('/^VO-(\d+)/', $lastPayment, $m)) {
+            $nextP = ((int) $m[1]) + 1;
+        }
         $nextP += $offset;
 
         return 'VO-' . str_pad($nextP, 6, '0', STR_PAD_LEFT);
@@ -56,15 +61,21 @@ trait PaymentTrait
         $payment->purchase_return_id = $data['purchase_return_id'] ?? null;
         $payment->expense_id         = $data['expense_id'] ?? null;
         $payment->bill_id            = $data['bill_id'] ?? null;
+        if (!empty($data['bill_payment_id'])) {
+            $payment->bill_payment_id = $data['bill_payment_id'];
+        }
         $payment->order_id           = $data['order_id'] ?? null;
 
-        // Payment method details
-        $payment->payment_method            = $data['payment_method'] ?? 'Cash';
-        $payment->payment_method_id         = $data['payment_method_id'] ?? null;
-        $payment->payment_method_source     = $data['payment_method_source'] ?? null;
-        $payment->payment_method_source_id  = $data['payment_method_source_id'] ?? null;
-        $payment->payment_method_account    = $data['payment_method_account'] ?? null;
-        $payment->payment_method_account_id = $data['payment_method_account_id'] ?? null;
+        // Payment method details (chart_of_accounts ids; *_id columns are integers)
+        if(!empty($data['payment_method']) && ctype_digit((string) $data['payment_method'])){
+            $payment->payment_method            = $this->getCoaName($data['payment_method']) ?? '';
+            $payment->payment_method_id         = $data['payment_method'];
+        }
+
+        if(!empty($data['payment_method_account']) && ctype_digit((string) $data['payment_method_account'])){
+            $payment->payment_method_account    = $this->getCoaName($data['payment_method_account']) ?? '';
+            $payment->payment_method_account_id = $data['payment_method_account'];
+        }
 
         $payment->remarks          = $data['remarks'] ?? null;
         $payment->status           = $data['status'] ?? 'Active';
@@ -126,6 +137,17 @@ trait PaymentTrait
                 'updated_datetime' => now(),
                 'deleted_datetime' => now(),
             ]);
+    }
+
+    public function getCoaName($id){
+        if (empty($id)) {
+            return '';
+        }
+        $coa = ChartOfAccount::where('id', $id)
+            ->where('deleted', 'No')
+            ->where('status', 'Active')
+            ->first();
+        return $coa ? $coa->account_name : '';
     }
 }
 
