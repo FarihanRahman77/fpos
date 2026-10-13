@@ -2582,3 +2582,413 @@ html[data-theme="dark"] .chart-bars {
     animation-duration: 0.01ms;
   }
 }
+
+/* ==========================================================================
+   Dropdowns & form widgets: consistent look, readable in dark mode
+   ========================================================================== */
+
+/* --- Select2 "bootstrap-5" theme ----------------------------------------
+   Several pages call select2({ theme: 'bootstrap-5' }) but that theme's
+   stylesheet is not loaded, so those widgets fell back to bare, white
+   library styles. Give them the same look as the themed default. */
+.select2-container--bootstrap-5 .select2-selection {
+  min-height: 38px;
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+}
+
+.select2-container--bootstrap-5 .select2-selection--single {
+  height: 38px;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+  padding-left: 12px;
+  padding-right: 34px;
+  line-height: 36px;
+  color: var(--admin-text);
+}
+
+.select2-container--bootstrap-5 .select2-selection__placeholder {
+  color: var(--admin-muted);
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+  position: absolute;
+  top: 0;
+  right: 8px;
+  width: 20px;
+  height: 36px;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow b {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin: -2px 0 0 -4px;
+  border-style: solid;
+  border-width: 5px 4px 0;
+  border-color: var(--admin-muted) transparent transparent;
+}
+
+.select2-container--bootstrap-5.select2-container--open .select2-selection--single .select2-selection__arrow b {
+  border-width: 0 4px 5px;
+  border-color: transparent transparent var(--admin-muted);
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__clear {
+  float: right;
+  height: 36px;
+  margin-right: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--admin-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.select2-container--bootstrap-5.select2-container--focus .select2-selection,
+.select2-container--bootstrap-5.select2-container--open .select2-selection {
+  border-color: #93c5fd;
+  box-shadow: var(--admin-ring);
+}
+
+.select2-container--bootstrap-5.select2-container--disabled .select2-selection {
+  background: var(--admin-surface-soft);
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.select2-container--bootstrap-5 .select2-dropdown {
+  border: 1px solid var(--admin-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown {
+  padding: 6px;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+  padding: 6px 8px;
+  border: 1px solid var(--admin-border);
+  border-radius: 5px;
+  outline: 0;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+}
+
+.select2-container--bootstrap-5 .select2-results > .select2-results__options {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.select2-container--bootstrap-5 .select2-results__option {
+  padding: 7px 12px;
+  color: var(--admin-text);
+}
+
+.select2-container--bootstrap-5 .select2-results__group {
+  display: block;
+  padding: 6px 12px 4px;
+  color: var(--admin-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* --- Select2 option states (both themes) --- */
+.select2-container--bootstrap-5 .select2-results__option--highlighted,
+.select2-container--bootstrap-5 .select2-results__option--highlighted[aria-selected] {
+  background: #f6eed9;
+  color: #302716;
+}
+
+.select2-container--default .select2-results__option[aria-selected="true"],
+.select2-container--default .select2-results__option--selected,
+.select2-container--bootstrap-5 .select2-results__option[aria-selected="true"],
+.select2-container--bootstrap-5 .select2-results__option--selected {
+  background: var(--admin-surface-soft);
+  color: var(--admin-text);
+  font-weight: 600;
+}
+
+.select2-results__option[aria-disabled="true"],
+.select2-results__option--disabled {
+  color: var(--admin-muted) !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color: var(--admin-muted);
+}
+
+/* --- Dark mode ---------------------------------------------------------- */
+
+/* Select2: highlighted / selected / chips / disabled were near-white. */
+html[data-theme="dark"] .select2-container--bootstrap-5 .select2-results__option--highlighted,
+html[data-theme="dark"] .select2-container--bootstrap-5 .select2-results__option--highlighted[aria-selected],
+html[data-theme="dark"] .select2-container--default .select2-results__option--highlighted[aria-selected] {
+  background: #3b3425;
+  color: #f7f2e6;
+}
+
+html[data-theme="dark"] .select2-container--default .select2-results__option[aria-selected="true"],
+html[data-theme="dark"] .select2-container--default .select2-results__option--selected,
+html[data-theme="dark"] .select2-container--bootstrap-5 .select2-results__option[aria-selected="true"],
+html[data-theme="dark"] .select2-container--bootstrap-5 .select2-results__option--selected {
+  background: #2a313b;
+  color: #f0cf7b;
+}
+
+html[data-theme="dark"] .select2-container--default .select2-selection--multiple .select2-selection__choice {
+  border-color: var(--admin-border);
+  background: #2a313b;
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+  border-color: var(--admin-border);
+  color: var(--admin-muted);
+}
+
+html[data-theme="dark"] .select2-container--default.select2-container--disabled .select2-selection--single,
+html[data-theme="dark"] .select2-container--default.select2-container--disabled .select2-selection--multiple {
+  background: var(--admin-surface-soft);
+}
+
+html[data-theme="dark"] .select2-container--default .select2-selection--single .select2-selection__arrow b {
+  border-top-color: var(--admin-muted);
+}
+
+html[data-theme="dark"] .select2-container--default.select2-container--open .select2-selection--single .select2-selection__arrow b {
+  border-top-color: transparent;
+  border-bottom-color: var(--admin-muted);
+}
+
+/* Bootstrap dropdown menus (incl. the table Action menus): visible hover. */
+html[data-theme="dark"] .dropdown-menu {
+  border-color: var(--admin-border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme="dark"] .dropdown-item:hover,
+html[data-theme="dark"] .dropdown-item:focus {
+  background-color: #2a313b;
+}
+
+html[data-theme="dark"] .dropdown-item.active,
+html[data-theme="dark"] .dropdown-item:active {
+  background-color: #3b3425;
+  color: #f7f2e6;
+}
+
+html[data-theme="dark"] .dropdown-item.text-danger:hover,
+html[data-theme="dark"] .dropdown-item.text-danger:focus {
+  background-color: rgba(240, 128, 120, 0.14);
+}
+
+html[data-theme="dark"] .dropdown-divider {
+  border-color: var(--admin-border);
+}
+
+/* Native <select> lists and fields. */
+html[data-theme="dark"] select option,
+html[data-theme="dark"] select optgroup {
+  background-color: var(--admin-surface);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .form-control[readonly],
+html[data-theme="dark"] .form-control:disabled,
+html[data-theme="dark"] .form-select:disabled {
+  background-color: var(--admin-surface-soft);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .form-control::placeholder,
+html[data-theme="dark"] .select2-search__field::placeholder {
+  color: #7d8592;
+}
+
+/* Page-level panels that had light backgrounds hard-coded
+   (Accounts pages, Expense, Chart of Accounts, Employees). */
+html[data-theme="dark"] .acc-section,
+html[data-theme="dark"] .exp-section,
+html[data-theme="dark"] .coa-preview,
+html[data-theme="dark"] .doc-file,
+html[data-theme="dark"] .photo-box,
+html[data-theme="dark"] .sign-box {
+  border-color: var(--admin-border);
+  background: var(--admin-surface-soft);
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .doc-card {
+  border-color: var(--admin-border);
+  background: var(--admin-surface);
+}
+
+html[data-theme="dark"] .acc-table thead th,
+html[data-theme="dark"] #expenseTable thead th,
+html[data-theme="dark"] #coaTable thead th {
+  background: var(--admin-surface-soft);
+  color: var(--admin-muted);
+}
+
+html[data-theme="dark"] #coaTable tbody tr:hover {
+  background: #222831;
+}
+
+html[data-theme="dark"] .coa-code {
+  background: #2a313b;
+  color: var(--admin-text);
+}
+
+html[data-theme="dark"] .acc-stat .icon,
+html[data-theme="dark"] .exp-stat .icon,
+html[data-theme="dark"] .coa-stat .icon,
+html[data-theme="dark"] .coa-layer-1,
+html[data-theme="dark"] .coa-layer-2,
+html[data-theme="dark"] .coa-layer-3 {
+  filter: brightness(0.75) saturate(1.2);
+}
+
+html[data-theme="dark"] .emp-initial {
+  background: #2a313b;
+  color: #f0cf7b;
+}
+
+/* --- Select2 dropdown panel: friendlier look (all themes, light + dark) --- */
+.select2-container .select2-dropdown {
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  box-shadow: var(--admin-shadow-lg);
+  overflow: hidden;
+}
+
+/* small gap between the field and the list */
+.select2-container--open .select2-dropdown--below {
+  margin-top: 4px;
+  border-top: 1px solid var(--admin-border);
+  border-radius: 10px;
+}
+
+.select2-container--open .select2-dropdown--above {
+  margin-top: -4px;
+  border-bottom: 1px solid var(--admin-border);
+  border-radius: 10px;
+}
+
+.select2-container--open .select2-selection {
+  border-radius: 6px !important;
+}
+
+/* search box with a magnifier icon */
+.select2-container .select2-search--dropdown {
+  position: relative;
+  padding: 8px 8px 4px;
+}
+
+.select2-container .select2-search--dropdown::before {
+  content: "\f002";
+  position: absolute;
+  top: 50%;
+  left: 19px;
+  margin-top: 2px;
+  transform: translateY(-50%);
+  color: var(--admin-muted);
+  font-family: "Font Awesome 6 Free";
+  font-size: 0.8rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.select2-container .select2-search--dropdown .select2-search__field {
+  height: 36px;
+  padding: 6px 10px 6px 32px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--admin-surface-soft);
+  color: var(--admin-text);
+}
+
+.select2-container .select2-search--dropdown .select2-search__field:focus {
+  border-color: #93c5fd;
+  box-shadow: var(--admin-ring);
+}
+
+/* options: roomy, rounded, clear hover */
+.select2-container .select2-results > .select2-results__options {
+  max-height: 260px;
+  padding: 4px 6px 6px;
+  overflow-y: auto;
+}
+
+.select2-container .select2-results__option {
+  position: relative;
+  margin: 1px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--admin-text);
+  line-height: 1.35;
+}
+
+/* selected option: tick on the right */
+.select2-container .select2-results__option[aria-selected="true"],
+.select2-container .select2-results__option--selected {
+  padding-right: 32px;
+}
+
+.select2-container .select2-results__option[aria-selected="true"]::after,
+.select2-container .select2-results__option--selected::after {
+  content: "\f00c";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--admin-primary);
+  font-family: "Font Awesome 6 Free";
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.select2-container .select2-results__group {
+  padding: 8px 12px 4px;
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.select2-container .select2-results__option .select2-results__option {
+  padding-left: 20px;
+}
+
+.select2-container .select2-results__message {
+  color: var(--admin-muted);
+  font-style: italic;
+}
+
+/* thin scrollbar that matches the theme */
+.select2-results__options::-webkit-scrollbar {
+  width: 8px;
+}
+
+.select2-results__options::-webkit-scrollbar-thumb {
+  border: 2px solid var(--admin-surface);
+  border-radius: 8px;
+  background: var(--admin-border);
+}
+
+.select2-results__options {
+  scrollbar-color: var(--admin-border) transparent;
+  scrollbar-width: thin;
+}

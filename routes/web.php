@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\JournalController;
 use App\Http\Controllers\Admin\BillController;
 use App\Http\Controllers\Admin\AmountTransferController;
 use App\Http\Controllers\Admin\EmployeeController;
+use App\Http\Controllers\Admin\ReportController;
 
 
 
@@ -440,6 +441,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/employee/delete', [EmployeeController::class, 'delete'])->name('admin.employee.delete');
         Route::get('/employee/id-card', [EmployeeController::class, 'idCard'])->name('admin.employee.id-card');
         Route::get('/employee/profile-pdf', [EmployeeController::class, 'profilePdf'])->name('admin.employee.profile-pdf');
+
+        // Reports
+        Route::get('/reports/stock-ledger', [ReportController::class, 'stockLedger'])->name('admin.reports.stock-ledger');
+        Route::get('/reports/stock-ledger/data', [ReportController::class, 'stockLedgerData'])->name('admin.reports.stock-ledger.data');
+        Route::get('/reports/stock-ledger/pdf', [ReportController::class, 'stockLedgerPdf'])->name('admin.reports.stock-ledger.pdf');
+        Route::get('/reports/stock-ledger/excel', [ReportController::class, 'stockLedgerExcel'])->name('admin.reports.stock-ledger.excel');
 
         // 3rd layer accounts of a 2nd layer group (JSON, used by the account dropdowns)
         Route::get('/chart-of-accounts/ledgers', [ChartOfAccountController::class, 'ledgers'])->name('admin.coa.ledgers');

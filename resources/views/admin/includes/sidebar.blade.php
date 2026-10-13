@@ -442,6 +442,27 @@
                 </ul>
             </li>
 
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
+                    aria-controls="reportsSubmenu">
+                    <span class="nav-icon">
+                        <i class="bi bi-bar-chart-line"></i>
+                    </span>
+                    <span class="nav-text">Reports</span>
+                    <span class="ms-auto">
+                        <i class="bi bi-chevron-down submenu-arrow"></i>
+                    </span>
+                </button>
+                <ul class="nav flex-column submenu" id="reportsSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.stock-ledger') }}">
+                            <span class="nav-icon"><i class="bi bi-journal-text"></i></span>
+                            <span class="nav-text">Stock Ledger</span>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
 
             {{-- Profile --}}
             <li class="nav-item">

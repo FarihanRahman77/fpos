@@ -1759,11 +1759,8 @@ class PurchaseController extends Controller
                 $stock->date =
                     $request->return_date;
 
-                if (isset($stock->reference_type)) {
-
-                    $stock->reference_type =
-                        'Purchase Return';
-                }
+                $stock->reference_type = 'Purchase Return';
+                $stock->reference_id = $purchaseReturn->id;
 
                 $stock->created_by =
                     auth()->id();

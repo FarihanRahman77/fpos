@@ -8,7 +8,7 @@
 </script>
 
 <script src="{{ asset('backend/js/bootstrap.bundle.min.js') }}"></script>
-<script src="{{ asset('backend/js/main.js') }}"></script>
+<script src="{{ asset('backend/js/main.js') }}?v={{ filemtime(public_path('backend/js/main.js')) }}"></script>
 
 <link rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
