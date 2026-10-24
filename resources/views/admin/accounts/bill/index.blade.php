@@ -11,7 +11,7 @@
         <div class="d-flex align-items-center mb-3">
             <div>
                 <h4 class="mb-0">Bills</h4>
-                <small class="text-muted">Supplier bills for services and expenses, paid now or later from a Liquid Asset account.</small>
+                <small class="text-muted">Supplier  bills for services and expenses, paid now or later from a Liquid Asset account.</small>
             </div>
             <div class="ms-auto d-flex gap-2">
                 <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
