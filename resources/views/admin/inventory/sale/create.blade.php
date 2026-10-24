@@ -489,7 +489,15 @@
 
         $('#productSearch').on('change', function() {
             var product_id = $(this).val();
+
+            if (!product_id) {
+                return;
+            }
+
             addProduct(product_id);
+
+            // Reset (UI only) so the same product can be selected again
+            $(this).val('').trigger('change.select2');
         });
 
 
@@ -537,11 +545,21 @@
 
                     if (variants.length > 0) {
 
-                        let variant = variants[0];
+                        // Pick the first variant not already in the cart,
+                        // otherwise fall back to the first one.
+                        let variant = variants.find(function(v) {
+
+                            return !saleItems.some(function(item) {
+                                return parseInt(item.product_id) === parseInt(product.id) &&
+                                    String(item.product_variant_id || '') === String(v.id);
+                            });
+
+                        }) || variants[0];
 
                         addSaleItem(
                             product,
-                            variant
+                            variant,
+                            variants
                         );
 
                     } else {
@@ -569,13 +587,13 @@
         }
 
 
-        function addSaleItem(product, variant) {
+        function addSaleItem(product, variant, variants) {
 
             let variantId = variant ? variant.id : '';
 
             let stock = variant ?
-                parseFloat(variant.stock || 0) :
-                parseFloat(product.stock || 0);
+                parseFloat(variant.current_stock || 0) :
+                parseFloat(product.current_stock || 0);
 
             let salePrice = variant ?
                 parseFloat(
@@ -616,6 +634,10 @@
                             '-'
                         ) :
                         '-',
+
+                    variants: variants || [],
+
+                    product_sale_price: parseFloat(product.sale_price || 0),
 
                     stock: stock,
 
@@ -685,7 +707,19 @@
 
                 let variantHtml = '';
 
-                if (item.product_variant_id) {
+                if (item.variants && item.variants.length > 0) {
+
+                    variantHtml =
+                        `<select class="form-select form-select-sm itemVariant" data-index="${index}">` +
+                        item.variants.map(function(v) {
+                            return `<option value="${v.id}"
+                                ${String(v.id) === String(item.product_variant_id) ? 'selected' : ''}>
+                                ${escapeHtml(v.attribute_name || v.variant_name || 'Variant #' + v.id)}
+                            </option>`;
+                        }).join('') +
+                        `</select>`;
+
+                } else if (item.product_variant_id) {
 
                     variantHtml = `
                 <span class="badge bg-info">
@@ -835,6 +869,65 @@
             );
 
         }
+
+
+        $(document).on('change', '.itemVariant', function() {
+
+            let index = $(this).data('index');
+
+            let item = saleItems[index];
+
+            if (!item) {
+                return;
+            }
+
+            let variantId = String($(this).val());
+
+            let variant = item.variants.find(function(v) {
+                return String(v.id) === variantId;
+            });
+
+            if (!variant) {
+                return;
+            }
+
+            let duplicate = saleItems.some(function(other, i) {
+                return i !== index &&
+                    parseInt(other.product_id) === parseInt(item.product_id) &&
+                    String(other.product_variant_id || '') === variantId;
+            });
+
+            if (duplicate) {
+
+                toastr.warning('This variant is already in the cart.');
+
+                renderCart();
+
+                return;
+
+            }
+
+            item.product_variant_id = variant.id;
+
+            item.variant_name = variant.attribute_name || variant.variant_name || '-';
+
+            item.stock = parseFloat(variant.current_stock || 0);
+
+            item.sale_price = parseFloat(
+                variant.sale_price ?? item.product_sale_price ?? 0
+            );
+
+            if (parseFloat(item.qty || 0) > item.stock) {
+
+                toastr.warning('Quantity adjusted to available stock.');
+
+                item.qty = item.stock;
+
+            }
+
+            renderCart();
+
+        });
 
 
         $(document).on('input change',
@@ -1009,7 +1102,14 @@
 
             data.push({
                 name: 'items',
-                value: JSON.stringify(saleItems)
+                value: JSON.stringify(saleItems.map(function(item) {
+                    let {
+                        variants,
+                        product_sale_price,
+                        ...rest
+                    } = item;
+                    return rest;
+                }))
             });
 
 

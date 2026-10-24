@@ -439,6 +439,12 @@
                             <span class="nav-text">Employees</span>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payroll-setup.index') }}">
+                            <span class="nav-icon"><i class="bi bi-diagram-3"></i></span>
+                            <span class="nav-text">Payroll Setup</span>
+                        </a>
+                    </li>
                 </ul>
             </li>
 
@@ -458,6 +464,24 @@
                         <a class="nav-link" href="{{ route('admin.reports.stock-ledger') }}">
                             <span class="nav-icon"><i class="bi bi-journal-text"></i></span>
                             <span class="nav-text">Stock Ledger</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.party-ledger', 'customer') }}">
+                            <span class="nav-icon"><i class="bi bi-person-lines-fill"></i></span>
+                            <span class="nav-text">Customer Ledger</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.party-ledger', 'supplier') }}">
+                            <span class="nav-icon"><i class="bi bi-truck"></i></span>
+                            <span class="nav-text">Supplier Ledger</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.transaction-ledger') }}">
+                            <span class="nav-icon"><i class="bi bi-arrow-left-right"></i></span>
+                            <span class="nav-text">Transactions Ledger</span>
                         </a>
                     </li>
                 </ul>

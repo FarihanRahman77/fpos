@@ -79,6 +79,87 @@ class SaleController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | POS Page (Walk-In sale with product grid, saved via store())
+    |--------------------------------------------------------------------------
+    */
+    public function pos()
+    {
+        $stockSubQuery = DB::table('stocks')
+            ->select('product_id', DB::raw('SUM(in_qty) - SUM(out_qty) as current_stock'))
+            ->where('deleted', 'No')
+            ->groupBy('product_id');
+
+        $variantSubQuery = DB::table('product_variants')
+            ->select('product_id', DB::raw('COUNT(*) as variant_count'))
+            ->where('deleted', 'No')
+            ->where('status', 'Active')
+            ->groupBy('product_id');
+
+        $products = DB::table('products as p')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('brands as b', 'b.id', '=', 'p.brand_id')
+            ->leftJoinSub($stockSubQuery, 'stock_data', function ($join) {
+                $join->on('stock_data.product_id', '=', 'p.id');
+            })
+            ->leftJoinSub($variantSubQuery, 'variant_data', function ($join) {
+                $join->on('variant_data.product_id', '=', 'p.id');
+            })
+            ->select(
+                'p.id',
+                'p.name',
+                'p.sku',
+                'p.barcode',
+                'p.image',
+                'p.sale_price',
+                'p.category_id',
+                'c.name as category_name',
+                'p.brand_id',
+                'b.name as brand_name',
+                DB::raw('COALESCE(stock_data.current_stock, 0) as current_stock'),
+                DB::raw('COALESCE(variant_data.variant_count, 0) as variant_count')
+            )
+            ->where('p.deleted', 'No')
+            ->where('p.status', 'Active')
+            ->orderBy('p.name')
+            ->get()
+            ->map(function ($product) {
+                $product->image_url     = $product->image ? asset('uploads/products/' . $product->image) : null;
+                $product->sale_price    = (float) $product->sale_price;
+                $product->current_stock = (float) $product->current_stock;
+                $product->variant_count = (int) $product->variant_count;
+                return $product;
+            });
+
+        $categories = $products->whereNotNull('category_id')
+            ->unique('category_id')
+            ->map(fn ($p) => ['id' => $p->category_id, 'name' => $p->category_name])
+            ->sortBy('name')
+            ->values();
+
+        $brands = $products->whereNotNull('brand_id')
+            ->unique('brand_id')
+            ->map(fn ($p) => ['id' => $p->brand_id, 'name' => $p->brand_name])
+            ->sortBy('name')
+            ->values();
+
+        // Variant barcode => product lookup for scanner input
+        $variantBarcodes = DB::table('product_variants')
+            ->where('deleted', 'No')
+            ->where('status', 'Active')
+            ->whereNotNull('barcode')
+            ->where('barcode', '!=', '')
+            ->pluck('product_id', 'barcode');
+
+        $coa = ChartOfAccount::where('slug', 'liquid-asset')->where('deleted', 'No')->first();
+        $childCoas = $coa
+            ? ChartOfAccount::where('deleted', 'No')->where('parent_id', $coa->id)->get()
+            : collect();
+
+        return view('admin.inventory.sale.pos', compact('products', 'categories', 'brands', 'variantBarcodes', 'childCoas'));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Sales AJAX List
     |--------------------------------------------------------------------------
     */

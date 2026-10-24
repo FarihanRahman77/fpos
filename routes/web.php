@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\JournalController;
 use App\Http\Controllers\Admin\BillController;
 use App\Http\Controllers\Admin\AmountTransferController;
 use App\Http\Controllers\Admin\EmployeeController;
+use App\Http\Controllers\Admin\PayrollSetupController;
 use App\Http\Controllers\Admin\ReportController;
 
 
@@ -294,6 +295,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/sales/create', [SaleController::class, 'create'])
             ->name('sales.create');
 
+        Route::get('/sales/pos', [SaleController::class, 'pos'])
+            ->name('sales.pos');
+
         Route::get('/sales/list', [SaleController::class, 'list'])
             ->name('sales.list');
 
@@ -441,12 +445,35 @@ Route::middleware('auth')->group(function () {
         Route::get('/employee/delete', [EmployeeController::class, 'delete'])->name('admin.employee.delete');
         Route::get('/employee/id-card', [EmployeeController::class, 'idCard'])->name('admin.employee.id-card');
         Route::get('/employee/profile-pdf', [EmployeeController::class, 'profilePdf'])->name('admin.employee.profile-pdf');
+        Route::get('/employee/steps', [EmployeeController::class, 'steps'])->name('admin.employee.steps');
+
+        // Payroll setup: departments, designations, pay grades, steps (one page, tabbed)
+        Route::get('/payroll-setup', [PayrollSetupController::class, 'index'])->name('admin.payroll-setup.index');
+        Route::prefix('/payroll-setup/{type}')->whereIn('type', ['departments', 'designations', 'grades', 'steps'])
+            ->name('admin.payroll-setup.')->group(function () {
+                Route::get('/list', [PayrollSetupController::class, 'list'])->name('list');
+                Route::get('/options', [PayrollSetupController::class, 'options'])->name('options');
+                Route::get('/edit/{id}', [PayrollSetupController::class, 'edit'])->name('edit');
+                Route::post('/save', [PayrollSetupController::class, 'save'])->name('save');
+                Route::post('/status/{id}', [PayrollSetupController::class, 'status'])->name('status');
+                Route::post('/delete/{id}', [PayrollSetupController::class, 'delete'])->name('delete');
+            });
 
         // Reports
         Route::get('/reports/stock-ledger', [ReportController::class, 'stockLedger'])->name('admin.reports.stock-ledger');
         Route::get('/reports/stock-ledger/data', [ReportController::class, 'stockLedgerData'])->name('admin.reports.stock-ledger.data');
         Route::get('/reports/stock-ledger/pdf', [ReportController::class, 'stockLedgerPdf'])->name('admin.reports.stock-ledger.pdf');
         Route::get('/reports/stock-ledger/excel', [ReportController::class, 'stockLedgerExcel'])->name('admin.reports.stock-ledger.excel');
+        Route::get('/reports/transaction-ledger', [ReportController::class, 'transactionLedger'])->name('admin.reports.transaction-ledger');
+        Route::get('/reports/transaction-ledger/data', [ReportController::class, 'transactionLedgerData'])->name('admin.reports.transaction-ledger.data');
+        Route::get('/reports/transaction-ledger/pdf', [ReportController::class, 'transactionLedgerPdf'])->name('admin.reports.transaction-ledger.pdf');
+        Route::get('/reports/transaction-ledger/excel', [ReportController::class, 'transactionLedgerExcel'])->name('admin.reports.transaction-ledger.excel');
+        Route::prefix('/reports/{ledger}-ledger')->whereIn('ledger', ['customer', 'supplier'])->group(function () {
+            Route::get('/', [ReportController::class, 'partyLedger'])->name('admin.reports.party-ledger');
+            Route::get('/data', [ReportController::class, 'partyLedgerData'])->name('admin.reports.party-ledger.data');
+            Route::get('/pdf', [ReportController::class, 'partyLedgerPdf'])->name('admin.reports.party-ledger.pdf');
+            Route::get('/excel', [ReportController::class, 'partyLedgerExcel'])->name('admin.reports.party-ledger.excel');
+        });
 
         // 3rd layer accounts of a 2nd layer group (JSON, used by the account dropdowns)
         Route::get('/chart-of-accounts/ledgers', [ChartOfAccountController::class, 'ledgers'])->name('admin.coa.ledgers');

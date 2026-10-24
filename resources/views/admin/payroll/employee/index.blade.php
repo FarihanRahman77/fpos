@@ -29,6 +29,11 @@
         .kv dt { color: #64748b; font-weight: 500; }
         .kv dd { margin: 0; }
         .doc-gallery img { height: 110px; border-radius: 8px; border: 1px solid #e2e8f0; object-fit: cover; }
+        .structure-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 2px solid #e2e8f0; border-radius: 12px; cursor: pointer; transition: all .15s ease; margin: 0; }
+        .structure-card i { width: 38px; height: 38px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: #f1f5f9; color: #64748b; font-size: 1rem; }
+        .btn-check:checked + .structure-card { border-color: var(--admin-primary, #916100); background: rgba(145, 97, 0, .06); }
+        .btn-check:checked + .structure-card i { background: var(--admin-primary, #916100); color: #fff; }
+        .salary-part[readonly] { background: #f8fafc; }
     </style>
 @endpush
 
@@ -41,6 +46,9 @@
                 <small class="text-muted">Employee profiles, salary structure, documents, ID cards.</small>
             </div>
             <div class="ms-auto d-flex gap-2">
+                <a href="{{ route('admin.payroll-setup.index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-cogs"></i> Payroll Setup
+                </a>
                 <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
@@ -82,12 +90,21 @@
         <div class="card acc-card mb-3">
             <div class="card-body">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label" for="filterDepartment">Department</label>
                         <select id="filterDepartment" class="form-select">
                             <option value="">All departments</option>
                             @foreach ($departments as $department)
-                                <option value="{{ $department }}">{{ $department }}</option>
+                                <option value="{{ $department->id }}">{{ $department->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="filterStructure">Salary Structure</label>
+                        <select id="filterStructure" class="form-select">
+                            <option value="">All</option>
+                            @foreach ($salaryStructures as $structure)
+                                <option value="{{ $structure }}">{{ $structure }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -100,7 +117,7 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label" for="filterStatus">Status</label>
                         <select id="filterStatus" class="form-select">
                             <option value="">All</option>
@@ -142,8 +159,6 @@
     </div>
 
     {{-- Suggestions for free-text fields --}}
-    <datalist id="departmentList">@foreach ($departments as $v)<option value="{{ $v }}">@endforeach</datalist>
-    <datalist id="designationList">@foreach ($designations as $v)<option value="{{ $v }}">@endforeach</datalist>
     <datalist id="shiftList">
         @foreach ($shifts->merge(['Day', 'Evening', 'Night', 'General'])->unique() as $v)<option value="{{ $v }}">@endforeach
     </datalist>
@@ -352,13 +367,16 @@
                             <div class="tab-pane fade" id="tabJob">
                                 <div class="row g-3">
                                     <div class="col-md-4">
-                                        <label class="form-label" for="designation">Designation <span class="text-danger">*</span></label>
-                                        <input type="text" name="designation" id="designation" class="form-control" maxlength="100" list="designationList" placeholder="e.g. Sales Executive">
+                                        <label class="form-label" for="department_id">Department</label>
+                                        <select name="department_id" id="department_id" class="form-select">
+                                            <option value="">Select department</option>
+                                            @foreach ($departments as $d)<option value="{{ $d->id }}">{{ $d->name }}</option>@endforeach
+                                        </select>
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
-                                        <label class="form-label" for="department">Department</label>
-                                        <input type="text" name="department" id="department" class="form-control" maxlength="100" list="departmentList" placeholder="e.g. Sales">
+                                        <label class="form-label" for="designation_id">Designation <span class="text-danger">*</span></label>
+                                        <select name="designation_id" id="designation_id" class="form-select"></select>
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-4">
@@ -401,9 +419,46 @@
                                     </div>
 
                                     <div class="col-12"><h6 class="mb-0 mt-2">Monthly Salary Structure</h6></div>
+                                    <div class="col-12">
+                                        <div class="row g-2">
+                                            @foreach ([
+                                                'Scale' => ['fas fa-layer-group', 'Pay scale: salary comes from the selected grade & step.'],
+                                                'Contractual' => ['fas fa-file-signature', 'Without scale: fixed salary entered manually.'],
+                                            ] as $structure => [$icon, $hint])
+                                                <div class="col-md-6">
+                                                    <input type="radio" class="btn-check" name="salary_structure" value="{{ $structure }}"
+                                                        id="structure_{{ $structure }}" autocomplete="off">
+                                                    <label class="structure-card w-100" for="structure_{{ $structure }}">
+                                                        <i class="{{ $icon }}"></i>
+                                                        <span>
+                                                            <strong>{{ $structure }}</strong>
+                                                            <small class="d-block text-muted">{{ $hint }}</small>
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                        <div class="text-danger small field-error"></div>
+                                    </div>
+                                    <div class="col-md-4 scale-only">
+                                        <label class="form-label" for="pay_grade_id">Pay Grade <span class="text-danger">*</span></label>
+                                        <select id="pay_grade_id" class="form-select">
+                                            <option value="">Select pay grade</option>
+                                            @foreach ($grades as $g)<option value="{{ $g->id }}">{{ $g->name }}</option>@endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 scale-only">
+                                        <label class="form-label" for="step_id">Step <span class="text-danger">*</span></label>
+                                        <select name="step_id" id="step_id" class="form-select"></select>
+                                        <div class="text-danger small field-error"></div>
+                                    </div>
+                                    <div class="col-md-4 scale-only d-flex align-items-end">
+                                        <small class="text-muted">Amounts below follow the step and are read-only.
+                                            Manage grades &amp; steps in <a href="{{ route('admin.payroll-setup.index') }}" target="_blank">Payroll Setup</a>.</small>
+                                    </div>
                                     @foreach (['basic_salary' => 'Basic', 'house_rent' => 'House Rent', 'medical_allowance' => 'Medical', 'transport_allowance' => 'Transport', 'other_allowance' => 'Other Allowance'] as $field => $label)
                                         <div class="col-md-2">
-                                            <label class="form-label" for="{{ $field }}">{{ $label }}</label>
+                                            <label class="form-label" for="{{ $field }}">{{ $label }}@if ($field === 'basic_salary')<span class="text-danger contract-only"> *</span>@endif</label>
                                             <input type="number" step="0.01" min="0" name="{{ $field }}" id="{{ $field }}" class="form-control text-end salary-part" placeholder="0.00">
                                             <div class="text-danger small field-error"></div>
                                         </div>
@@ -566,11 +621,84 @@
             reader.readAsDataURL(file);
         }
 
+        /* ================= department / designation ================= */
+        const DESIGNATIONS = @json($designations);
+        const SALARY_PARTS = ['basic_salary', 'house_rent', 'medical_allowance', 'transport_allowance', 'other_allowance'];
+        const HAS_GRADES = {{ count($grades) > 0 ? 'true' : 'false' }};
+        let stepCache = {};
+
+        // Designations of the chosen department plus the ones open to all departments.
+        function fillDesignations(selectedId, fallbackLabel) {
+            const deptId = String($('#department_id').val() || '');
+            const $s = $('#designation_id').empty().append(new Option('Select designation', ''));
+
+            DESIGNATIONS.filter(function(d) {
+                return !d.department_id || String(d.department_id) === deptId;
+            }).forEach(function(d) {
+                $s.append(new Option(d.name + (d.department_id ? '' : ' (all departments)'), d.id));
+            });
+
+            Voucher.ensureOption($s, selectedId, fallbackLabel);
+            $s.val(selectedId && $s.find('option[value="' + selectedId + '"]').length ? String(selectedId) : '');
+            Voucher.refresh($s);
+        }
+
         /* ================= salary ================= */
         function calcGross() {
             let gross = 0;
             $('.salary-part').each(function() { gross += parseFloat(this.value) || 0; });
             $('#gross_salary_view').val(gross.toFixed(2));
+        }
+
+        function salaryStructure() {
+            return $('input[name="salary_structure"]:checked').val() || 'Contractual';
+        }
+
+        function applyStructure() {
+            const scale = salaryStructure() === 'Scale';
+            $('.scale-only').toggleClass('d-none', !scale);
+            $('.contract-only').toggleClass('d-none', scale);
+            $('.salary-part').prop('readonly', scale);
+            $('#step_id').prop('disabled', !scale);
+
+            if (scale) {
+                fillFromStep();
+            }
+            calcGross();
+        }
+
+        // Loads the grade's steps into #step_id; includeId keeps an inactive current step visible.
+        function loadSteps(gradeId, selectedId, includeId) {
+            const $s = $('#step_id').empty().append(new Option(gradeId ? 'Loading...' : 'Select pay grade first', ''));
+            Voucher.refresh($s);
+
+            if (!gradeId) {
+                fillFromStep();
+                return $.Deferred().resolve().promise();
+            }
+
+            return $.get("{{ route('admin.employee.steps') }}", { grade_id: gradeId, include: includeId || '' }, function(res) {
+                $s.empty().append(new Option('Select step', ''));
+                (res.data || []).forEach(function(step) {
+                    stepCache[step.id] = step;
+                    $s.append(new Option('Step ' + step.step_no + ' — ' + Voucher.money(step.gross_salary) +
+                        (step.status === 'Active' ? '' : ' (inactive)'), step.id));
+                });
+                $s.val(selectedId ? String(selectedId) : '');
+                Voucher.refresh($s);
+                fillFromStep();
+            });
+        }
+
+        // Scale: show the selected step's amounts (the server copies them on save as well).
+        function fillFromStep() {
+            if (salaryStructure() !== 'Scale') return;
+
+            const step = stepCache[$('#step_id').val()];
+            SALARY_PARTS.forEach(function(f) {
+                $('#' + f).val(step ? step[f] : '');
+            });
+            calcGross();
         }
 
         function togglePaymentFields() {
@@ -694,7 +822,13 @@
             docIndex = eduIndex = expIndex = 0;
 
             bootstrap.Tab.getOrCreateInstance(document.querySelector('#employeeModal [data-bs-target="#tabPersonal"]')).show();
-            calcGross();
+
+            Voucher.refresh($('#department_id').val(''));
+            fillDesignations();
+            $('#structure_' + (HAS_GRADES ? 'Scale' : 'Contractual')).prop('checked', true);
+            Voucher.refresh($('#pay_grade_id').val(''));
+            loadSteps('');
+            applyStructure();
             togglePaymentFields();
         }
 
@@ -707,7 +841,8 @@
         }
 
         function fillForm(d) {
-            const skip = ['id', 'photo', 'signature', 'documents', 'educations', 'experiences', 'reporting_to'];
+            const skip = ['id', 'photo', 'signature', 'documents', 'educations', 'experiences', 'reporting_to',
+                'department_id', 'designation_id', 'salary_structure', 'step_id', 'pay_grade_id'];
 
             Object.keys(d).forEach(function(key) {
                 if (skip.indexOf(key) !== -1) return;
@@ -737,7 +872,19 @@
             (d.experiences || []).forEach(addExperience);
             (d.documents || []).forEach(addDocument);
 
-            calcGross();
+            Voucher.setValue($('#department_id'), d.department_id, d.department);
+            fillDesignations(d.designation_id, d.designation);
+
+            $('#structure_' + (d.salary_structure === 'Scale' ? 'Scale' : 'Contractual')).prop('checked', true);
+            if (d.salary_structure === 'Scale' && d.pay_grade_id) {
+                Voucher.setValue($('#pay_grade_id'), d.pay_grade_id, d.grade_name);
+                loadSteps(d.pay_grade_id, d.step_id, d.step_id).always(applyStructure);
+            } else {
+                Voucher.refresh($('#pay_grade_id').val(''));
+                loadSteps('');
+            }
+
+            applyStructure();
             togglePaymentFields();
         }
 
@@ -840,6 +987,8 @@
                             ['Emergency Contact', [d.emergency_contact_name, d.emergency_contact_relation ? '(' + d.emergency_contact_relation + ')' : '', d.emergency_contact_phone].filter(Boolean).join(' ')]
                         ]) + '</div>' +
                         '<div class="col-lg-6"><h6>Salary &amp; Payment</h6>' + kv([
+                            ['Salary Structure', (d.salary_structure || 'Contractual') +
+                                (d.salary_structure === 'Scale' && d.grade_name ? ' (' + d.grade_name + ', Step ' + d.step_no + ')' : '')],
                             ['Basic', Voucher.money(d.basic_salary)], ['House Rent', Voucher.money(d.house_rent)], ['Medical', Voucher.money(d.medical_allowance)],
                             ['Transport', Voucher.money(d.transport_allowance)], ['Other', Voucher.money(d.other_allowance)], ['Gross', Voucher.money(d.gross_salary)],
                             ['Payment Mode', d.salary_payment_mode],
@@ -902,7 +1051,8 @@
             employeeModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('employeeModal'));
             viewModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('viewModal'));
 
-            Voucher.initSelect2($('#filterDepartment, #filterType, #filterStatus'));
+            Voucher.initSelect2($('#filterDepartment, #filterStructure, #filterType, #filterStatus'));
+            Voucher.initSelect2($('#department_id, #designation_id, #pay_grade_id, #step_id'), $('#employeeModal'));
 
             $('#reporting_to').select2({
                 theme: 'bootstrap-5',
@@ -939,7 +1089,8 @@
             /* ----- filters ----- */
             $('#applyFilters').on('click', function() {
                 const params = $.param({
-                    department: $('#filterDepartment').val(),
+                    department_id: $('#filterDepartment').val(),
+                    salary_structure: $('#filterStructure').val(),
                     employment_type: $('#filterType').val(),
                     status: $('#filterStatus').val()
                 });
@@ -947,7 +1098,7 @@
             });
 
             $('#resetFilters').on('click', function() {
-                $('#filterDepartment, #filterType, #filterStatus').val('').trigger('change.select2');
+                $('#filterDepartment, #filterStructure, #filterType, #filterStatus').val('').trigger('change.select2');
                 employeeTable.ajax.url(listUrl).load();
             });
 
@@ -993,6 +1144,10 @@
             });
 
             $('.salary-part').on('input', calcGross);
+            $('#department_id').on('change', function() { fillDesignations($('#designation_id').val()); });
+            $('input[name="salary_structure"]').on('change', applyStructure);
+            $('#pay_grade_id').on('change', function() { loadSteps($(this).val()); });
+            $('#step_id').on('change', fillFromStep);
             $('#salary_payment_mode').on('change', togglePaymentFields);
 
             /* ----- repeatable rows ----- */

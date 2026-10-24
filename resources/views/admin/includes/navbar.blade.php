@@ -13,6 +13,11 @@
         </form>
 
         <div class="navbar-actions ms-auto">
+            <a class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold {{ request()->routeIs('sales.pos') ? 'active' : '' }}"
+                href="{{ route('sales.pos') }}" title="Point of Sale">
+                <i class="bi bi-shop" aria-hidden="true"></i>
+                <span class="d-none d-sm-inline">POS</span>
+            </a>
             <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme"
                 title="Switch color theme">
                 <i class="bi bi-moon-stars" data-theme-icon aria-hidden="true"></i>

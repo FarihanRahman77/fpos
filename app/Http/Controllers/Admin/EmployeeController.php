@@ -39,6 +39,8 @@ class EmployeeController extends Controller
     private const BLOOD_GROUPS     = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
     private const EMPLOYMENT_TYPES = ['Permanent', 'Probation', 'Contractual', 'Part-Time', 'Intern'];
     private const PAYMENT_MODES    = ['Cash', 'Bank', 'Mobile Banking'];
+    // Scale: salary comes from a pay step (grade + step). Contractual: fixed salary entered by hand.
+    private const SALARY_STRUCTURES = ['Scale', 'Contractual'];
 
     private const SALARY_PARTS = ['basic_salary', 'house_rent', 'medical_allowance', 'transport_allowance', 'other_allowance'];
 
@@ -62,11 +64,32 @@ class EmployeeController extends Controller
             'bloodGroups'     => self::BLOOD_GROUPS,
             'employmentTypes' => self::EMPLOYMENT_TYPES,
             'paymentModes'    => self::PAYMENT_MODES,
-            // Free-text fields with suggestions from what is already used.
-            'departments'     => (clone $active)->whereNotNull('department')->distinct()->orderBy('department')->pluck('department'),
-            'designations'    => (clone $active)->whereNotNull('designation')->distinct()->orderBy('designation')->pluck('designation'),
+            'salaryStructures' => self::SALARY_STRUCTURES,
+            // Managed on the Payroll Setup page.
+            'departments'     => $this->setupRows('departments'),
+            'designations'    => $this->setupRows('designations', ['department_id']),
+            'grades'          => $this->setupRows('pay_grades'),
+            // Free-text field with suggestions from what is already used.
             'shifts'          => (clone $active)->whereNotNull('work_shift')->distinct()->orderBy('work_shift')->pluck('work_shift'),
         ]);
+    }
+
+    /**
+     * Steps of a pay grade with their salary, for the employee form (and the setup page's
+     * "next step no." hint with ?all=1). ?include=<step id> keeps an employee's current step
+     * in the list even when it has been set Inactive.
+     */
+    public function steps(Request $request)
+    {
+        $steps = DB::table('pay_steps')
+            ->where('pay_grade_id', (int) $request->query('grade_id'))
+            ->where('deleted', 'No')
+            ->when(!$request->boolean('all'), fn ($q) => $q->where(fn ($w) => $w->where('status', 'Active')
+                ->orWhere('id', (int) $request->query('include'))))
+            ->orderBy('step_no')
+            ->get(['id', 'step_no', 'status', ...self::SALARY_PARTS, 'gross_salary']);
+
+        return response()->json(['status' => true, 'data' => $steps]);
     }
 
     /* ------------------------------------------------------------------ */
@@ -76,21 +99,29 @@ class EmployeeController extends Controller
     public function list(Request $request)
     {
         try {
-            $query = DB::table('employees')->where('deleted', 'No');
+            $query = DB::table('employees as e')
+                ->leftJoin('pay_steps as ps', 'ps.id', '=', 'e.step_id')
+                ->leftJoin('pay_grades as pg', 'pg.id', '=', 'ps.pay_grade_id')
+                ->where('e.deleted', 'No')
+                ->select('e.*', 'ps.step_no', 'pg.name as grade_name');
 
-            if ($request->filled('department')) {
-                $query->where('department', $request->query('department'));
+            if ($request->filled('department_id')) {
+                $query->where('e.department_id', (int) $request->query('department_id'));
             }
 
             if ($request->filled('employment_type')) {
-                $query->where('employment_type', $request->query('employment_type'));
+                $query->where('e.employment_type', $request->query('employment_type'));
+            }
+
+            if (in_array($request->query('salary_structure'), self::SALARY_STRUCTURES, true)) {
+                $query->where('e.salary_structure', $request->query('salary_structure'));
             }
 
             if (in_array($request->query('status'), ['Active', 'Inactive'], true)) {
-                $query->where('status', $request->query('status'));
+                $query->where('e.status', $request->query('status'));
             }
 
-            $employees = $query->orderBy('employee_code')->get();
+            $employees = $query->orderBy('e.employee_code')->get();
 
             $output = ['data' => []];
             $i = 1;
@@ -126,7 +157,12 @@ class EmployeeController extends Controller
                     e($emp->employment_type ?: '-'),
                     $joined ? '<span class="d-none">' . $joined->format('Y-m-d') . '</span>' . e($joined->format('d M Y')) : '<span class="text-muted">-</span>',
                     '<span class="d-none">' . sprintf('%021.2f', (float) $emp->gross_salary) . '</span>'
-                        . '<span class="d-block text-end">' . number_format((float) $emp->gross_salary, 2) . '</span>',
+                        . '<span class="d-block text-end">' . number_format((float) $emp->gross_salary, 2) . '</span>'
+                        . '<div class="text-muted small text-end">'
+                        . ($emp->salary_structure === 'Scale'
+                            ? 'Scale' . ($emp->grade_name ? ': ' . e($emp->grade_name) . ' / Step ' . (int) $emp->step_no : '')
+                            : 'Contractual')
+                        . '</div>',
                     $statusBtn,
                     $actions,
                 ];
@@ -137,7 +173,7 @@ class EmployeeController extends Controller
             $output['summary'] = [
                 'active'      => (clone $all)->where('status', 'Active')->count(),
                 'inactive'    => (clone $all)->where('status', 'Inactive')->count(),
-                'departments' => (clone $all)->whereNotNull('department')->distinct()->count('department'),
+                'departments' => (clone $all)->whereNotNull('department_id')->distinct()->count('department_id'),
                 'payroll'     => number_format((float) (clone $all)->where('status', 'Active')->sum('gross_salary'), 2),
             ];
 
@@ -169,6 +205,14 @@ class EmployeeController extends Controller
 
         $data['photo_url']     = $this->fileUrl($employee->photo);
         $data['signature_url'] = $this->fileUrl($employee->signature);
+        $step = $employee->step_id
+            ? DB::table('pay_steps as ps')->join('pay_grades as pg', 'pg.id', '=', 'ps.pay_grade_id')
+                ->where('ps.id', $employee->step_id)->first(['ps.pay_grade_id', 'ps.step_no', 'pg.name as grade_name'])
+            : null;
+        $data['pay_grade_id'] = $step->pay_grade_id ?? null;
+        $data['grade_name']   = $step->grade_name ?? null;
+        $data['step_no']      = $step->step_no ?? null;
+
         $data['reporting_to_label'] = $employee->reporting_to
             ? DB::table('employees')->where('id', $employee->reporting_to)->selectRaw("CONCAT(name, ' (', employee_code, ')') as label")->value('label')
             : '';
@@ -260,8 +304,8 @@ class EmployeeController extends Controller
             'emergency_contact_relation' => ['nullable', 'string', 'max:50'],
             'emergency_contact_phone'    => ['nullable', 'string', 'max:30'],
             // Job
-            'designation'                => ['required', 'string', 'max:100'],
-            'department'                 => ['nullable', 'string', 'max:100'],
+            'designation_id'             => ['required', 'integer', Rule::exists('designations', 'id')->where('deleted', 'No')],
+            'department_id'              => ['nullable', 'integer', Rule::exists('departments', 'id')->where('deleted', 'No')],
             'employment_type'            => ['nullable', Rule::in(self::EMPLOYMENT_TYPES)],
             'work_shift'                 => ['nullable', 'string', 'max:50'],
             'reporting_to'               => ['nullable', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No'), Rule::notIn(array_filter([$id]))],
@@ -272,7 +316,9 @@ class EmployeeController extends Controller
             'status'                     => ['required', Rule::in(['Active', 'Inactive'])],
             'description'                => ['nullable', 'string', 'max:2000'],
             // Salary & payment
-            'basic_salary'               => $money,
+            'salary_structure'           => ['required', Rule::in(self::SALARY_STRUCTURES)],
+            'step_id'                    => ['nullable', 'required_if:salary_structure,Scale', 'integer', Rule::exists('pay_steps', 'id')->where('deleted', 'No')],
+            'basic_salary'               => ['nullable', 'required_if:salary_structure,Contractual', 'numeric', 'min:0', 'max:9999999999999.99'],
             'house_rent'                 => $money,
             'medical_allowance'          => $money,
             'transport_allowance'        => $money,
@@ -317,7 +363,9 @@ class EmployeeController extends Controller
         $validator = Validator::make($request->all(), $rules, [
             'name.required'                        => 'Enter the employee name.',
             'phone.required'                       => 'Enter a phone number.',
-            'designation.required'                 => 'Enter the designation.',
+            'designation_id.required'              => 'Select the designation.',
+            'step_id.required_if'                  => 'Select the pay grade and step.',
+            'basic_salary.required_if'             => 'Enter the fixed basic salary.',
             'date_of_birth.before'                 => 'Date of birth must be in the past.',
             'reporting_to.not_in'                  => 'An employee cannot report to themselves.',
             'photo.mimes'                          => 'Photo must be a JPG, PNG or WEBP image.',
@@ -337,6 +385,16 @@ class EmployeeController extends Controller
         ]);
 
         $validator->after(function ($v) use ($request) {
+            // A designation tied to a department can only be used in that department.
+            $designationDept = DB::table('designations')->where('id', (int) $request->input('designation_id'))->value('department_id');
+            if ($designationDept && (int) $designationDept !== (int) $request->input('department_id')) {
+                $v->errors()->add('designation_id', 'This designation belongs to another department.');
+            }
+
+            if ($request->input('salary_structure') === 'Contractual' && (float) $request->input('basic_salary') <= 0) {
+                $v->errors()->add('basic_salary', 'Fixed basic salary must be greater than zero.');
+            }
+
             foreach ((array) $request->input('documents', []) as $i => $doc) {
                 if (!empty($doc['issue_date']) && !empty($doc['expiry_date']) && $doc['expiry_date'] < $doc['issue_date']) {
                     $v->errors()->add("documents.$i.expiry_date", 'Expiry date cannot be before the issue date.');
@@ -383,7 +441,7 @@ class EmployeeController extends Controller
                 'name', 'father_name', 'mother_name', 'spouse_name', 'gender', 'marital_status', 'blood_group',
                 'religion', 'nationality', 'nid_no', 'tin_no', 'phone', 'alt_phone', 'email', 'present_address',
                 'permanent_address', 'emergency_contact_name', 'emergency_contact_relation', 'emergency_contact_phone',
-                'designation', 'department', 'employment_type', 'work_shift', 'description',
+                'employment_type', 'work_shift', 'description',
                 'salary_payment_mode', 'bank_name', 'bank_branch', 'bank_account_name', 'bank_account_no',
                 'mobile_banking_provider', 'mobile_banking_no',
             ];
@@ -399,12 +457,32 @@ class EmployeeController extends Controller
             $employee->reporting_to = $request->input('reporting_to') ?: null;
             $employee->status       = $request->input('status', 'Active');
 
-            $gross = 0;
-            foreach (self::SALARY_PARTS as $col) {
-                $employee->$col = round((float) $request->input($col, 0), 2);
-                $gross += $employee->$col;
+            // The name columns are kept as a copy for the ID card / profile PDFs.
+            $employee->designation_id = (int) $request->input('designation_id');
+            $employee->designation    = DB::table('designations')->where('id', $employee->designation_id)->value('name');
+            $employee->department_id  = $request->input('department_id') ?: null;
+            $employee->department     = $employee->department_id
+                ? DB::table('departments')->where('id', $employee->department_id)->value('name')
+                : null;
+
+            $employee->salary_structure = $request->input('salary_structure');
+
+            if ($employee->salary_structure === 'Scale') {
+                // Salary always comes from the step, never from the posted amounts.
+                $step = DB::table('pay_steps')->where('id', (int) $request->input('step_id'))->first();
+                $employee->step_id = $step->id;
+                foreach ([...self::SALARY_PARTS, 'gross_salary'] as $col) {
+                    $employee->$col = $step->$col;
+                }
+            } else {
+                $employee->step_id = null;
+                $gross = 0;
+                foreach (self::SALARY_PARTS as $col) {
+                    $employee->$col = round((float) $request->input($col, 0), 2);
+                    $gross += $employee->$col;
+                }
+                $employee->gross_salary = round($gross, 2);
             }
-            $employee->gross_salary = round($gross, 2);
 
             // Photo / signature: new upload replaces, "remove_*" clears.
             foreach (['photo' => 'photos', 'signature' => 'signatures'] as $col => $dir) {
@@ -569,6 +647,13 @@ class EmployeeController extends Controller
     /* ================================================================== */
     /*  Helpers                                                           */
     /* ================================================================== */
+
+    /** Active rows of a payroll setup table for the form dropdowns. */
+    private function setupRows(string $table, array $extra = [])
+    {
+        return DB::table($table)->where('deleted', 'No')->where('status', 'Active')
+            ->orderBy('name')->get(['id', 'name', ...$extra]);
+    }
 
     private function findEmployee(int $id): ?object
     {
