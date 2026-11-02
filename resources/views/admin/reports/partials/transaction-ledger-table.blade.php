@@ -1,113 +1,104 @@
 @php
-    $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
-    $badge = [
-        'Walk-In'                    => 'bg-primary',
-        'Wholesale'                  => 'bg-primary',
-        'Sale Order'                 => 'bg-primary',
-        'Walk-In Sale Return'        => 'bg-info ledger-badge-ink',
-        'Wholesale Return'           => 'bg-info ledger-badge-ink',
-        'Walk-In Payment Receive'    => 'bg-success',
-        'Wholesale Payment Receive'  => 'bg-success',
-        'Sale Order Payment Receive' => 'bg-success',
-        'Payment Receive'            => 'bg-success',
-        'Purchase'                   => 'bg-warning ledger-badge-ink',
-        'Purchase Return'            => 'bg-info ledger-badge-ink',
-        'Purchase Return Refund'     => 'bg-success',
-        'Purchase Payment'           => 'bg-danger',
-        'Payment'                    => 'bg-danger',
-        'Bill Payment'               => 'bg-danger',
-        'Expense'                    => 'bg-danger',
-        'Bill'                       => 'bg-warning ledger-badge-ink',
-        'Discount'                   => 'bg-secondary',
-        'Journal'                    => 'bg-dark',
-        'Amount Transfer'            => 'bg-dark',
-    ];
+    $m = fn ($v) => number_format((float) $v, 2);
+    $b = fn ($v) => (float) $v == 0 ? '' : number_format((float) $v, 2);
 @endphp
 
-<div class="table-responsive">
-    <table class="table table-sm align-middle mb-0 acc-table ledger-table">
-        <thead>
-            <tr>
-                <th width="4%">SL</th>
-                <th width="12%">Date &amp; Time</th>
-                <th width="9%">Voucher No</th>
-                <th width="13%">Type</th>
-                <th>Party</th>
-                <th width="9%">Reference</th>
-                <th>Account / Method</th>
-                <th>Remarks</th>
-                <th class="text-end" width="9%">Debit</th>
-                <th class="text-end" width="9%">Credit</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($rows as $i => $r)
-                <tr>
-                    <td class="text-muted">{{ $i + 1 }}</td>
-                    <td class="text-nowrap">{{ $r->datetime->format('d M Y') }} <span class="text-muted small">{{ $r->datetime->format('h:i:s A') }}</span></td>
-                    <td>{{ $r->voucher ?: '-' }}</td>
-                    <td><span class="badge {{ $badge[$r->type_key] ?? 'bg-secondary' }}">{{ $r->type }}</span></td>
-                    <td>
-                        {{ $r->party ?: '-' }}
-                        @if ($r->party_type) <div class="small text-muted">{{ $r->party_type }}</div> @endif
-                    </td>
-                    <td>{{ $r->reference ?: '-' }}</td>
-                    <td>{{ $r->account ?: '-' }}</td>
-                    <td class="small text-muted">{{ $r->remarks }}</td>
-                    <td class="text-end">{{ $m($r->dr) }}</td>
-                    <td class="text-end">{{ $m($r->cr) }}</td>
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="10" class="text-center text-muted py-5">
-                        <i class="fas fa-receipt fa-2x mb-2 d-block"></i>
-                        No transactions in this period.
-                    </td>
-                </tr>
-            @endforelse
-        </tbody>
-        @if ($rows->isNotEmpty())
-            <tfoot>
-                <tr class="ledger-total">
-                    <td colspan="8" class="text-end">Total ({{ $totals['entries'] }} entries)</td>
-                    <td class="text-end">{{ number_format($totals['dr'], 2) }}</td>
-                    <td class="text-end">{{ number_format($totals['cr'], 2) }}</td>
-                </tr>
-            </tfoot>
-        @endif
-    </table>
-</div>
+@foreach ($methods as $sec)
+    @php $label = $sec['method']; @endphp
+    <section class="tl-section">
+        <h6 class="tl-band">{{ $label }} Report</h6>
+        <div class="table-responsive">
+            <table class="table table-bordered ledger-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 48px;">SL</th>
+                        <th>Particulars</th>
+                        <th>Remarks</th>
+                        <th>Voucher Type</th>
+                        <th class="text-end">{{ $label }} In</th>
+                        <th class="text-end">{{ $label }} Out</th>
+                        <th class="text-end">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($sec['rows'] as $i => $r)
+                        <tr>
+                            <td>{{ $i + 1 }}</td>
+                            <td>
+                                <div>{{ $r['particulars'] }}</div>
+                                <div class="tl-sub">{{ $r['datetime']->format('d M Y h:i A') }}{{ $r['refs'] ? ' · ' . $r['refs'] : '' }}</div>
+                            </td>
+                            <td>
+                                <div>{{ $r['account'] }}</div>
+                                @if ($r['remarks'])<div class="tl-sub">{{ $r['remarks'] }}</div>@endif
+                            </td>
+                            <td class="text-nowrap">{{ $r['type'] }}</td>
+                            <td class="text-end tl-num tl-in">{{ $b($r['in']) }}</td>
+                            <td class="text-end tl-num tl-out">{{ $b($r['out']) }}</td>
+                            <td class="text-end tl-num">{{ $m($r['balance']) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="text-center text-muted py-3">No {{ strtolower($label) }} transactions in this period.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
 
-@if ($by_type->isNotEmpty())
-    <h6 class="mt-4 mb-2">Summary by type</h6>
-    <div class="table-responsive" style="max-width: 640px;">
-        <table class="table table-sm align-middle mb-0 acc-table ledger-table">
+        <div class="tl-summary">
+            <dl>
+                <div><dt>Today {{ $label }} In</dt><dd class="tl-in">{{ $m($sec['in']) }}</dd></div>
+                <div><dt>Today {{ $label }} Out</dt><dd class="tl-out">{{ $m($sec['out']) }}</dd></div>
+                <div><dt>Today {{ $label }} Closing Balance</dt><dd>{{ $m($sec['period']) }}</dd></div>
+                <div><dt>Net {{ $label }} Closing Balance</dt><dd>{{ $m($sec['closing']) }}</dd></div>
+            </dl>
+            <dl>
+                <div><dt>{{ $label }} Opening Balance</dt><dd>{{ $m($sec['opening']) }}</dd></div>
+                <div><dt>Today {{ $label }} Closing Balance</dt><dd>{{ $m($sec['period']) }}</dd></div>
+                <div class="tl-strong"><dt>Net {{ $label }} Closing Balance</dt><dd>{{ $m($sec['closing']) }}</dd></div>
+            </dl>
+        </div>
+    </section>
+@endforeach
+
+<section class="tl-section mb-0">
+    <h6 class="tl-band">Closing Summary</h6>
+    <div class="table-responsive">
+        <table class="table table-bordered ledger-table mb-0">
             <thead>
                 <tr>
-                    <th>Type</th>
-                    <th class="text-end">Entries</th>
-                    <th class="text-end">Debit</th>
-                    <th class="text-end">Credit</th>
+                    <th style="width: 48px;">SL</th>
+                    <th>Payment Method</th>
+                    <th>Ledger Account</th>
+                    <th class="text-end">Opening Balance</th>
+                    <th class="text-end">In</th>
+                    <th class="text-end">Out</th>
+                    <th class="text-end">Closing Balance</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach ($by_type as $t)
+                @forelse ($summary as $i => $a)
                     <tr>
-                        <td>{{ $t['type'] }}</td>
-                        <td class="text-end">{{ $t['count'] }}</td>
-                        <td class="text-end">{{ $m($t['dr']) }}</td>
-                        <td class="text-end">{{ $m($t['cr']) }}</td>
+                        <td>{{ $i + 1 }}</td>
+                        <td>{{ $a['method'] }}</td>
+                        <td>{{ $a['account'] }}@if ($a['code']) <span class="tl-sub">({{ $a['code'] }})</span>@endif</td>
+                        <td class="text-end tl-num">{{ $m($a['opening']) }}</td>
+                        <td class="text-end tl-num">{{ $m($a['in']) }}</td>
+                        <td class="text-end tl-num">{{ $m($a['out']) }}</td>
+                        <td class="text-end tl-num fw-medium {{ $a['closing'] < 0 ? 'tl-out' : '' }}">{{ $m($a['closing']) }}</td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr><td colspan="7" class="text-center text-muted py-3">No payment accounts found. Add them under Chart of Accounts › Liquid Asset.</td></tr>
+                @endforelse
             </tbody>
             <tfoot>
                 <tr class="ledger-total">
-                    <td>Total</td>
-                    <td class="text-end">{{ $totals['entries'] }}</td>
-                    <td class="text-end">{{ number_format($totals['dr'], 2) }}</td>
-                    <td class="text-end">{{ number_format($totals['cr'], 2) }}</td>
+                    <td colspan="3" class="text-end">Total</td>
+                    <td class="text-end tl-num">{{ $m($totals['opening']) }}</td>
+                    <td class="text-end tl-num">{{ $m($totals['in']) }}</td>
+                    <td class="text-end tl-num">{{ $m($totals['out']) }}</td>
+                    <td class="text-end tl-num">{{ $m($totals['closing']) }}</td>
                 </tr>
             </tfoot>
         </table>
     </div>
-@endif
+</section>

@@ -39,10 +39,6 @@ class EmployeeController extends Controller
     private const BLOOD_GROUPS     = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
     private const EMPLOYMENT_TYPES = ['Permanent', 'Probation', 'Contractual', 'Part-Time', 'Intern'];
     private const PAYMENT_MODES    = ['Cash', 'Bank', 'Mobile Banking'];
-    // Scale: salary comes from a pay step (grade + step). Contractual: fixed salary entered by hand.
-    private const SALARY_STRUCTURES = ['Scale', 'Contractual'];
-
-    private const SALARY_PARTS = ['basic_salary', 'house_rent', 'medical_allowance', 'transport_allowance', 'other_allowance'];
 
     private const UPLOAD_DIR = 'uploads/employees';
     // Separate rules: a '|' inside a rules array is not split, so it would become part of the mimes list.
@@ -64,30 +60,45 @@ class EmployeeController extends Controller
             'bloodGroups'     => self::BLOOD_GROUPS,
             'employmentTypes' => self::EMPLOYMENT_TYPES,
             'paymentModes'    => self::PAYMENT_MODES,
-            'salaryStructures' => self::SALARY_STRUCTURES,
+            // Scale or Contractual for everyone; chosen on the Payroll Setup page.
+            'payroll'         => PayrollSetupController::salarySettings(),
             // Managed on the Payroll Setup page.
             'departments'     => $this->setupRows('departments'),
             'designations'    => $this->setupRows('designations', ['department_id']),
             'grades'          => $this->setupRows('pay_grades'),
+            'leaveGroups'     => $this->setupRows('leave_groups'),
             // Free-text field with suggestions from what is already used.
             'shifts'          => (clone $active)->whereNotNull('work_shift')->distinct()->orderBy('work_shift')->pluck('work_shift'),
+            // Attendance shifts (Attendance > Setup).
+            'workShifts'      => DB::table('work_shifts')->where('deleted', 'No')->orderBy('start_time')->get(['id', 'name', 'status']),
         ]);
     }
 
     /**
      * Steps of a pay grade with their salary, for the employee form (and the setup page's
-     * "next step no." hint with ?all=1). ?include=<step id> keeps an employee's current step
-     * in the list even when it has been set Inactive.
+     * "next step" hint with ?all=1). Steps of the given department and the all-department
+     * steps are listed; ?exact=1 lists only the given department's (or the all-department) steps.
+     * ?include=<step id> keeps an employee's current step in the list even when it has been set Inactive.
      */
     public function steps(Request $request)
     {
+        $departmentId = $request->filled('department_id') ? (int) $request->query('department_id') : null;
+
         $steps = DB::table('pay_steps')
             ->where('pay_grade_id', (int) $request->query('grade_id'))
             ->where('deleted', 'No')
+            ->where(function ($q) use ($request, $departmentId) {
+                if ($request->boolean('exact')) {
+                    $departmentId ? $q->where('department_id', $departmentId) : $q->whereNull('department_id');
+                } else {
+                    $q->whereNull('department_id')->when($departmentId, fn ($w) => $w->orWhere('department_id', $departmentId));
+                }
+            })
             ->when(!$request->boolean('all'), fn ($q) => $q->where(fn ($w) => $w->where('status', 'Active')
                 ->orWhere('id', (int) $request->query('include'))))
-            ->orderBy('step_no')
-            ->get(['id', 'step_no', 'status', ...self::SALARY_PARTS, 'gross_salary']);
+            ->orderByRaw('department_id IS NULL')->orderBy('step_no')
+            ->get(['id', 'step_no', 'status', 'department_id', 'basic_salary'])
+            ->map(fn ($s) => (array) $s + ['gross_salary' => PayrollSetupController::salaryBreakdown((float) $s->basic_salary, false)['gross_salary']]);
 
         return response()->json(['status' => true, 'data' => $steps]);
     }
@@ -99,7 +110,7 @@ class EmployeeController extends Controller
     public function list(Request $request)
     {
         try {
-            $query = DB::table('employees as e')
+            $query = BranchController::scope(DB::table('employees as e'), 'e.branch_id')
                 ->leftJoin('pay_steps as ps', 'ps.id', '=', 'e.step_id')
                 ->leftJoin('pay_grades as pg', 'pg.id', '=', 'ps.pay_grade_id')
                 ->where('e.deleted', 'No')
@@ -113,9 +124,7 @@ class EmployeeController extends Controller
                 $query->where('e.employment_type', $request->query('employment_type'));
             }
 
-            if (in_array($request->query('salary_structure'), self::SALARY_STRUCTURES, true)) {
-                $query->where('e.salary_structure', $request->query('salary_structure'));
-            }
+            $isScale = PayrollSetupController::isScale();
 
             if (in_array($request->query('status'), ['Active', 'Inactive'], true)) {
                 $query->where('e.status', $request->query('status'));
@@ -143,6 +152,7 @@ class EmployeeController extends Controller
                     ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'editEmployee(' . $id . ')'],
                     ['label' => 'ID Card (PDF)', 'icon' => 'fas fa-id-badge', 'onclick' => 'printIdCard(' . $id . ')'],
                     ['label' => 'Profile (PDF)', 'icon' => 'fas fa-file-pdf', 'onclick' => 'printProfile(' . $id . ')'],
+                    ['label' => 'PF Ledger', 'icon' => 'fas fa-piggy-bank', 'onclick' => "window.open('" . route('admin.reports.pf-ledger', ['employee_id' => $id]) . "', '_blank')"],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteEmployee(' . $id . ')'],
                 ]);
@@ -159,16 +169,17 @@ class EmployeeController extends Controller
                     '<span class="d-none">' . sprintf('%021.2f', (float) $emp->gross_salary) . '</span>'
                         . '<span class="d-block text-end">' . number_format((float) $emp->gross_salary, 2) . '</span>'
                         . '<div class="text-muted small text-end">'
-                        . ($emp->salary_structure === 'Scale'
-                            ? 'Scale' . ($emp->grade_name ? ': ' . e($emp->grade_name) . ' / Step ' . (int) $emp->step_no : '')
-                            : 'Contractual')
+                        . ($isScale
+                            ? ($emp->grade_name ? e($emp->grade_name) . ' / Step ' . (int) $emp->step_no : '<span class="text-danger">No step</span>')
+                            : 'Contract')
+                        . ' · Net ' . number_format((float) $emp->net_salary, 2)
                         . '</div>',
                     $statusBtn,
                     $actions,
                 ];
             }
 
-            $all = DB::table('employees')->where('deleted', 'No');
+            $all = BranchController::scope(DB::table('employees'), 'branch_id')->where('deleted', 'No');
 
             $output['summary'] = [
                 'active'      => (clone $all)->where('status', 'Active')->count(),
@@ -205,6 +216,7 @@ class EmployeeController extends Controller
 
         $data['photo_url']     = $this->fileUrl($employee->photo);
         $data['signature_url'] = $this->fileUrl($employee->signature);
+        $data['salary_structure'] = PayrollSetupController::salarySettings()->salary_structure;
         $step = $employee->step_id
             ? DB::table('pay_steps as ps')->join('pay_grades as pg', 'pg.id', '=', 'ps.pay_grade_id')
                 ->where('ps.id', $employee->step_id)->first(['ps.pay_grade_id', 'ps.step_no', 'pg.name as grade_name'])
@@ -251,7 +263,7 @@ class EmployeeController extends Controller
     {
         $term = trim((string) $request->query('q', ''));
 
-        $rows = DB::table('employees')
+        $rows = BranchController::scope(DB::table('employees'), 'branch_id')
             ->where('deleted', 'No')
             ->when($request->filled('exclude'), fn ($q) => $q->where('id', '<>', (int) $request->query('exclude')))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")))
@@ -274,8 +286,8 @@ class EmployeeController extends Controller
     {
         $id = $request->filled('id') ? (int) $request->input('id') : null;
 
-        $money = ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'];
-        $date  = ['nullable', 'date'];
+        $date    = ['nullable', 'date'];
+        $isScale = PayrollSetupController::isScale();
 
         $rules = [
             'id'                         => ['nullable', 'integer'],
@@ -307,7 +319,10 @@ class EmployeeController extends Controller
             'designation_id'             => ['required', 'integer', Rule::exists('designations', 'id')->where('deleted', 'No')],
             'department_id'              => ['nullable', 'integer', Rule::exists('departments', 'id')->where('deleted', 'No')],
             'employment_type'            => ['nullable', Rule::in(self::EMPLOYMENT_TYPES)],
+            'leave_group_id'             => ['nullable', 'integer', Rule::exists('leave_groups', 'id')->where('deleted', 'No')],
             'work_shift'                 => ['nullable', 'string', 'max:50'],
+            'work_shift_id'              => ['nullable', 'integer', Rule::exists('work_shifts', 'id')->where('deleted', 'No')],
+            'device_user_id'             => ['nullable', 'string', 'max:30', Rule::unique('employees', 'device_user_id')->where('deleted', 'No')->ignore($id)],
             'reporting_to'               => ['nullable', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No'), Rule::notIn(array_filter([$id]))],
             'joining_date'               => $date,
             'confirmation_date'          => ['nullable', 'date', 'after_or_equal:joining_date'],
@@ -315,14 +330,11 @@ class EmployeeController extends Controller
             'card_valid_until'           => $date,
             'status'                     => ['required', Rule::in(['Active', 'Inactive'])],
             'description'                => ['nullable', 'string', 'max:2000'],
-            // Salary & payment
-            'salary_structure'           => ['required', Rule::in(self::SALARY_STRUCTURES)],
-            'step_id'                    => ['nullable', 'required_if:salary_structure,Scale', 'integer', Rule::exists('pay_steps', 'id')->where('deleted', 'No')],
-            'basic_salary'               => ['nullable', 'required_if:salary_structure,Contractual', 'numeric', 'min:0', 'max:9999999999999.99'],
-            'house_rent'                 => $money,
-            'medical_allowance'          => $money,
-            'transport_allowance'        => $money,
-            'other_allowance'            => $money,
+            // Salary & payment (only the active structure's field is required)
+            'step_id'                    => [$isScale ? 'required' : 'nullable', 'integer', Rule::exists('pay_steps', 'id')->where('deleted', 'No')],
+            'contract_salary'            => [$isScale ? 'nullable' : 'required', 'numeric', 'min:0', 'max:9999999999999.99'],
+            'bonus_eligible'             => ['required', Rule::in(['Yes', 'No'])],
+            'last_increment_date'        => $date,
             'salary_payment_mode'        => ['nullable', Rule::in(self::PAYMENT_MODES)],
             'bank_name'                  => ['nullable', 'required_if:salary_payment_mode,Bank', 'string', 'max:100'],
             'bank_branch'                => ['nullable', 'string', 'max:100'],
@@ -364,8 +376,8 @@ class EmployeeController extends Controller
             'name.required'                        => 'Enter the employee name.',
             'phone.required'                       => 'Enter a phone number.',
             'designation_id.required'              => 'Select the designation.',
-            'step_id.required_if'                  => 'Select the pay grade and step.',
-            'basic_salary.required_if'             => 'Enter the fixed basic salary.',
+            'step_id.required'                     => 'Select the pay grade and step.',
+            'contract_salary.required'             => 'Enter the contract salary.',
             'date_of_birth.before'                 => 'Date of birth must be in the past.',
             'reporting_to.not_in'                  => 'An employee cannot report to themselves.',
             'photo.mimes'                          => 'Photo must be a JPG, PNG or WEBP image.',
@@ -384,15 +396,23 @@ class EmployeeController extends Controller
             'mobile_banking_no.required_if'        => 'Number is required for mobile banking.',
         ]);
 
-        $validator->after(function ($v) use ($request) {
+        $validator->after(function ($v) use ($request, $isScale) {
             // A designation tied to a department can only be used in that department.
             $designationDept = DB::table('designations')->where('id', (int) $request->input('designation_id'))->value('department_id');
             if ($designationDept && (int) $designationDept !== (int) $request->input('department_id')) {
                 $v->errors()->add('designation_id', 'This designation belongs to another department.');
             }
 
-            if ($request->input('salary_structure') === 'Contractual' && (float) $request->input('basic_salary') <= 0) {
-                $v->errors()->add('basic_salary', 'Fixed basic salary must be greater than zero.');
+            // Same for a department-wise pay step.
+            if ($isScale && $request->filled('step_id')) {
+                $stepDept = DB::table('pay_steps')->where('id', (int) $request->input('step_id'))->value('department_id');
+                if ($stepDept && (int) $stepDept !== (int) $request->input('department_id')) {
+                    $v->errors()->add('step_id', 'This step belongs to another department.');
+                }
+            }
+
+            if (!$isScale && (float) $request->input('contract_salary') <= 0) {
+                $v->errors()->add('contract_salary', 'Contract salary must be greater than zero.');
             }
 
             foreach ((array) $request->input('documents', []) as $i => $doc) {
@@ -422,7 +442,7 @@ class EmployeeController extends Controller
 
         try {
             if ($id) {
-                $employee = Employee::where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+                $employee = BranchController::scope(Employee::where('id', $id), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$employee) {
                     abort(404, 'Employee not found.');
@@ -454,7 +474,10 @@ class EmployeeController extends Controller
                 $employee->$col = $request->input($col) ?: null;
             }
 
-            $employee->reporting_to = $request->input('reporting_to') ?: null;
+            $employee->reporting_to   = $request->input('reporting_to') ?: null;
+            $employee->leave_group_id = $request->input('leave_group_id') ?: null;
+            $employee->work_shift_id  = $request->input('work_shift_id') ?: null;
+            $employee->device_user_id = $this->nullIfBlank($request->input('device_user_id'));
             $employee->status       = $request->input('status', 'Active');
 
             // The name columns are kept as a copy for the ID card / profile PDFs.
@@ -465,24 +488,15 @@ class EmployeeController extends Controller
                 ? DB::table('departments')->where('id', $employee->department_id)->value('name')
                 : null;
 
-            $employee->salary_structure = $request->input('salary_structure');
-
-            if ($employee->salary_structure === 'Scale') {
-                // Salary always comes from the step, never from the posted amounts.
-                $step = DB::table('pay_steps')->where('id', (int) $request->input('step_id'))->first();
-                $employee->step_id = $step->id;
-                foreach ([...self::SALARY_PARTS, 'gross_salary'] as $col) {
-                    $employee->$col = $step->$col;
-                }
+            // Only the active structure's input is posted; the other one keeps its saved value
+            // so switching the structure later does not lose it.
+            if ($isScale) {
+                $employee->step_id             = (int) $request->input('step_id');
+                $employee->last_increment_date = $request->input('last_increment_date') ?: null;
             } else {
-                $employee->step_id = null;
-                $gross = 0;
-                foreach (self::SALARY_PARTS as $col) {
-                    $employee->$col = round((float) $request->input($col, 0), 2);
-                    $gross += $employee->$col;
-                }
-                $employee->gross_salary = round($gross, 2);
+                $employee->contract_salary = round((float) $request->input('contract_salary'), 2);
             }
+            $employee->bonus_eligible = $request->input('bonus_eligible');
 
             // Photo / signature: new upload replaces, "remove_*" clears.
             foreach (['photo' => 'photos', 'signature' => 'signatures'] as $col => $dir) {
@@ -496,6 +510,11 @@ class EmployeeController extends Controller
             }
 
             $employee->save();
+
+            // The amounts are always calculated, never taken from the form. A new employee's
+            // first salary is effective from the joining date.
+            PayrollSetupController::recalculateSalaries([$employee->id], $id ? 'Salary updated' : 'Joining',
+                $id ? null : ($employee->joining_date ?: null));
 
             $this->saveDocuments($employee->id, $request, $newFiles, $oldFiles);
 
@@ -534,7 +553,7 @@ class EmployeeController extends Controller
 
     public function status(Request $request)
     {
-        $employee = Employee::where('id', (int) $request->input('id'))->where('deleted', 'No')->first();
+        $employee = BranchController::scope(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->first();
 
         if (!$employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
@@ -558,7 +577,7 @@ class EmployeeController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $employee = Employee::where('id', (int) $request->input('id'))->where('deleted', 'No')->lockForUpdate()->first();
+                $employee = BranchController::scope(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$employee) {
                     abort(404, 'Employee not found.');
@@ -566,6 +585,19 @@ class EmployeeController extends Controller
 
                 if (DB::table('employees')->where('reporting_to', $employee->id)->where('deleted', 'No')->exists()) {
                     abort(422, 'Other employees report to ' . $employee->name . '. Change their "Reporting to" first.');
+                }
+
+                // A deleted employee drops off the salary sheet: settle what is still open first.
+                $loanLeft = (float) DB::table('employee_loans')->where('employee_id', $employee->id)->where('deleted', 'No')
+                    ->where('loan_status', 'Running')->selectRaw('COALESCE(SUM(amount - recovered), 0) as b')->value('b');
+                if ($loanLeft > 0.004) {
+                    abort(422, $employee->name . ' still owes ' . number_format($loanLeft, 2) . ' on a loan / advance. Recover or cancel it first, or set the employee Inactive.');
+                }
+                $salaryDue = (float) DB::table('payroll_run_items as i')->join('payroll_runs as r', 'r.id', '=', 'i.payroll_run_id')
+                    ->where('i.employee_id', $employee->id)->where('r.run_status', 'Posted')
+                    ->selectRaw('COALESCE(SUM(i.net_payable - i.paid_amount), 0) as d')->value('d');
+                if ($salaryDue > 0.004) {
+                    abort(422, number_format($salaryDue, 2) . ' of processed salary is still unpaid to ' . $employee->name . '. Pay it first, or set the employee Inactive.');
                 }
 
                 // Soft delete keeps the files and the expense history.
@@ -636,6 +668,7 @@ class EmployeeController extends Controller
             'educations'  => $this->rowsOf('employee_educations', $employee->id, ['degree', 'institute', 'board_university', 'passing_year', 'result']),
             'experiences' => $this->rowsOf('employee_experiences', $employee->id, ['company_name', 'designation', 'from_date', 'to_date', 'responsibilities']),
             'printedAt'   => now()->format('d M Y, h:i A'),
+            'isScale'     => PayrollSetupController::isScale(),
         ])->setPaper('a4', 'portrait')
             ->setOption('isFontSubsettingEnabled', true);
 
@@ -657,7 +690,7 @@ class EmployeeController extends Controller
 
     private function findEmployee(int $id): ?object
     {
-        return DB::table('employees')->where('id', $id)->where('deleted', 'No')->first();
+        return BranchController::scope(DB::table('employees'), 'branch_id')->where('id', $id)->where('deleted', 'No')->first();
     }
 
     private function documentsOf(int $employeeId)
@@ -753,7 +786,14 @@ class EmployeeController extends Controller
             File::makeDirectory($dir, 0755, true);
         }
 
-        $name = time() . '_' . bin2hex(random_bytes(6)) . '.' . strtolower($file->getClientOriginalExtension());
+        // Extension from the file's content (already validated as an image / PDF), never the client's file name,
+        // so nothing like "photo.html" or "x.phtml" can be written into the public folder.
+        $ext = strtolower((string) $file->guessExtension());
+        $ext = $ext === 'jpeg' ? 'jpg' : $ext;
+        if (!in_array($ext, ['jpg', 'png', 'webp', 'pdf'], true)) {
+            abort(422, 'Upload a JPG, PNG, WEBP or PDF file.');
+        }
+        $name = time() . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
         $file->move($dir, $name);
 
         return self::UPLOAD_DIR . '/' . $folder . '/' . $name;

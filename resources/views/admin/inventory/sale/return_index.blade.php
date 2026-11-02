@@ -83,7 +83,10 @@ function loadSaleReturns() {
 
         type: "GET",
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             $('#saleReturnsBody').html(response.html);
 
@@ -101,7 +104,8 @@ function loadSaleReturns() {
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -145,11 +149,14 @@ $(document).on('click', '.deleteSaleReturnBtn', function () {
 
             type: 'POST',
 
+            dataType: 'json',
+
             data: {
                 _token: "{{ csrf_token() }}"
             },
 
-            success: function (response) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (response.status) {
 
@@ -165,7 +172,8 @@ $(document).on('click', '.deleteSaleReturnBtn', function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error(
                     xhr.responseJSON?.message ||

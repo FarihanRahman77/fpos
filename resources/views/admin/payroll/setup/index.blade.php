@@ -7,21 +7,15 @@
 
 @push('styles')
     <style>
-        .setup-tabs { border-bottom: 0; gap: 8px; }
-        .setup-tabs .nav-link {
-            border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; color: #475569;
-            font-weight: 600; font-size: .9rem; padding: 10px 16px; display: flex; align-items: center; gap: 8px;
-        }
-        .setup-tabs .nav-link .tab-icon {
-            width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
-            background: #f1f5f9; color: #64748b;
-        }
-        .setup-tabs .nav-link .tab-count { font-size: .72rem; background: #f1f5f9; color: #64748b; border-radius: 999px; padding: 2px 8px; }
-        .setup-tabs .nav-link.active { border-color: var(--admin-primary, #916100); color: var(--admin-primary, #916100); box-shadow: 0 4px 14px rgba(145, 97, 0, .12); }
-        .setup-tabs .nav-link.active .tab-icon { background: var(--admin-primary, #916100); color: #fff; }
-        .setup-tabs .nav-link.active .tab-count { background: rgba(145, 97, 0, .12); color: var(--admin-primary, #916100); }
-        .setup-hint { font-size: .8rem; color: #64748b; }
-        .step-gross { font-size: 1.15rem; font-weight: 700; }
+        /* Tabs (.setup-tabs) come from components.css. */
+        .setup-hint { font-size: var(--text-caption); color: var(--color-text-muted); }
+        .step-gross { font-size: var(--text-heading-sm); font-weight: var(--font-weight-medium); font-feature-settings: var(--font-feature-numeric); }
+        .structure-card { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); cursor: pointer; transition: border-color .15s ease, background-color .15s ease; margin: 0; }
+        .structure-card:hover { border-color: var(--color-accent); }
+        .structure-card i { width: var(--control-height); height: var(--control-height); flex: 0 0 auto; border-radius: var(--radius-md); display: inline-flex; align-items: center; justify-content: center; background: var(--color-surface-soft); color: var(--color-text-muted); font-size: var(--text-body-lg); }
+        .btn-check:checked + .structure-card { border-color: var(--color-accent); background: var(--color-accent-soft); }
+        .btn-check:checked + .structure-card i { background: var(--color-button); color: var(--color-button-text); }
+        .btn-check:focus-visible + .structure-card { box-shadow: var(--shadow-focus); }
     </style>
 @endpush
 
@@ -31,22 +25,35 @@
         <div class="d-flex align-items-center mb-3">
             <div>
                 <h4 class="mb-0">Payroll Setup</h4>
-                <small class="text-muted">Departments, designations and the pay scale (grades &amp; steps) used by employees.</small>
+                <small class="text-muted">Salary structure, departments, designations and the pay scale (grades &amp; steps) used by employees.</small>
             </div>
-            <a href="{{ route('admin.employee.index') }}" class="btn btn-outline-secondary ms-auto">
+            <span class="badge bg-primary-subtle text-primary-emphasis ms-auto me-2 p-2">
+                Salary structure: {{ $settings->salary_structure }}
+            </span>
+            <a href="{{ route('admin.employee.index') }}" class="btn btn-outline-secondary">
                 <i class="fas fa-users"></i> Employees
             </a>
         </div>
 
+        @php
+            $isScale = $settings->salary_structure === 'Scale';
+            $tabs = ['departments' => ['Departments', 'fas fa-sitemap'], 'designations' => ['Designations', 'fas fa-id-badge']];
+            // Grades and steps are only used on the Scale structure.
+            if ($isScale) {
+                $tabs += ['grades' => ['Pay Grades', 'fas fa-layer-group'], 'steps' => ['Steps', 'fas fa-stream']];
+            }
+        @endphp
+
         <ul class="nav setup-tabs mb-3" role="tablist">
-            @foreach ([
-                'departments'  => ['Departments', 'fas fa-sitemap'],
-                'designations' => ['Designations', 'fas fa-id-badge'],
-                'grades'       => ['Pay Grades', 'fas fa-layer-group'],
-                'steps'        => ['Steps', 'fas fa-stream'],
-            ] as $key => [$label, $icon])
+            <li class="nav-item">
+                <button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#pane-settings">
+                    <span class="tab-icon"><i class="fas fa-sliders-h"></i></span>
+                    Payroll Settings
+                </button>
+            </li>
+            @foreach ($tabs as $key => [$label, $icon])
                 <li class="nav-item">
-                    <button class="nav-link {{ $loop->first ? 'active' : '' }}" type="button" data-bs-toggle="tab"
+                    <button class="nav-link" type="button" data-bs-toggle="tab"
                         data-bs-target="#pane-{{ $key }}" data-type="{{ $key }}">
                         <span class="tab-icon"><i class="{{ $icon }}"></i></span>
                         {{ $label }}
@@ -57,8 +64,103 @@
         </ul>
 
         <div class="tab-content">
+            {{-- ===== Payroll settings ===== --}}
+            <div class="tab-pane fade show active" id="pane-settings">
+                <div class="card acc-card">
+                    <div class="card-body">
+                        <form id="settingsForm" autocomplete="off">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <h6 class="mb-1">Salary Structure</h6>
+                                    <span class="setup-hint">Applies to every employee. Changing it recalculates all salaries.</span>
+                                </div>
+                                @foreach ([
+                                    'Scale' => ['fas fa-layer-group', 'Pay grade & step (department wise). House rent, compensation and medical are a % of basic; basic rises one step a year.'],
+                                    'Contractual' => ['fas fa-file-signature', 'Each employee gets only the contracted salary. No grades, steps, house rent, compensation or medical.'],
+                                ] as $structure => [$icon, $hint])
+                                    <div class="col-md-6">
+                                        <input type="radio" class="btn-check" name="salary_structure" value="{{ $structure }}"
+                                            id="structure_{{ $structure }}" autocomplete="off" @checked($settings->salary_structure === $structure)>
+                                        <label class="structure-card w-100 h-100" for="structure_{{ $structure }}">
+                                            <i class="{{ $icon }}"></i>
+                                            <span>
+                                                <strong>{{ $structure }} Salary</strong>
+                                                <small class="d-block text-muted">{{ $hint }}</small>
+                                            </span>
+                                        </label>
+                                    </div>
+                                @endforeach
+
+                                <div class="col-12 scale-only"><h6 class="mb-0 mt-2">Allowances (% of basic salary)</h6></div>
+                                @foreach (['house_rent_percent' => 'House Rent', 'compensation_percent' => 'Compensation', 'medical_percent' => 'Medical'] as $field => $label)
+                                    <div class="col-md-4 scale-only">
+                                        <label class="form-label" for="{{ $field }}">{{ $label }} <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <input type="number" step="0.01" min="0" name="{{ $field }}" id="{{ $field }}" class="form-control text-end"
+                                                value="{{ (float) $settings->$field }}">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        <div class="text-danger small field-error"></div>
+                                    </div>
+                                @endforeach
+
+                                <div class="col-12"><h6 class="mb-0 mt-2">Provident Fund &amp; Bonus</h6></div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="pf_enabled">Deduct PF</label>
+                                    <select name="pf_enabled" id="pf_enabled" class="form-select">
+                                        <option value="No" @selected($settings->pf_enabled === 'No')>No</option>
+                                        <option value="Yes" @selected($settings->pf_enabled === 'Yes')>Yes</option>
+                                    </select>
+                                    <div class="text-danger small field-error"></div>
+                                </div>
+                                <div class="col-md-4 pf-only">
+                                    <label class="form-label" for="pf_percent">PF Deduction <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="number" step="0.01" min="0" max="100" name="pf_percent" id="pf_percent" class="form-control text-end"
+                                            value="{{ (float) $settings->pf_percent }}">
+                                        <span class="input-group-text" id="pfBaseLabel">% of basic</span>
+                                    </div>
+                                    <div class="text-danger small field-error"></div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="bonus_percent">Bonus <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="number" step="0.01" min="0" name="bonus_percent" id="bonus_percent" class="form-control text-end"
+                                            value="{{ (float) $settings->bonus_percent }}">
+                                        <span class="input-group-text">% of gross</span>
+                                    </div>
+                                    <small class="text-muted">Only for employees marked bonus eligible.</small>
+                                    <div class="text-danger small field-error"></div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="border rounded-3 p-3 bg-light small" id="settingsExample"></div>
+                                </div>
+                                @if ($isScale && $withoutStep > 0)
+                                    <div class="col-12">
+                                        <div class="alert alert-warning mb-0 py-2">
+                                            {{ $withoutStep }} active employee(s) have no pay step yet, so their salary is 0. Set their grade &amp; step on the Employees page.
+                                        </div>
+                                    </div>
+                                @endif
+                                <div class="col-12 d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary" id="settingsSaveBtn"><i class="fas fa-save"></i> Save Settings</button>
+                                    @if ($isScale)
+                                        <button type="button" class="btn btn-outline-primary ms-auto" id="incrementBtn"
+                                            title="Moves each active employee one step up once a year after joining / the last increment">
+                                            <i class="fas fa-level-up-alt"></i> Run Annual Increment
+                                        </button>
+                                    @endif
+                                </div>
+                                <div class="col-12 text-danger small" id="settings_error"></div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
             {{-- ===== Departments ===== --}}
-            <div class="tab-pane fade show active" id="pane-departments">
+            <div class="tab-pane fade" id="pane-departments">
                 <div class="card acc-card">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-3">
@@ -116,12 +218,13 @@
                 </div>
             </div>
 
+            @if ($isScale)
             {{-- ===== Pay grades ===== --}}
             <div class="tab-pane fade" id="pane-grades">
                 <div class="card acc-card">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-3">
-                            <span class="setup-hint">A pay grade (scale) holds the salary steps. Used by employees on the <b>Scale</b> structure.</span>
+                            <span class="setup-hint">A pay grade (scale) holds the salary steps. Its yearly increment % suggests each next step's basic.</span>
                             <button type="button" class="btn btn-primary ms-auto" onclick="Setup.add('grades')">
                                 <i class="fas fa-plus"></i> Add Pay Grade
                             </button>
@@ -133,8 +236,9 @@
                                     <tr>
                                         <th data-orderable="false" width="5%">SL.</th>
                                         <th>Pay Grade</th>
+                                        <th class="text-end">Yearly Increment</th>
                                         <th class="text-center">Steps</th>
-                                        <th class="text-end">Gross Range</th>
+                                        <th class="text-end">Basic Range</th>
                                         <th>Status</th>
                                         <th data-orderable="false" width="8%">Action</th>
                                     </tr>
@@ -158,7 +262,15 @@
                                     @endforeach
                                 </select>
                             </div>
-                            <span class="setup-hint">Changing a step's salary also updates every Scale employee on that step.</span>
+                            <div style="min-width: 220px;">
+                                <select id="stepDepartmentFilter" class="form-select">
+                                    <option value="">All departments</option>
+                                    @foreach ($departments as $department)
+                                        <option value="{{ $department->id }}">{{ $department->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <span class="setup-hint">A step holds the basic; allowances follow the payroll settings. Changing it updates every employee on that step.</span>
                             <button type="button" class="btn btn-primary ms-auto" onclick="Setup.add('steps')">
                                 <i class="fas fa-plus"></i> Add Step
                             </button>
@@ -170,12 +282,12 @@
                                     <tr>
                                         <th data-orderable="false" width="4%">SL.</th>
                                         <th>Pay Grade</th>
+                                        <th>Department</th>
                                         <th>Step</th>
                                         <th class="text-end">Basic</th>
                                         <th class="text-end">House Rent</th>
+                                        <th class="text-end">Compensation</th>
                                         <th class="text-end">Medical</th>
-                                        <th class="text-end">Transport</th>
-                                        <th class="text-end">Other</th>
                                         <th class="text-end">Gross</th>
                                         <th class="text-center">Employees</th>
                                         <th>Status</th>
@@ -187,6 +299,7 @@
                     </div>
                 </div>
             </div>
+            @endif
         </div>
     </div>
 
@@ -205,26 +318,23 @@
                     <div class="modal-body">
                         <div class="row g-3">
                             {{-- Step only --}}
-                            <div class="col-md-8 f-steps">
+                            <div class="col-md-5 f-steps">
                                 <label class="form-label" for="pay_grade_id">Pay Grade <span class="text-danger">*</span></label>
                                 <select name="pay_grade_id" id="pay_grade_id" class="form-select"></select>
                                 <div class="text-danger small field-error"></div>
                             </div>
-                            <div class="col-md-4 f-steps">
+                            <div class="col-md-3 f-steps">
                                 <label class="form-label" for="step_no">Step No. <span class="text-danger">*</span></label>
                                 <input type="number" name="step_no" id="step_no" class="form-control" min="1" max="999" step="1" placeholder="1">
                                 <div class="text-danger small field-error"></div>
                             </div>
-                            @foreach (['basic_salary' => 'Basic Salary', 'house_rent' => 'House Rent', 'medical_allowance' => 'Medical', 'transport_allowance' => 'Transport', 'other_allowance' => 'Other Allowance'] as $field => $label)
-                                <div class="col-md-4 f-steps">
-                                    <label class="form-label" for="{{ $field }}">{{ $label }} @if ($field === 'basic_salary')<span class="text-danger">*</span>@endif</label>
-                                    <input type="number" step="0.01" min="0" name="{{ $field }}" id="{{ $field }}" class="form-control text-end step-part" placeholder="0.00">
-                                    <div class="text-danger small field-error"></div>
-                                </div>
-                            @endforeach
                             <div class="col-md-4 f-steps">
-                                <label class="form-label">Gross Salary</label>
-                                <div class="form-control text-end step-gross bg-light" id="step_gross">0.00</div>
+                                <label class="form-label" for="basic_salary">Basic Salary <span class="text-danger">*</span></label>
+                                <input type="number" step="0.01" min="0" name="basic_salary" id="basic_salary" class="form-control text-end" placeholder="0.00">
+                                <div class="text-danger small field-error"></div>
+                            </div>
+                            <div class="col-12 f-steps">
+                                <div class="row g-2 small text-muted" id="step_preview"></div>
                             </div>
 
                             {{-- Name (all except steps) --}}
@@ -240,7 +350,16 @@
                                 <div class="text-danger small field-error"></div>
                             </div>
 
-                            <div class="col-12 f-designations">
+                            <div class="col-md-6 f-grades">
+                                <label class="form-label" for="increment_percent">Yearly Increment</label>
+                                <div class="input-group">
+                                    <input type="number" step="0.01" min="0" max="100" name="increment_percent" id="increment_percent" class="form-control text-end" placeholder="0.00">
+                                    <span class="input-group-text">% of basic</span>
+                                </div>
+                                <div class="text-danger small field-error"></div>
+                            </div>
+
+                            <div class="col-12 f-designations f-steps">
                                 <label class="form-label" for="department_id">Department</label>
                                 <select name="department_id" id="department_id" class="form-select"></select>
                                 <div class="text-danger small field-error"></div>
@@ -282,6 +401,9 @@
                 departments: @json($departments),
                 grades: @json($grades)
             },
+            // Saved payroll settings; the step preview uses them.
+            pay: @json($settings),
+            types: @json(array_keys($tabs)),
             tables: {},
             type: 'departments',
             modal: null,
@@ -306,7 +428,10 @@
                     ajax: {
                         url: Setup.url(type, 'list'),
                         data: function(d) {
-                            if (type === 'steps') d.grade_id = $('#stepGradeFilter').val();
+                            if (type === 'steps') {
+                                d.grade_id = $('#stepGradeFilter').val();
+                                d.department_id = $('#stepDepartmentFilter').val();
+                            }
                         }
                     },
                     processing: true
@@ -328,13 +453,23 @@
             },
 
             reloadOptions: function(type) {
-                $.get(Setup.url(type, 'options'), function(res) {
-                    if (!res.status) return;
-                    Setup.options[type] = res.data;
+                $.ajax({
+                    url: Setup.url(type, 'options'),
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) return;
+                        Setup.options[type] = response.data;
 
-                    if (type === 'grades') {
-                        const current = $('#stepGradeFilter').val();
-                        Setup.fillSelect($('#stepGradeFilter'), res.data, 'All pay grades', current);
+                        if (type === 'grades') {
+                            const current = $('#stepGradeFilter').val();
+                            Setup.fillSelect($('#stepGradeFilter'), response.data, 'All pay grades', current);
+                        }
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                     }
                 });
             },
@@ -361,10 +496,11 @@
                 $('#nameLabel').text(Setup.labels[type] + ' Name');
                 $('#setupTitle').text(title);
 
-                Setup.fillSelect($('#department_id'), Setup.options.departments, 'All departments');
+                Setup.fillSelect($('#department_id'), Setup.options.departments, 'All departments',
+                    type === 'steps' ? $('#stepDepartmentFilter').val() : '');
                 Setup.fillSelect($('#pay_grade_id'), Setup.options.grades, 'Select pay grade',
                     type === 'steps' ? $('#stepGradeFilter').val() : '');
-                Setup.calcGross();
+                Setup.preview();
             },
 
             add: function(type) {
@@ -378,49 +514,190 @@
             },
 
             edit: function(type, id) {
-                $.get(Setup.url(type, 'edit', id), function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message);
-                        return;
-                    }
-                    const d = res.data;
-                    Setup.prepare(type, 'Edit ' + Setup.labels[type]);
-                    $('#setupSaveBtn').text('Update');
-                    $('#setup_id').val(d.id);
-                    $('#setup_status').val(d.status);
-                    $('#setup_name').val(d.name || '');
-                    $('#setup_code').val(d.code || '');
-                    $('#setup_description').val(d.description || '');
+                $.ajax({
+                    url: Setup.url(type, 'edit', id),
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) {
+                            toastr.error(response.message);
+                            return;
+                        }
+                        const d = response.data;
+                        Setup.prepare(type, 'Edit ' + Setup.labels[type]);
+                        $('#setupSaveBtn').text('Update');
+                        $('#setup_id').val(d.id);
+                        $('#setup_status').val(d.status);
+                        $('#setup_name').val(d.name || '');
+                        $('#setup_code').val(d.code || '');
+                        $('#setup_description').val(d.description || '');
 
-                    if (type === 'designations') {
-                        Voucher.setValue($('#department_id'), d.department_id, 'Department #' + d.department_id);
-                    }
-                    if (type === 'steps') {
-                        Voucher.setValue($('#pay_grade_id'), d.pay_grade_id, 'Grade #' + d.pay_grade_id);
-                        $('#step_no').val(d.step_no);
-                        ['basic_salary', 'house_rent', 'medical_allowance', 'transport_allowance', 'other_allowance'].forEach(function(f) {
-                            $('#' + f).val(parseFloat(d[f]) > 0 ? d[f] : '');
-                        });
-                        Setup.calcGross();
-                    }
+                        if (type === 'designations' || type === 'steps') {
+                            if (d.department_id) {
+                                Voucher.setValue($('#department_id'), d.department_id, 'Department #' + d.department_id);
+                            } else {
+                                Voucher.refresh($('#department_id').val(''));
+                            }
+                        }
+                        if (type === 'grades') {
+                            $('#increment_percent').val(parseFloat(d.increment_percent) > 0 ? d.increment_percent : '');
+                        }
+                        if (type === 'steps') {
+                            Voucher.setValue($('#pay_grade_id'), d.pay_grade_id, 'Grade #' + d.pay_grade_id);
+                            $('#step_no').val(d.step_no);
+                            $('#basic_salary').val(d.basic_salary);
+                            Setup.preview();
+                        }
 
-                    Setup.modal.show();
-                }).fail(function(xhr) { Voucher.ajaxError(xhr, 'Unable to load.'); });
+                        Setup.modal.show();
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        Voucher.ajaxError(xhr, 'Unable to load.');
+                    }
+                });
             },
 
-            calcGross: function() {
-                let gross = 0;
-                $('.step-part').each(function() { gross += parseFloat(this.value) || 0; });
-                $('#step_gross').text(Voucher.money(gross));
+            // Same rule as PayrollSalary::breakdown(), for a basic under the given settings.
+            breakdown: function(basic, s) {
+                const pct = function(v, p) { return Math.round(v * (parseFloat(p) || 0)) / 100; };
+                const scale = s.salary_structure === 'Scale';
+                const r = { basic: basic, house_rent: 0, compensation: 0, medical: 0 };
+                if (scale) {
+                    r.house_rent = pct(basic, s.house_rent_percent);
+                    r.compensation = pct(basic, s.compensation_percent);
+                    r.medical = pct(basic, s.medical_percent);
+                }
+                r.gross = r.basic + r.house_rent + r.compensation + r.medical;
+                r.pf = s.pf_enabled === 'Yes' ? pct(basic, s.pf_percent) : 0;
+                r.bonus = pct(r.gross, s.bonus_percent);
+                r.net = r.gross - r.pf;
+                return r;
             },
 
+            preview: function() {
+                const r = Setup.breakdown(parseFloat($('#basic_salary').val()) || 0, Setup.pay);
+                const item = function(label, value, bold) {
+                    return '<div class="col"><div>' + label + '</div><div class="text-end ' + (bold ? 'fw-bold text-dark step-gross' : 'text-dark') + '">' + Voucher.money(value) + '</div></div>';
+                };
+                $('#step_preview').html(
+                    item('House Rent (' + (+Setup.pay.house_rent_percent) + '%)', r.house_rent) +
+                    item('Compensation (' + (+Setup.pay.compensation_percent) + '%)', r.compensation) +
+                    item('Medical (' + (+Setup.pay.medical_percent) + '%)', r.medical) +
+                    item('Gross', r.gross, true));
+            },
+
+            // Next step no. in the grade + department; the basic grows by the grade's yearly increment.
             suggestStepNo: function() {
                 const gradeId = $('#pay_grade_id').val();
-                if (!gradeId || $('#setup_id').val()) return;
+                if (Setup.type !== 'steps' || !gradeId || $('#setup_id').val()) return;
 
-                $.get("{{ route('admin.employee.steps') }}", { grade_id: gradeId, all: 1 }, function(res) {
-                    const max = (res.data || []).reduce((m, s) => Math.max(m, parseInt(s.step_no) || 0), 0);
-                    $('#step_no').val(max + 1);
+                $.ajax({
+                    url: "{{ route('admin.employee.steps') }}",
+                    type: 'GET',
+                    dataType: 'json',
+                    data: { grade_id: gradeId, department_id: $('#department_id').val(), all: 1, exact: 1 },
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        const steps = response.data || [];
+                        const last = steps.reduce(function(m, s) { return !m || +s.step_no > +m.step_no ? s : m; }, null);
+                        const grade = Setup.options.grades.find(function(g) { return String(g.id) === String(gradeId); });
+
+                        $('#step_no').val(last ? +last.step_no + 1 : 1);
+                        if (last) {
+                            const inc = parseFloat(grade ? grade.increment_percent : 0) || 0;
+                            $('#basic_salary').val((Math.round(parseFloat(last.basic_salary) * (100 + inc)) / 100).toFixed(2));
+                        }
+                        Setup.preview();
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
+                    }
+                });
+            },
+
+            saveSettings: function() {
+                const $form = $('#settingsForm');
+                const $btn = $('#settingsSaveBtn').prop('disabled', true);
+                Voucher.clearErrors($form);
+                $('#settings_error').text('');
+
+                $.ajax({
+                    url: "{{ route('admin.payroll-setup.settings') }}",
+                    type: 'POST',
+                    dataType: 'json',
+                    data: $form.serialize(),
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) {
+                            toastr.error(response.message);
+                            return;
+                        }
+                        toastr.success(response.message);
+                        // The structure decides which tabs exist, so reload.
+                        setTimeout(function() { location.reload(); }, 800);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                            Voucher.showErrors($form, xhr.responseJSON.errors, $('#settings_error'));
+                        } else {
+                            Voucher.ajaxError(xhr, 'Unable to save the settings.');
+                        }
+                    },
+                    complete: function() { $btn.prop('disabled', false); }
+                });
+            },
+
+            // Show only what the chosen structure uses, with a worked example.
+            applySettingsForm: function() {
+                const s = {};
+                $('#settingsForm').serializeArray().forEach(function(f) { s[f.name] = f.value; });
+                const scale = s.salary_structure === 'Scale';
+
+                $('#settingsForm .scale-only').toggleClass('d-none', !scale);
+                $('#settingsForm .pf-only').toggleClass('d-none', s.pf_enabled !== 'Yes');
+                $('#pfBaseLabel').text(scale ? '% of basic' : '% of salary');
+
+                const base = 20000;
+                const r = Setup.breakdown(base, s);
+                const parts = ['<b>Example</b> — ' + (scale ? 'basic' : 'contract salary') + ' ' + Voucher.money(base)];
+                if (scale) {
+                    parts.push('house rent ' + Voucher.money(r.house_rent), 'compensation ' + Voucher.money(r.compensation), 'medical ' + Voucher.money(r.medical));
+                }
+                parts.push('<b>gross ' + Voucher.money(r.gross) + '</b>');
+                if (r.pf > 0) parts.push('PF −' + Voucher.money(r.pf));
+                parts.push('<b>net ' + Voucher.money(r.net) + '</b>');
+                if (r.bonus > 0) parts.push('bonus (if eligible) ' + Voucher.money(r.bonus));
+                $('#settingsExample').html(parts.join(' · '));
+            },
+
+            runIncrement: function() {
+                Swal.fire({
+                    title: 'Run annual increment?',
+                    text: 'Each active employee whose joining date (or last increment) is a year or more ago moves up one step.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, run it',
+                    reverseButtons: true
+                }).then(function(result) {
+                    if (!result.isConfirmed) return;
+                    $.ajax({
+                        url: "{{ route('admin.payroll-setup.increment') }}",
+                        type: 'POST',
+                        dataType: 'json',
+                        success: function(response) {
+                            // alert(JSON.stringify(response));
+                            response.status ? toastr.success(response.message) : toastr.error(response.message);
+                            Setup.reloadAll();
+                        },
+                        error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
+                            Voucher.ajaxError(xhr, 'Unable to run the increment.');
+                        }
+                    });
                 });
             },
 
@@ -433,13 +710,15 @@
                 $.ajax({
                     url: Setup.url(Setup.type, 'save'),
                     type: 'POST',
+                    dataType: 'json',
                     data: $form.serialize(),
-                    success: function(res) {
-                        if (!res.status) {
-                            toastr.error(res.message);
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) {
+                            toastr.error(response.message);
                             return;
                         }
-                        toastr.success(res.message);
+                        toastr.success(response.message);
                         Setup.modal.hide();
                         Setup.reloadAll();
                         if (Setup.type === 'departments' || Setup.type === 'grades') {
@@ -447,6 +726,7 @@
                         }
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
                             Voucher.showErrors($form, xhr.responseJSON.errors, $('#setup_error'));
                         } else {
@@ -460,16 +740,26 @@
             },
 
             post: function(type, action, id, onDone) {
-                $.post(Setup.url(type, action, id), function(res) {
-                    if (res.status) {
-                        toastr.success(res.message);
-                        Setup.reloadAll();
-                        if (type === 'departments' || type === 'grades') Setup.reloadOptions(type);
-                        if (onDone) onDone();
-                    } else {
-                        toastr.error(res.message);
+                $.ajax({
+                    url: Setup.url(type, action, id),
+                    type: 'POST',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (response.status) {
+                            toastr.success(response.message);
+                            Setup.reloadAll();
+                            if (type === 'departments' || type === 'grades') Setup.reloadOptions(type);
+                            if (onDone) onDone();
+                        } else {
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        Voucher.ajaxError(xhr, 'Something went wrong.');
                     }
-                }).fail(function(xhr) { Voucher.ajaxError(xhr, 'Something went wrong.'); });
+                });
             },
 
             toggleStatus: function(type, id) {
@@ -482,7 +772,7 @@
                     text: 'This cannot be undone.',
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonColor: '#dc3545',
+                    confirmButtonColor: 'var(--color-danger)',
                     confirmButtonText: 'Yes, delete',
                     reverseButtons: true
                 }).then(function(result) {
@@ -494,22 +784,29 @@
         $(document).ready(function() {
             Setup.modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('setupModal'));
 
-            Voucher.initSelect2($('#stepGradeFilter'));
+            Voucher.initSelect2($('#stepGradeFilter, #stepDepartmentFilter'));
             Voucher.initSelect2($('#department_id, #pay_grade_id'), $('#setupModal'));
 
             // Load every tab once so the counts on the tabs are filled in
-            ['departments', 'designations', 'grades', 'steps'].forEach(Setup.initTable);
+            Setup.types.forEach(Setup.initTable);
 
             $('.setup-tabs [data-bs-toggle="tab"]').on('shown.bs.tab', function() {
-                Setup.initTable($(this).data('type'));
+                if ($(this).data('type')) Setup.initTable($(this).data('type'));
             });
 
-            $('#stepGradeFilter').on('change', function() {
+            $('#stepGradeFilter, #stepDepartmentFilter').on('change', function() {
                 Setup.tables.steps.ajax.reload();
             });
 
-            $('#pay_grade_id').on('change', Setup.suggestStepNo);
-            $('.step-part').on('input', Setup.calcGross);
+            $('#pay_grade_id, #department_id').on('change', Setup.suggestStepNo);
+            $('#basic_salary').on('input', Setup.preview);
+
+            $('#settingsForm').on('input change', Setup.applySettingsForm).on('submit', function(e) {
+                e.preventDefault();
+                Setup.saveSettings();
+            });
+            $('#incrementBtn').on('click', Setup.runIncrement);
+            Setup.applySettingsForm();
 
             $('#setupForm').on('submit', function(e) {
                 e.preventDefault();

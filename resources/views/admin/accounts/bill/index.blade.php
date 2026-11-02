@@ -459,14 +459,16 @@
             $.ajax({
                 url: showUrl,
                 type: 'GET',
+                dataType: 'json',
                 data: { id: id },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to load bill.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to load bill.');
                         return;
                     }
 
-                    const d = res.data;
+                    const d = response.data;
                     resetForm();
 
                     $('#bill_id').val(d.id);
@@ -487,6 +489,7 @@
                     });
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     Voucher.ajaxError(xhr, 'Unable to load bill.');
                 }
             });
@@ -502,14 +505,16 @@
             $.ajax({
                 url: showUrl,
                 type: 'GET',
+                dataType: 'json',
                 data: { id: id },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to load bill.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to load bill.');
                         return;
                     }
 
-                    const d = res.data;
+                    const d = response.data;
 
                     const lines = (d.details || []).map(function(l, n) {
                         return '<tr><td>' + (n + 1) + '</td>' +
@@ -555,6 +560,7 @@
                     viewModal.show();
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     Voucher.ajaxError(xhr, 'Unable to load bill.');
                 }
             });
@@ -583,18 +589,21 @@
             $.ajax({
                 url: showUrl,
                 type: 'GET',
+                dataType: 'json',
                 data: { id: id },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to load bill.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to load bill.');
                         return;
                     }
 
-                    currentBill = res.data;
+                    currentBill = response.data;
                     renderPayments();
                     if (done) done();
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     Voucher.ajaxError(xhr, 'Unable to load bill.');
                 }
             });
@@ -774,20 +783,23 @@
                 $.ajax({
                     url: "{{ route('admin.bill.store') }}",
                     type: 'POST',
+                    dataType: 'json',
                     data: $form.serialize(),
                     beforeSend: function() {
                         $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
                     },
-                    success: function(res) {
-                        if (res.status) {
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (response.status) {
                             billModal.hide();
-                            toastr.success(res.message);
+                            toastr.success(response.message);
                             billTable.ajax.reload(null, false);
                         } else {
-                            toastr.error(res.message || 'Unable to save bill.');
+                            toastr.error(response.message || 'Unable to save bill.');
                         }
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
                             Voucher.showErrors($form, xhr.responseJSON.errors, $('#lines_error'));
                         } else {
@@ -819,21 +831,24 @@
                 $.ajax({
                     url: "{{ route('admin.bill.payment.store') }}",
                     type: 'POST',
+                    dataType: 'json',
                     data: $form.serialize(),
                     beforeSend: function() {
                         $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
                     },
-                    success: function(res) {
-                        if (res.status) {
-                            toastr.success(res.message);
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (response.status) {
+                            toastr.success(response.message);
                             loadBillPayments(currentBill.id, resetPaymentForm);
                             billTable.ajax.reload(null, false);
                         } else {
-                            toastr.error(res.message || 'Unable to save payment.');
+                            toastr.error(response.message || 'Unable to save payment.');
                             $button.prop('disabled', false).text(label);
                         }
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
                             Voucher.showErrors($form, xhr.responseJSON.errors);
                         } else {

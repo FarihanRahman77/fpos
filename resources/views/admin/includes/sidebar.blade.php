@@ -7,62 +7,13 @@
                 <span class="brand-wordmark">LOOM</span>
             @endif
         </a>
-        <button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse-toggle
-            aria-controls="adminSidebar" aria-expanded="true" aria-label="Collapse sidebar">
+        <button class="sidebar-collapse-toggle" type="button" data-sidebar-collapse-toggle aria-controls="adminSidebar"
+            aria-expanded="true" aria-label="Collapse sidebar">
             <i class="bi bi-chevron-left" aria-hidden="true"></i>
         </button>
     </div>
 
-    {{-- <nav class="sidebar-nav">
-                <a class="nav-link active" href="{{ route('dashboard') }}" aria-current="page">
-                    <span class="nav-icon"><i class="bi bi-speedometer2" aria-hidden="true"></i></span>
-                    <span class="nav-text">Dashboard</span>
-                </a>
-                <a class="nav-link" href="{{ route('admin.users.index') }}">
-                    <span class="nav-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
-                    <span class="nav-text">Users</span>
-                </a>
-                <a class="nav-link" href="add-user.html">
-                    <span class="nav-icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span>
-                    <span class="nav-text">Add User</span>
-                </a>
-                <a class="nav-link" href="profile.html">
-                    <span class="nav-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
-                    <span class="nav-text">Profile</span>
-                </a>
-                <a class="nav-link" href="charts.html">
-                    <span class="nav-icon"><i class="bi bi-bar-chart-line" aria-hidden="true"></i></span>
-                    <span class="nav-text">Charts</span>
-                </a>
-                <a class="nav-link" href="tables.html">
-                    <span class="nav-icon"><i class="bi bi-table" aria-hidden="true"></i></span>
-                    <span class="nav-text">Tables</span>
-                </a>
-                <a class="nav-link" href="forms.html">
-                    <span class="nav-icon"><i class="bi bi-ui-checks-grid" aria-hidden="true"></i></span>
-                    <span class="nav-text">Forms</span>
-                </a>
-                <a class="nav-link" href="components.html">
-                    <span class="nav-icon"><i class="bi bi-grid-3x3-gap" aria-hidden="true"></i></span>
-                    <span class="nav-text">Components</span>
-                </a>
-                <a class="nav-link" href="alerts.html">
-                    <span class="nav-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></span>
-                    <span class="nav-text">Alerts</span>
-                </a>
-                <a class="nav-link" href="modals.html">
-                    <span class="nav-icon"><i class="bi bi-window-stack" aria-hidden="true"></i></span>
-                    <span class="nav-text">Modals</span>
-                </a>
-                <a class="nav-link" href="{{ route('admin.settings.index') }}">
-                    <span class="nav-icon"><i class="bi bi-gear" aria-hidden="true"></i></span>
-                    <span class="nav-text">Settings</span>
-                </a>
-                <a class="nav-link" href="blank.html">
-                    <span class="nav-icon"><i class="bi bi-file-earmark" aria-hidden="true"></i></span>
-                    <span class="nav-text">Blank Page</span>
-                </a>
-            </nav> --}}
+
 
     <nav class="sidebar-nav">
 
@@ -80,7 +31,7 @@
                 </a>
             </li>
 
-            <li class="nav-item nav-group">
+            <li class="nav-item nav-grou+p">
 
                 <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
                     aria-controls="inventorySubmenu">
@@ -143,6 +94,24 @@
                         </a>
                     </li>
 
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.stock.transfers') }}">
+                            <span class="nav-icon"><i class="bi bi-arrow-left-right"></i></span>
+                            <span class="nav-text">Stock Transfers</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.stock.adjustments') }}">
+                            <span class="nav-icon"><i class="bi bi-clipboard-check"></i></span>
+                            <span class="nav-text">Stock Count &amp; Adjustments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.stock.batches') }}">
+                            <span class="nav-icon"><i class="bi bi-hourglass-split"></i></span>
+                            <span class="nav-text">Batches &amp; Expiry</span>
+                        </a>
+                    </li>
                 </ul>
 
             </li>
@@ -217,6 +186,12 @@
                             <span class="nav-text">Sale Order</span>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.quotations.index') }}">
+                            <span class="nav-icon"><i class="bi bi-file-earmark-text"></i></span>
+                            <span class="nav-text">Quotations</span>
+                        </a>
+                    </li>
                 </ul>
 
             </li>
@@ -233,24 +208,36 @@
                 </button>
                 <ul class="nav flex-column submenu" id="CRMSubmenu" aria-hidden="true" inert>
                     <li class="nav-item nav-group">
-                        <a class="nav-link" href="{{ route('party.index','Customer') }}">
+                        <a class="nav-link" href="{{ route('party.index', 'Customer') }}">
                             <span class="nav-icon"><i class="bi bi-person"></i></span>
                             <span class="nav-text">Customer </span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ route('party.index','Walk-In Customer') }}">
+                        <a class="nav-link" href="{{ route('party.index', 'Walk-In Customer') }}">
                             <span class="nav-icon"><i class="bi bi-person-vcard"></i></span>
                             <span class="nav-text">Walk-In Customer </span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ route('party.index','Supplier') }}">
+                        <a class="nav-link" href="{{ route('party.index', 'Supplier') }}">
                             <span class="nav-icon"><i class="bi bi-truck-front"></i></span>
                             <span class="nav-text">Supplier </span>
                         </a>
                     </li>
 
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.customers.loyalty') }}">
+                            <span class="nav-icon"><i class="bi bi-stars"></i></span>
+                            <span class="nav-text">Customer Points &amp; Credit</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.system.sms.due') }}">
+                            <span class="nav-icon"><i class="bi bi-chat-dots"></i></span>
+                            <span class="nav-text">Due Reminders (SMS)</span>
+                        </a>
+                    </li>
                 </ul>
 
             </li>
@@ -346,7 +333,7 @@
                 <ul class="nav flex-column submenu" id="paymentSubmenu" aria-hidden="true" inert>
 
                     <li class="nav-item nav-group">
-                        <a class="nav-link" href="{{ route('admin.payment.index','Payment') }}">
+                        <a class="nav-link" href="{{ route('admin.payment.index', 'Payment') }}">
                             <span class="nav-icon">
                                 <i class="bi bi-cash-coin"></i>
                             </span>
@@ -354,7 +341,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ route('admin.payment.index','Payment Receive') }}">
+                        <a class="nav-link" href="{{ route('admin.payment.index', 'Payment Receive') }}">
                             <span class="nav-icon">
                                 <i class="bi bi-cash-stack"></i>
                             </span>
@@ -362,7 +349,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ route('admin.payment.index','Discount') }}">
+                        <a class="nav-link" href="{{ route('admin.payment.index', 'Discount') }}">
                             <span class="nav-icon">
                                 <i class="bi bi-percent"></i>
                             </span>
@@ -445,6 +432,90 @@
                             <span class="nav-text">Payroll Setup</span>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payroll-adjustments.index') }}">
+                            <span class="nav-icon"><i class="bi bi-gift"></i></span>
+                            <span class="nav-text">Bonus &amp; Adjustments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.employee-loans.index') }}">
+                            <span class="nav-icon"><i class="bi bi-piggy-bank"></i></span>
+                            <span class="nav-text">Loans &amp; Advances</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.salary-sheet') }}">
+                            <span class="nav-icon"><i class="bi bi-cash-stack"></i></span>
+                            <span class="nav-text">Salary Sheet</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.salary-payments.index') }}">
+                            <span class="nav-icon"><i class="bi bi-wallet2"></i></span>
+                            <span class="nav-text">Salary Payments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.pf-ledger') }}">
+                            <span class="nav-icon"><i class="bi bi-piggy-bank"></i></span>
+                            <span class="nav-text">PF Ledger</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.leave.index') }}">
+                            <span class="nav-icon"><i class="bi bi-calendar-x"></i></span>
+                            <span class="nav-text">Leave Applications</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.leave.ledger') }}">
+                            <span class="nav-icon"><i class="bi bi-journal-text"></i></span>
+                            <span class="nav-text">Leave Ledger</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.leave.calendar.index') }}">
+                            <span class="nav-icon"><i class="bi bi-calendar3"></i></span>
+                            <span class="nav-text">Holiday Calendar</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.leave.setup.index') }}">
+                            <span class="nav-icon"><i class="bi bi-sliders"></i></span>
+                            <span class="nav-text">Leave Setup</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.attendance.daily') }}">
+                            <span class="nav-icon"><i class="bi bi-calendar-check"></i></span>
+                            <span class="nav-text">Daily Attendance</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.attendance.monthly') }}">
+                            <span class="nav-icon"><i class="bi bi-calendar3"></i></span>
+                            <span class="nav-text">Attendance Report</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.attendance.import') }}">
+                            <span class="nav-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
+                            <span class="nav-text">Import Attendance</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.attendance.setup') }}">
+                            <span class="nav-icon"><i class="bi bi-fingerprint"></i></span>
+                            <span class="nav-text">Attendance Setup</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.payslips.index') }}">
+                            <span class="nav-icon"><i class="bi bi-receipt"></i></span>
+                            <span class="nav-text">Payslips</span>
+                        </a>
+                    </li>
                 </ul>
             </li>
 
@@ -460,6 +531,55 @@
                     </span>
                 </button>
                 <ul class="nav flex-column submenu" id="reportsSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.business-reports.index') }}">
+                            <span class="nav-icon"><i class="bi bi-grid-1x2"></i></span>
+                            <span class="nav-text">Reports Center</span>
+                        </a>
+                    </li>
+                    <li class="submenu-label" aria-hidden="true">Accounting</li>
+                    @if (\App\Http\Controllers\Admin\BranchController::isMainBranch())
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.accounting.trial-balance') }}">
+                            <span class="nav-icon"><i class="bi bi-journal-check"></i></span>
+                            <span class="nav-text">Trial Balance</span>
+                        </a>
+                    </li>
+                    @endif
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.accounting.profit-loss') }}">
+                            <span class="nav-icon"><i class="bi bi-graph-up-arrow"></i></span>
+                            <span class="nav-text">Profit &amp; Loss</span>
+                        </a>
+                    </li>
+                    @if (\App\Http\Controllers\Admin\BranchController::isMainBranch())
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.accounting.balance-sheet') }}">
+                            <span class="nav-icon"><i class="bi bi-bank"></i></span>
+                            <span class="nav-text">Balance Sheet</span>
+                        </a>
+                    </li>
+                    @endif
+                    @if (\App\Http\Controllers\Admin\BranchController::isMainBranch())
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.accounting.fiscal-years') }}">
+                            <span class="nav-icon"><i class="bi bi-calendar2-check"></i></span>
+                            <span class="nav-text">Year-end Closing</span>
+                        </a>
+                    </li>
+                    @endif
+                    @foreach (collect(\App\Http\Controllers\Admin\BusinessReportController::REPORTS)->groupBy(fn ($r) => $r[1], true) as $reportGroup => $groupReports)
+                        <li class="submenu-label" aria-hidden="true">{{ $reportGroup }}</li>
+                        @foreach ($groupReports as $reportKey => $r)
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('admin.business-reports.show', $reportKey) }}">
+                                    <span class="nav-icon"><i class="bi {{ $r[2] }}"></i></span>
+                                    <span class="nav-text">{{ $r[0] }}</span>
+                                </a>
+                            </li>
+                        @endforeach
+                    @endforeach
+                    <li class="submenu-label" aria-hidden="true">Ledgers &amp; books</li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('admin.reports.stock-ledger') }}">
                             <span class="nav-icon"><i class="bi bi-journal-text"></i></span>
@@ -484,121 +604,72 @@
                             <span class="nav-text">Transactions Ledger</span>
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.reports.liquid-asset') }}">
+                            <span class="nav-icon"><i class="bi bi-bank"></i></span>
+                            <span class="nav-text">Cash &amp; Bank Book</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.customers.vat') }}">
+                            <span class="nav-icon"><i class="bi bi-percent"></i></span>
+                            <span class="nav-text">VAT Report</span>
+                        </a>
+                    </li>
                 </ul>
             </li>
 
 
-            {{-- Profile --}}
-            <li class="nav-item">
 
-                <a class="nav-link" href="profile.html">
 
-                    <span class="nav-icon">
-                        <i class="bi bi-person-circle"></i>
-                    </span>
 
-                    <span class="nav-text">Profile</span>
-
-                </a>
-
+            {{-- System --}}
+            <li class="nav-item nav-group">
+                <button class="nav-link" type="button" data-sidebar-submenu-toggle aria-expanded="false"
+                    aria-controls="systemSubmenu">
+                    <span class="nav-icon"><i class="bi bi-gear-wide-connected"></i></span>
+                    <span class="nav-text">System</span>
+                    <span class="ms-auto"><i class="bi bi-chevron-down submenu-arrow"></i></span>
+                </button>
+                <ul class="nav flex-column submenu" id="systemSubmenu" aria-hidden="true" inert>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.branches.index') }}">
+                            <span class="nav-icon"><i class="bi bi-building"></i></span>
+                            <span class="nav-text">Branches</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.customers.settings') }}">
+                            <span class="nav-icon"><i class="bi bi-sliders"></i></span>
+                            <span class="nav-text">VAT, Loyalty &amp; Credit</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.system.email-sms') }}">
+                            <span class="nav-icon"><i class="bi bi-envelope-at"></i></span>
+                            <span class="nav-text">Email &amp; SMS</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.system.sms.log') }}">
+                            <span class="nav-icon"><i class="bi bi-chat-left-text"></i></span>
+                            <span class="nav-text">SMS Log</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.system.backups') }}">
+                            <span class="nav-icon"><i class="bi bi-database-down"></i></span>
+                            <span class="nav-text">Backups</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ route('admin.system.activity') }}">
+                            <span class="nav-icon"><i class="bi bi-clock-history"></i></span>
+                            <span class="nav-text">Activity Log</span>
+                        </a>
+                    </li>
+                </ul>
             </li>
-
-
-            {{-- Charts --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="charts.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-bar-chart"></i>
-                    </span>
-
-                    <span class="nav-text">Charts</span>
-
-                </a>
-
-            </li>
-
-
-            {{-- Tables --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="tables.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-table"></i>
-                    </span>
-
-                    <span class="nav-text">Tables</span>
-
-                </a>
-
-            </li>
-
-
-            {{-- Forms --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="forms.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-file-earmark-text"></i>
-                    </span>
-
-                    <span class="nav-text">Forms</span>
-
-                </a>
-
-            </li>
-
-
-            {{-- Components --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="components.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-puzzle"></i>
-                    </span>
-
-                    <span class="nav-text">Components</span>
-
-                </a>
-
-            </li>
-
-
-            {{-- Alerts --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="alerts.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-bell"></i>
-                    </span>
-
-                    <span class="nav-text">Alerts</span>
-
-                </a>
-
-            </li>
-
-
-            {{-- Modals --}}
-            <li class="nav-item">
-
-                <a class="nav-link" href="modals.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-window"></i>
-                    </span>
-
-                    <span class="nav-text">Modals</span>
-
-                </a>
-
-            </li>
-
 
             {{-- Settings --}}
             <li class="nav-item">
@@ -616,20 +687,7 @@
             </li>
 
 
-            {{-- Blank Page --}}
-            <li class="nav-item">
 
-                <a class="nav-link" href="blank.html">
-
-                    <span class="nav-icon">
-                        <i class="bi bi-file-earmark"></i>
-                    </span>
-
-                    <span class="nav-text">Blank Page</span>
-
-                </a>
-
-            </li>
 
         </ul>
 
@@ -637,8 +695,7 @@
 
 
     <div class="sidebar-user">
-        <img class="avatar-img avatar-md sidebar-user-avatar" src="{{ asset(Auth::user()->image) }}"
-            alt="{{ Auth::user()->name }}">
+        @include('admin.includes.avatar', ['user' => Auth::user(), 'class' => 'avatar-md sidebar-user-avatar'])
         <strong>{{ Auth::user()->name }}</strong>
         <small>Active Workspace</small>
     </div>

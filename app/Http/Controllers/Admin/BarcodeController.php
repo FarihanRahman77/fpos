@@ -117,13 +117,14 @@ class BarcodeController extends Controller
             'items.*.type'   => 'required|in:product,variant',
             'items.*.id'     => 'required|integer',
             'items.*.qty'    => 'required|integer|min:1|max:500',
+            'barcode_type'   => 'nullable|in:C128,C39,EAN13,UPCA',
         ]);
 
         $lines = [];
 
         foreach ($request->items as $item) {
             if ($item['type'] === 'product') {
-                $product = Product::find($item['id']);
+                $product = Product::where('id', $item['id'])->where('deleted', 'No')->first();
                 if (!$product) {
                     continue;
                 }
@@ -146,6 +147,7 @@ class BarcodeController extends Controller
                     ->leftJoin("attribute_types as patype", 'pv.attribute_type_id', '=', 'patype.id')
                     ->leftJoin("products as p", 'pv.product_id', '=', 'p.id')
                     ->where('pv.id', $item['id'])
+                    ->where('pv.deleted', 'No')
                     ->select([
                         'pv.id',
                         'pv.barcode',
@@ -176,8 +178,9 @@ class BarcodeController extends Controller
             'barcode_type' => $request->get('barcode_type', 'C128'),
             'show_price'   => (bool) $request->get('show_price', true),
             'show_name'    => (bool) $request->get('show_name', true),
-            'label_width'  => (float) $request->get('label_width', 40),  // mm
-            'label_height' => (float) $request->get('label_height', 30), // mm
+            // mm; empty/0/garbage falls back to the default and the size is kept printable
+            'label_width'  => min(150, max(15, (float) $request->get('label_width') ?: 40)),
+            'label_height' => min(150, max(10, (float) $request->get('label_height') ?: 30)),
             'columns'      => (int) $request->get('columns', 3),
         ];
 

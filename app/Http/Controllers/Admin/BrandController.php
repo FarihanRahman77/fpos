@@ -48,9 +48,9 @@ class BrandController extends Controller
 
                 $i++,
 
-                $brand->name,
+                e($brand->name),
 
-                $brand->slug,
+                e($brand->slug),
 
                 $status,
 
@@ -69,8 +69,22 @@ class BrandController extends Controller
         //return $request;
         $request->validate([
             'id' => 'nullable|integer',
-            'name' => 'required|string|max:255'
+            'name' => 'required|string|max:255',
+            'status' => 'nullable|in:Active,Inactive',
         ]);
+
+        $duplicate = Brand::where('deleted', 'No')
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($request->name))])
+            ->when($request->id, fn ($q) => $q->where('id', '<>', $request->id))
+            ->exists();
+
+        if ($duplicate) {
+            return response()->json([
+                'status' => false,
+                'message' => 'A brand with this name already exists.',
+                'errors' => ['name' => ['A brand with this name already exists.']],
+            ], 422);
+        }
 
 
         if ($request->id) {
@@ -86,7 +100,7 @@ class BrandController extends Controller
                     'message' => 'Brand not found.'
                 ], 404);
             }
-            $brand->status = $request->status;
+            $brand->status = $request->status ?: $brand->status;
 
         } else {
 
@@ -98,7 +112,7 @@ class BrandController extends Controller
         }
 
 
-        $brand->name = $request->name;
+        $brand->name = trim($request->name);
         $brand->slug = Str::slug($request->name);
 
 
@@ -156,8 +170,17 @@ class BrandController extends Controller
         }
 
 
+        if (\Illuminate\Support\Facades\DB::table('products')->where('brand_id', $brand->id)->where('deleted', 'No')->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Products use this brand, so it cannot be deleted. Change their brand or make it Inactive.'
+            ], 422);
+        }
+
         $brand->deleted = 'Yes';
         $brand->status = 'Inactive';
+        $brand->deleted_by = auth()->id();
+        $brand->deleted_date = now();
         $brand->updated_by = auth()->id();
 
         $brand->save();

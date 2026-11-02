@@ -1093,6 +1093,8 @@ function saveDelivery(items)
         type:
             "POST",
 
+        dataType: 'json',
+
         data: {
 
             _token:
@@ -1103,9 +1105,8 @@ function saveDelivery(items)
 
         },
 
-        success:
-            function (response) {
-              //  alert(JSON.stringify(response));
+        success: function(response) {
+                // alert(JSON.stringify(response));
                 if (response.status) {
 
                     toastr.success(
@@ -1153,9 +1154,8 @@ function saveDelivery(items)
 
             },
 
-        error:
-            function (xhr) {
-               // alert(JSON.stringify(xhr));
+        error: function(xhr) {
+                // alert(JSON.stringify(xhr));
                 let message =
                     'Unable to deliver Sale Order.';
 

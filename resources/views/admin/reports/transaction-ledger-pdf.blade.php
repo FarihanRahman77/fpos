@@ -4,40 +4,40 @@
     <meta charset="utf-8">
     <title>Transactions Ledger</title>
     @php
-        $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
+        $m = fn ($v) => number_format((float) $v, 2);
+        $b = fn ($v) => (float) $v == 0 ? '' : number_format((float) $v, 2);
     @endphp
     <style>
-        @page { margin: 24px 26px 46px 26px; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 8px; color: #1e293b; }
+        @page { margin: 22px 24px 44px 24px; }
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: 7.5px; color: {{ $pc['ink'] }}; }
         table { width: 100%; border-collapse: collapse; }
-        .muted { color: #64748b; }
+        .muted { color: {{ $pc['muted'] }}; }
         .right { text-align: right; }
+        .center { text-align: center; }
         .bold { font-weight: bold; }
-        .nowrap { white-space: nowrap; }
 
-        .company-name { font-size: 15px; font-weight: bold; color: #0f172a; }
-        .doc-title { font-size: 16px; font-weight: bold; color: #1e3a8a; letter-spacing: 1px; }
-        .rule { border-top: 2.5px solid #1e3a8a; margin: 6px 0 8px 0; }
+        .company-name { font-size: 14px; font-weight: bold; }
+        .doc-title { font-size: 14px; font-weight: bold; color: {{ $pc['accent'] }}; letter-spacing: 1px; }
+        .rule { border-top: 2px solid {{ $pc['accent'] }}; margin: 6px 0 6px 0; }
+        .meta td { padding: 1px 8px 1px 0; vertical-align: top; }
+        .meta .k { font-weight: bold; width: 70px; }
 
-        .filters td { padding: 1px 10px 1px 0; vertical-align: top; }
-        .filters .k { color: #64748b; width: 70px; }
-
-        .grid { margin-top: 8px; }
-        .grid th { background: #1e3a8a; color: #fff; padding: 4px 4px; font-size: 7px; text-transform: uppercase; text-align: left; border: 1px solid #1e3a8a; }
-        .grid th.right { text-align: right; }
-        .grid td { padding: 3.5px 4px; border: 1px solid #e2e8f0; vertical-align: top; }
-        .grid tr:nth-child(even) td { background: #f8fafc; }
-        .grid tr.total td { background: #f1f5f9; font-weight: bold; border-top: 1.5px solid #94a3b8; }
+        .section { margin-top: 12px; }
+        .grid th, .grid td { border: 1px solid {{ $pc['border_strong'] }}; padding: 3px 4px; vertical-align: top; }
+        .grid .band th { background: {{ $pc['soft'] }}; font-size: 9px; text-align: center; padding: 4px; }
+        .grid .cols th { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; font-size: 7px; text-align: left; }
+        .grid .cols th.right { text-align: right; }
+        .grid td.num { text-align: right; white-space: nowrap; }
+        .grid .sub { color: {{ $pc['muted'] }}; font-size: 6.5px; }
         thead { display: table-header-group; }
         tr { page-break-inside: avoid; }
 
-        .summary { width: 48%; margin-top: 14px; page-break-inside: avoid; }
-        .summary th { background: #e2e8f0; padding: 4px 7px; font-size: 7px; text-transform: uppercase; text-align: left; border: 1px solid #cbd5e1; }
-        .summary th.right { text-align: right; }
-        .summary td { padding: 4px 7px; border: 1px solid #cbd5e1; }
-        .summary tr.total td { background: #f1f5f9; font-weight: bold; }
+        .sum { margin-top: 6px; page-break-inside: avoid; }
+        .sum td { padding: 1.5px 0; font-weight: bold; }
+        .sum td.k { width: 26%; }
+        .sum td.v { width: 22%; padding-left: 4px; }
 
-        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7.5px; color: #94a3b8; }
+        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7px; color: {{ $pc['faint'] }}; }
     </style>
 </head>
 <body>
@@ -48,7 +48,7 @@
                 <table>
                     <tr>
                         @if ($company['logo'])
-                            <td style="width: 52px; vertical-align: middle;"><img src="{{ $company['logo'] }}" style="max-height: 36px; max-width: 48px;" alt=""></td>
+                            <td style="width: 50px; vertical-align: middle;"><img src="{{ $company['logo'] }}" style="max-height: 34px; max-width: 46px;" alt=""></td>
                         @endif
                         <td style="vertical-align: middle;">
                             <div class="company-name">{{ $company['name'] }}</div>
@@ -61,92 +61,120 @@
                     </tr>
                 </table>
             </td>
-            <td class="right" style="vertical-align: top;">
+            <td style="vertical-align: top;" class="right">
                 <div class="doc-title">TRANSACTIONS LEDGER</div>
-                <div class="muted" style="margin-top: 2px;">Printed: {{ $printedAt }}</div>
             </td>
         </tr>
     </table>
-
     <div class="rule"></div>
 
-    <table class="filters">
+    <table class="meta">
+        <tr><td class="k">Printed Date</td><td>: {{ $printedAt }}</td></tr>
+        <tr><td class="k">Printed By</td><td>: {{ $printedBy ?: '-' }}</td></tr>
         @foreach ($filters_text as $label => $value)
-            <tr><td class="k">{{ $label }}</td><td class="bold">{{ $value }}</td></tr>
+            <tr><td class="k">{{ $label }}</td><td>: {{ $value }}</td></tr>
         @endforeach
     </table>
 
-    <table class="grid">
-        <thead>
-            <tr>
-                <th style="width: 3%;">SL</th>
-                <th style="width: 11%;">Date &amp; Time</th>
-                <th style="width: 8%;">Voucher</th>
-                <th style="width: 12%;">Type</th>
-                <th style="width: 13%;">Party</th>
-                <th style="width: 8%;">Reference</th>
-                <th style="width: 11%;">Account / Method</th>
-                <th>Remarks</th>
-                <th class="right" style="width: 8.5%;">Debit</th>
-                <th class="right" style="width: 8.5%;">Credit</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse ($rows as $i => $r)
-                <tr>
-                    <td class="muted">{{ $i + 1 }}</td>
-                    <td class="nowrap">{{ $r->datetime->format('d M Y h:i:s A') }}</td>
-                    <td>{{ $r->voucher ?: '-' }}</td>
-                    <td>{{ $r->type }}</td>
-                    <td>{{ $r->party ?: '-' }}@if ($r->party_type)<br><span class="muted">{{ $r->party_type }}</span>@endif</td>
-                    <td>{{ $r->reference ?: '-' }}</td>
-                    <td>{{ $r->account ?: '-' }}</td>
-                    <td class="muted">{{ $r->remarks }}</td>
-                    <td class="right">{{ $m($r->dr) }}</td>
-                    <td class="right">{{ $m($r->cr) }}</td>
-                </tr>
-            @empty
-                <tr><td colspan="10" class="muted" style="text-align: center; font-style: italic;">No transactions in this period</td></tr>
-            @endforelse
-            <tr class="total">
-                <td colspan="8" class="right">Total ({{ $totals['entries'] }} entries)</td>
-                <td class="right">{{ number_format($totals['dr'], 2) }}</td>
-                <td class="right">{{ number_format($totals['cr'], 2) }}</td>
-            </tr>
-        </tbody>
-    </table>
+    @foreach ($methods as $sec)
+        @php $label = $sec['method']; @endphp
+        <div class="section">
+            <table class="grid">
+                <thead>
+                    <tr class="band"><th colspan="7">{{ $label }} Report</th></tr>
+                    <tr class="cols">
+                        <th style="width: 4%;">SL</th>
+                        <th style="width: 31%;">Particulars</th>
+                        <th style="width: 23%;">Remarks</th>
+                        <th style="width: 11%;">Voucher Type</th>
+                        <th class="right" style="width: 10%;">{{ $label }} In</th>
+                        <th class="right" style="width: 10%;">{{ $label }} Out</th>
+                        <th class="right" style="width: 11%;">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($sec['rows'] as $i => $r)
+                        <tr>
+                            <td class="center">{{ $i + 1 }}</td>
+                            <td>
+                                {{ $r['particulars'] }}
+                                <div class="sub">{{ $r['datetime']->format('d M Y h:i A') }}{{ $r['refs'] ? ' · ' . $r['refs'] : '' }}</div>
+                            </td>
+                            <td>
+                                {{ $r['account'] }}
+                                @if ($r['remarks'])<div class="sub">{{ $r['remarks'] }}</div>@endif
+                            </td>
+                            <td>{{ $r['type'] }}</td>
+                            <td class="num">{{ $b($r['in']) }}</td>
+                            <td class="num">{{ $b($r['out']) }}</td>
+                            <td class="num">{{ $m($r['balance']) }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="7" class="center muted">No transactions in this period</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
 
-    @if ($by_type->isNotEmpty())
-        <table class="summary">
-            <thead>
+            <table class="sum">
                 <tr>
-                    <th>Summary by type</th>
-                    <th class="right">Entries</th>
-                    <th class="right">Debit</th>
-                    <th class="right">Credit</th>
+                    <td class="k">Today {{ $label }} In</td><td class="v">: {{ $m($sec['in']) }}</td>
+                    <td class="k">{{ $label }} Opening Balance</td><td class="v">: {{ $m($sec['opening']) }}</td>
+                </tr>
+                <tr>
+                    <td class="k">Today {{ $label }} Out</td><td class="v">: {{ $m($sec['out']) }}</td>
+                    <td class="k">Today {{ $label }} Closing Balance</td><td class="v">: {{ $m($sec['period']) }}</td>
+                </tr>
+                <tr>
+                    <td class="k">Today {{ $label }} Closing Balance</td><td class="v">: {{ $m($sec['period']) }}</td>
+                    <td class="k">Net {{ $label }} Closing Balance</td><td class="v">: {{ $m($sec['closing']) }}</td>
+                </tr>
+                <tr>
+                    <td class="k">Net {{ $label }} Closing Balance</td><td class="v">: {{ $m($sec['closing']) }}</td>
+                    <td></td><td></td>
+                </tr>
+            </table>
+        </div>
+    @endforeach
+
+    <div class="section">
+        <table class="grid">
+            <thead>
+                <tr class="band"><th colspan="7">Closing Summary</th></tr>
+                <tr class="cols">
+                    <th style="width: 4%;">SL</th>
+                    <th style="width: 18%;">Payment Method</th>
+                    <th style="width: 26%;">Ledger Account</th>
+                    <th class="right" style="width: 13%;">Opening Balance</th>
+                    <th class="right" style="width: 13%;">In</th>
+                    <th class="right" style="width: 13%;">Out</th>
+                    <th class="right" style="width: 13%;">Closing Balance</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach ($by_type as $t)
+                @foreach ($summary as $i => $a)
                     <tr>
-                        <td>{{ $t['type'] }}</td>
-                        <td class="right">{{ $t['count'] }}</td>
-                        <td class="right">{{ $m($t['dr']) }}</td>
-                        <td class="right">{{ $m($t['cr']) }}</td>
+                        <td class="center">{{ $i + 1 }}</td>
+                        <td>{{ $a['method'] }}</td>
+                        <td>{{ $a['account'] }}{{ $a['code'] ? ' (' . $a['code'] . ')' : '' }}</td>
+                        <td class="num">{{ $m($a['opening']) }}</td>
+                        <td class="num">{{ $m($a['in']) }}</td>
+                        <td class="num">{{ $m($a['out']) }}</td>
+                        <td class="num bold">{{ $m($a['closing']) }}</td>
                     </tr>
                 @endforeach
-                <tr class="total">
-                    <td>Total</td>
-                    <td class="right">{{ $totals['entries'] }}</td>
-                    <td class="right">{{ number_format($totals['dr'], 2) }}</td>
-                    <td class="right">{{ number_format($totals['cr'], 2) }}</td>
+                <tr>
+                    <td colspan="3" class="right bold">Total</td>
+                    <td class="num bold">{{ $m($totals['opening']) }}</td>
+                    <td class="num bold">{{ $m($totals['in']) }}</td>
+                    <td class="num bold">{{ $m($totals['out']) }}</td>
+                    <td class="num bold">{{ $m($totals['closing']) }}</td>
                 </tr>
             </tbody>
         </table>
-    @endif
+    </div>
 
-    <div class="footer">{{ $company['name'] }} &nbsp;|&nbsp; Transactions Ledger &nbsp;|&nbsp; {{ $filters_text['Period'] ?? '' }}</div>
-
-    {{-- Page numbers are drawn by ReportController after rendering. --}}
+    <div class="footer">
+        {{ $company['name'] }} · Transactions Ledger · {{ $from->format('d M Y') }}{{ $from->isSameDay($to) ? '' : ' – ' . $to->format('d M Y') }}
+    </div>
 </body>
 </html>

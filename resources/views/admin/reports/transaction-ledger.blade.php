@@ -7,14 +7,39 @@
 
 @push('styles')
     <style>
-        .ledger-table { font-size: .85rem; }
+        .ledger-table { font-size: var(--text-caption); }
         /* beats the global ".table tbody td" (1rem padding, 120px min-width) for a compact ledger */
         .ledger-table tbody td, .ledger-table tfoot td, .ledger-table thead th { min-width: 0; padding: .4rem 10px; }
-        .ledger-table td:nth-child(-n+4) { white-space: nowrap; }   /* sl, date, voucher, type on one line */
-        .ledger-table .badge { font-size: .72rem; font-weight: 600; }
-        /* dark text on light badges in both themes (dark mode turns .text-dark light) */
-        .ledger-table .badge.ledger-badge-ink { color: #1f2937 !important; }
-        .ledger-total td { font-weight: 700; background: var(--admin-surface-soft); border-top: 2px solid var(--admin-border); }
+        .tl-section { margin-bottom: var(--space-xl); }
+        .tl-band {
+            margin: 0;
+            padding: var(--space-sm) var(--space-md);
+            border: 1px solid var(--color-border);
+            border-bottom: 0;
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
+            background: var(--color-surface-soft);
+            text-align: center;
+            font-size: var(--text-body-tabular);
+            font-weight: var(--font-weight-medium);
+        }
+        .tl-sub { font-size: var(--text-micro); color: var(--color-text-muted); }
+        .tl-num { white-space: nowrap; font-feature-settings: var(--font-feature-numeric); }
+        .tl-in { color: var(--color-success); }
+        .tl-out { color: var(--color-danger); }
+        .tl-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: var(--space-xs) var(--space-xxl);
+            margin-top: var(--space-md);
+            font-size: var(--text-caption);
+        }
+        .tl-summary dl { margin: 0; }
+        .tl-summary dl > div { display: flex; justify-content: space-between; gap: var(--space-md); padding: var(--space-xxs) 0; border-bottom: 1px dashed var(--color-border); }
+        .tl-summary dt { font-weight: var(--font-weight-regular); color: var(--color-text-secondary); }
+        .tl-summary dd { margin: 0; font-weight: var(--font-weight-medium); font-feature-settings: var(--font-feature-numeric); white-space: nowrap; }
+        .tl-summary .tl-strong dt { color: var(--color-text); font-weight: var(--font-weight-medium); }
+        @media (max-width: 767.98px) { .tl-summary { grid-template-columns: 1fr; } }
+        .ledger-total td { font-weight: var(--font-weight-medium); background: var(--admin-surface-soft); border-top: 2px solid var(--admin-border); }
         #reportBody { min-height: 120px; position: relative; }
         #reportBody.loading { opacity: .45; pointer-events: none; }
     </style>
@@ -26,7 +51,7 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
             <div>
                 <h4 class="mb-0">Transactions Ledger</h4>
-                <small class="text-muted">Every sale, order, purchase, return, receipt, payment, expense, bill, journal and amount transfer in the selected period.</small>
+                <small class="text-muted">Money in and out of every payment method (cash, bank, mobile banking): sales receipts, purchases, payments, expenses, salary, bills, journals and transfers.</small>
             </div>
             <div class="ms-auto d-flex gap-2">
                 <button type="button" class="btn btn-outline-danger" id="pdfBtn" title="Download as PDF">
@@ -42,7 +67,7 @@
         <div class="card acc-card mb-3">
             <div class="card-body">
                 <form id="filterForm" class="row g-3 align-items-end" novalidate>
-                    <div class="col-md-3">
+                    <div class="col-md-3 col-xl-3">
                         <label class="form-label" for="from">From <span class="text-danger">*</span></label>
                         <input type="datetime-local" step="1" id="from" name="from" class="form-control"
                             value="{{ now()->startOfDay()->format('Y-m-d\TH:i:s') }}">
@@ -52,21 +77,30 @@
                         <input type="datetime-local" step="1" id="to" name="to" class="form-control"
                             value="{{ now()->endOfDay()->format('Y-m-d\TH:i:s') }}">
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="type">Transaction Type</label>
+                    <div class="col-md-2">
+                        <label class="form-label" for="method_id">Payment Method</label>
+                        <select id="method_id" name="method_id" class="form-select">
+                            <option value="">All methods</option>
+                            @foreach ($methods as $mt)
+                                <option value="{{ $mt->id }}">{{ $mt->account_name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="account_id">Account</label>
+                        <select id="account_id" name="account_id" class="form-select">
+                            <option value="">All accounts</option>
+                            @foreach ($accounts as $ac)
+                                <option value="{{ $ac->id }}" data-method="{{ $ac->parent_id }}">{{ $ac->account_name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="type">Voucher Type</label>
                         <select id="type" name="type" class="form-select">
                             <option value="">All types</option>
                             @foreach ($types as $key => $label)
                                 <option value="{{ $key }}">{{ $label }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="party_id">Party</label>
-                        <select id="party_id" name="party_id" class="form-select">
-                            <option value="">All parties</option>
-                            @foreach ($parties as $p)
-                                <option value="{{ $p->id }}">{{ $p->name }}{{ $p->code ? ' (' . $p->code . ')' : '' }} - {{ $p->type }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -99,25 +133,25 @@
             <div class="col-6 col-lg-3">
                 <div class="card acc-stat"><div class="card-body d-flex align-items-center gap-3">
                     <div class="icon i1"><i class="fas fa-receipt"></i></div>
-                    <div><div class="text-muted small">Entries</div><h5 class="mb-0" id="sumEntries">0</h5></div>
+                    <div><div class="text-muted small">Opening Balance</div><h5 class="mb-0" id="sumOpening">0.00</h5></div>
                 </div></div>
             </div>
             <div class="col-6 col-lg-3">
                 <div class="card acc-stat"><div class="card-body d-flex align-items-center gap-3">
                     <div class="icon i3"><i class="fas fa-layer-group"></i></div>
-                    <div><div class="text-muted small">Transaction Types</div><h5 class="mb-0" id="sumTypes">0</h5></div>
+                    <div><div class="text-muted small">Total In</div><h5 class="mb-0" id="sumIn">0.00</h5></div>
                 </div></div>
             </div>
             <div class="col-6 col-lg-3">
                 <div class="card acc-stat"><div class="card-body d-flex align-items-center gap-3">
                     <div class="icon i4"><i class="fas fa-plus"></i></div>
-                    <div><div class="text-muted small">Total Debit</div><h5 class="mb-0" id="sumDr">0.00</h5></div>
+                    <div><div class="text-muted small">Total Out</div><h5 class="mb-0" id="sumOut">0.00</h5></div>
                 </div></div>
             </div>
             <div class="col-6 col-lg-3">
                 <div class="card acc-stat"><div class="card-body d-flex align-items-center gap-3">
                     <div class="icon i2"><i class="fas fa-minus"></i></div>
-                    <div><div class="text-muted small">Total Credit</div><h5 class="mb-0" id="sumCr">0.00</h5></div>
+                    <div><div class="text-muted small">Net Closing Balance</div><h5 class="mb-0" id="sumClosing">0.00</h5></div>
                 </div></div>
             </div>
         </div>
@@ -141,8 +175,9 @@
             const params = {
                 from: $('#from').val(),
                 to: $('#to').val(),
-                type: $('#type').val(),
-                party_id: $('#party_id').val()
+                method_id: $('#method_id').val(),
+                account_id: $('#account_id').val(),
+                type: $('#type').val()
             };
 
             Object.keys(params).forEach(function(k) {
@@ -175,23 +210,26 @@
             $.ajax({
                 url: dataUrl + '?' + filterQuery(),
                 type: 'GET',
+                dataType: 'json',
                 beforeSend: function() {
                     $('#reportBody').addClass('loading');
                     $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Loading...');
                 },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to build the report.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to build the report.');
                         return;
                     }
 
-                    $('#reportBody').html(res.html);
-                    $('#sumEntries').text(res.summary.entries);
-                    $('#sumTypes').text(res.summary.types);
-                    $('#sumDr').text(res.summary.dr);
-                    $('#sumCr').text(res.summary.cr);
+                    $('#reportBody').html(response.html);
+                    $('#sumOpening').text(response.summary.opening);
+                    $('#sumIn').text(response.summary.in);
+                    $('#sumOut').text(response.summary.out);
+                    $('#sumClosing').text(response.summary.closing);
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     if (xhr.status === 422 && xhr.responseJSON) {
                         $('#filterError').text(xhr.responseJSON.message);
                     } else {
@@ -232,7 +270,21 @@
         }
 
         $(document).ready(function() {
-            Voucher.initSelect2($('#type, #party_id'));
+            Voucher.initSelect2($('#method_id, #account_id, #type'));
+
+            // An account belongs to one method: picking an account selects its method,
+            // picking another method clears an account that is not under it.
+            $('#method_id').on('change', function() {
+                const method = $(this).val();
+                const owner = $('#account_id').find(':selected').data('method');
+                if (method && owner && String(owner) !== method) {
+                    $('#account_id').val('').trigger('change.select2');
+                }
+            });
+            $('#account_id').on('change', function() {
+                const owner = $(this).find(':selected').data('method');
+                if (owner) $('#method_id').val(String(owner)).trigger('change.select2');
+            });
 
             $('#filterForm').on('submit', function(e) {
                 e.preventDefault();
@@ -240,7 +292,7 @@
             });
 
             $('#resetBtn').on('click', function() {
-                $('#type, #party_id').val('').trigger('change.select2');
+                $('#method_id, #account_id, #type').val('').trigger('change.select2');
                 setRange('today');
             });
 

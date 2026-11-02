@@ -51,11 +51,11 @@ class AttributeController extends Controller
 
                 $i++,
 
-                $attribute->name,
+                e($attribute->name),
 
-                $attribute->slug,
+                e($attribute->slug),
 
-                $attributeType->name,
+                e($attributeType->name ?? '-'),
 
                 $status,
 
@@ -73,8 +73,27 @@ class AttributeController extends Controller
     {
         $request->validate([
             'id' => 'nullable|integer',
-            'name' => 'required|string|max:255'
+            'name' => 'required|string|max:255',
+            'attribute_type_id' => 'required|integer|exists:attribute_types,id',
+            'status' => 'nullable|in:Active,Inactive',
+        ], [
+            'attribute_type_id.required' => 'Choose the attribute category.',
         ]);
+
+        // One name per attribute category (e.g. "Red" only once under "Color").
+        $duplicate = Attribute::where('deleted', 'No')
+            ->where('attribute_type_id', $request->attribute_type_id)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($request->name))])
+            ->when($request->id, fn ($q) => $q->where('id', '<>', $request->id))
+            ->exists();
+
+        if ($duplicate) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This attribute already exists in that category.',
+                'errors' => ['name' => ['This attribute already exists in that category.']],
+            ], 422);
+        }
 
 
         if ($request->id) {
@@ -90,7 +109,7 @@ class AttributeController extends Controller
                     'message' => 'Attribute not found.'
                 ], 404);
             }
-            $attribute->status = $request->status;
+            $attribute->status = $request->status ?: $attribute->status;
         } else {
 
             $attribute = new Attribute();
@@ -102,7 +121,7 @@ class AttributeController extends Controller
         }
 
 
-        $attribute->name = $request->name;
+        $attribute->name = trim($request->name);
         $attribute->attribute_type_id = $request->attribute_type_id;
         $attribute->slug = Str::slug($request->name);
 
@@ -161,7 +180,21 @@ class AttributeController extends Controller
         }
 
 
+        // Products and their variants point at the attribute; removing it would leave them nameless.
+        $inUse = \Illuminate\Support\Facades\DB::table('product_variants')->where('attribute_id', $attribute->id)->where('deleted', 'No')->exists()
+            || \Illuminate\Support\Facades\DB::table('product_attributes')->where('attribute_id', $attribute->id)->where('deleted', 'No')->exists();
+
+        if ($inUse) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This attribute is used by products, so it cannot be deleted. Make it Inactive instead.'
+            ], 422);
+        }
+
         $attribute->deleted = 'Yes';
+        $attribute->status = 'Inactive';
+        $attribute->deleted_by = auth()->id();
+        $attribute->deleted_date = now();
         $attribute->updated_by = auth()->id();
 
         $attribute->save();

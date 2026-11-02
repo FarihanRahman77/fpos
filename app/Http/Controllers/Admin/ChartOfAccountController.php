@@ -412,9 +412,13 @@ class ChartOfAccountController extends Controller
                     abort(409, 'This account has child accounts. Delete or move them first.');
                 }
 
-                if (Schema::hasTable('journal_entry_lines')
-                    && DB::table('journal_entry_lines')->where('account_id', $account->id)->exists()) {
-                    abort(409, 'This account has journal history and cannot be deleted. Mark it Inactive instead.');
+                if (abs((float) ($account->current_balance ?? 0)) > 0.0001) {
+                    abort(409, 'This account has a balance of ' . number_format((float) $account->current_balance, 2)
+                        . ' and cannot be deleted. Mark it Inactive instead.');
+                }
+
+                if ($usedIn = $this->usedIn((int) $account->id)) {
+                    abort(409, 'This account is used in ' . $usedIn . ' and cannot be deleted. Mark it Inactive instead.');
                 }
 
                 if (abs((float) ($account->opening_balance ?? 0)) > 0.0001) {
@@ -594,8 +598,8 @@ class ChartOfAccountController extends Controller
                 $this->fail('status', 'Deactivate all child accounts first.');
             }
 
-            if (abs($this->postedBalance((int) $account->id)) > 0.0001) {
-                $this->fail('status', 'An account with a nonzero posted balance cannot be deactivated.');
+            if (abs((float) ($account->current_balance ?? 0)) > 0.0001 || abs($this->postedBalance((int) $account->id)) > 0.0001) {
+                $this->fail('status', 'An account with a nonzero balance cannot be deactivated.');
             }
 
             return;
@@ -606,6 +610,54 @@ class ChartOfAccountController extends Controller
         if (!$parent || $parent->status !== 'Active') {
             $this->fail('status', 'Activate the parent account first.');
         }
+    }
+
+    /**
+     * Where an account is referenced by a live document (first match, for the message), or null.
+     * Soft deletes do not trigger the foreign keys, so this is checked here.
+     */
+    private function usedIn(int $accountId): ?string
+    {
+        $uses = [
+            'journals'           => ['journal_details', ['account_id', 'account_group_id'], 'deleted'],
+            'expenses'           => ['expense_details', ['expense_account_id', 'expense_group_id'], 'deleted'],
+            'expense payments'   => ['expenses', ['payment_account_id', 'payment_group_id'], 'deleted'],
+            'bills'              => ['bill_details', ['account_id', 'account_group_id'], 'deleted'],
+            'bill payments'      => ['bill_payments', ['payment_account_id', 'payment_group_id'], 'deleted'],
+            'amount transfers'   => ['internal_amount_transfers', ['from_account_id', 'to_account_id', 'from_group_id', 'to_group_id'], 'deleted'],
+            'party payments'     => ['payments', ['payment_method_id', 'payment_method_account_id'], 'deleted'],
+            'payroll runs'       => ['payroll_runs', ['expense_account_id', 'payable_account_id', 'pf_account_id', 'loan_account_id'], null],
+            'salary payments'    => ['salary_payments', ['payment_account_id'], null],
+            'employee loans'     => ['employee_loans', ['loan_account_id', 'payment_account_id'], 'deleted'],
+            'loan transactions'  => ['employee_loan_transactions', ['payment_account_id'], null],
+        ];
+
+        foreach ($uses as $label => [$table, $columns, $deletedCol]) {
+            if (!Schema::hasTable($table)) {
+                continue;
+            }
+
+            $columns = array_values(array_filter($columns, fn ($c) => Schema::hasColumn($table, $c)));
+            if (!$columns) {
+                continue;
+            }
+
+            $q = DB::table($table)->where(function ($w) use ($columns, $accountId) {
+                foreach ($columns as $c) {
+                    $w->orWhere($c, $accountId);
+                }
+            });
+
+            if ($deletedCol && Schema::hasColumn($table, $deletedCol)) {
+                $q->where($deletedCol, 'No');
+            }
+
+            if ($q->exists()) {
+                return $label;
+            }
+        }
+
+        return null;
     }
 
     private function postedBalance(int $accountId): float
@@ -781,6 +833,8 @@ class ChartOfAccountController extends Controller
             ->where('layer_level', 3)
             ->where('deleted', 'No')
             ->where('status', 'Active')
+            // cash / bank ledgers of another branch are not offered
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', BranchController::activeId()))
             ->orderBy('account_code')
             ->get(['id', 'account_code', 'account_name', 'current_balance']);
 
@@ -792,11 +846,13 @@ class ChartOfAccountController extends Controller
             ->where('parent_id',$request->parent_id)
             ->where('deleted', 'No')
             ->where('status', 'Active')
+            // cash / bank ledgers of another branch are not offered
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', BranchController::activeId()))
             ->orderBy('account_code')
             ->get(['id', 'account_code', 'account_name']);
         $html='<option value="">Select Account</option>';
         foreach($childs as $child){
-            $html .='<option value="'.$child->id.'">'.$child->account_name.'</option>';
+            $html .= '<option value="' . (int) $child->id . '">' . e($child->account_name) . '</option>';
         }
         return $html;
     }

@@ -6,272 +6,306 @@
 
 @push('styles')
     <style>
+        /* ==================================================================
+           POS — two panels: products (left) and the current sale (right).
+           Tokens only (see CLAUDE.md). Large screens: both panels fill the
+           viewport and scroll inside. Below 992px they stack, and the total +
+           Complete Sale bar sticks to the bottom of the screen.
+           ================================================================== */
         .pos-page {
-            --pos-radius: 14px;
-            --pos-panel-height: calc(100vh - 150px);
+            --pos-panel-height: calc(100vh - 68px - (2 * var(--space-xxl)));
+            --pos-control: var(--control-height-sm);
         }
 
         .pos-panel {
-            background: var(--admin-surface);
-            border: 1px solid var(--admin-border);
-            border-radius: var(--pos-radius);
-            box-shadow: var(--admin-shadow);
-            height: var(--pos-panel-height);
-            min-height: 580px;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            min-width: 0;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-1);
+        }
+
+        @media (min-width: 992px) {
+            .pos-panel {
+                height: var(--pos-panel-height);
+                min-height: 560px;
+                overflow: hidden;
+            }
         }
 
         .pos-panel-head {
-            padding: 14px 16px 10px;
-            border-bottom: 1px solid var(--admin-border);
+            padding: var(--space-lg) var(--space-lg) var(--space-md);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .pos-head-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--space-sm) var(--space-md);
+        }
+
+        .pos-head-row > :first-child {
+            flex: 1 1 auto;
+            min-width: 0;
         }
 
         .pos-title {
-            font-size: 1.05rem;
-            font-weight: 700;
             margin: 0;
-            color: var(--admin-text);
+            font-size: var(--text-heading-sm);
+            font-weight: var(--font-weight-regular);
+            line-height: var(--leading-heading-sm);
+            color: var(--color-text);
         }
 
         .pos-subtitle {
-            font-size: .78rem;
-            color: var(--admin-muted);
+            font-size: var(--text-caption);
+            color: var(--color-text-muted);
         }
 
-        /* ---------- Panel header ---------- */
         .pos-head-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 10px;
+            width: var(--control-height-sm);
+            height: var(--control-height-sm);
+            flex: 0 0 auto;
+            border-radius: var(--radius-md);
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, var(--admin-primary), var(--admin-primary-dark));
-            color: #fff;
-            font-size: 1.05rem;
-            box-shadow: 0 4px 12px rgba(145, 97, 0, .25);
+            background: var(--color-accent-soft);
+            color: var(--color-accent-ink);
+            font-size: var(--text-body-lg);
+        }
+
+        .pos-label {
+            margin-bottom: var(--space-xs);
+            font-size: var(--text-micro);
+            font-weight: var(--font-weight-medium);
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--color-text-muted);
         }
 
         /* ---------- Search & filters ---------- */
-        .pos-search {
-            position: relative;
-            flex: 1;
+        .pos-search-row {
+            display: flex;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
         }
 
-        .pos-search>i {
+        .pos-search {
+            position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .pos-search > i {
             position: absolute;
-            left: 14px;
+            left: var(--space-md);
             top: 50%;
             transform: translateY(-50%);
-            color: var(--admin-muted);
+            color: var(--color-text-muted);
+            pointer-events: none;
         }
 
         .pos-search input {
-            padding-left: 40px;
-            padding-right: 44px;
-            height: 42px;
-            border-radius: 10px;
+            padding-left: calc(var(--space-md) * 3);
+            padding-right: calc(var(--space-md) * 3.5);
         }
 
         .pos-search kbd {
             position: absolute;
-            right: 10px;
+            right: var(--space-sm);
             top: 50%;
             transform: translateY(-50%);
-            font-size: .7rem;
-            background: var(--admin-surface-soft);
-            color: var(--admin-muted);
-            border: 1px solid var(--admin-border);
+            padding: var(--space-xxs) var(--space-xs);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-xs);
+            background: var(--color-surface-soft);
+            color: var(--color-text-muted);
+            font-size: var(--text-micro);
         }
 
         .pos-filter-toggle {
             position: relative;
-            height: 42px;
-            border-radius: 10px;
-            border: 1px solid var(--admin-border);
-            background: var(--admin-surface);
-            color: var(--admin-text);
-            padding: 0 14px;
-            font-size: .85rem;
-            font-weight: 600;
-            white-space: nowrap;
-            transition: all .15s ease;
-        }
-
-        .pos-filter-toggle:hover,
-        .pos-filter-toggle[aria-expanded="true"] {
-            border-color: var(--admin-primary);
-            color: var(--admin-primary);
+            flex: 0 0 auto;
         }
 
         .pos-filter-count {
             position: absolute;
-            top: -7px;
-            right: -7px;
+            top: calc(-1 * var(--space-xs));
+            right: calc(-1 * var(--space-xs));
             min-width: 20px;
             height: 20px;
-            padding: 0 5px;
-            border-radius: 999px;
-            background: var(--admin-danger);
-            color: #fff;
-            font-size: .68rem;
+            padding: 0 var(--space-xs);
+            border-radius: var(--radius-pill);
+            background: var(--color-button);
+            color: var(--color-button-text);
+            font-size: var(--text-micro);
             line-height: 20px;
             text-align: center;
         }
 
         .pos-filters {
-            margin-top: 10px;
-            padding: 12px;
-            border: 1px dashed var(--admin-border);
-            border-radius: 12px;
-            background: var(--admin-surface-soft);
+            margin-top: var(--space-md);
+            padding: var(--space-md);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-surface-soft);
         }
 
         .pos-filters .form-select,
-        .pos-filters .form-control {
-            height: 34px;
-            font-size: .8rem;
-            padding-top: 4px;
-            padding-bottom: 4px;
+        .pos-filters .form-control,
+        .pos-filters .btn {
+            min-height: var(--pos-control);
+            height: var(--pos-control);
+            padding-top: var(--space-xs);
+            padding-bottom: var(--space-xs);
+            font-size: var(--text-caption);
         }
 
         .pos-stock-toggle {
             display: flex;
-            border: 1px solid var(--admin-border);
-            border-radius: 8px;
+            height: var(--pos-control);
+            border: 1px solid var(--color-border-input);
+            border-radius: var(--radius-sm);
             overflow: hidden;
-            height: 34px;
+            background: var(--color-surface);
         }
 
         .pos-stock-toggle button {
             flex: 1;
             border: 0;
-            background: var(--admin-surface);
-            color: var(--admin-muted);
-            font-size: .75rem;
-            font-weight: 600;
-            transition: all .15s ease;
+            background: transparent;
+            color: var(--color-text-secondary);
+            font-size: var(--text-caption);
         }
 
-        .pos-stock-toggle button+button {
-            border-left: 1px solid var(--admin-border);
+        .pos-stock-toggle button + button {
+            border-left: 1px solid var(--color-border-input);
         }
 
         .pos-stock-toggle button.active {
-            background: var(--admin-primary);
-            color: #fff;
+            background: var(--color-accent-soft);
+            color: var(--color-accent-ink);
+            font-weight: var(--font-weight-medium);
         }
 
         .pos-categories {
             display: flex;
-            gap: 8px;
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+            padding-bottom: var(--space-xxs);
             overflow-x: auto;
-            padding: 10px 0 2px;
             scrollbar-width: thin;
         }
 
         .pos-cat {
             flex: 0 0 auto;
-            border: 1px solid var(--admin-border);
-            background: var(--admin-surface-soft);
-            color: var(--admin-text);
-            border-radius: 999px;
-            padding: 5px 14px;
-            font-size: .8rem;
-            font-weight: 500;
-            transition: all .15s ease;
+            min-height: var(--pos-control);
+            padding: 0 var(--space-lg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-pill);
+            background: var(--color-surface);
+            color: var(--color-text-secondary);
+            font-size: var(--text-caption);
+            transition: border-color .15s ease, background-color .15s ease, color .15s ease;
         }
 
         .pos-cat:hover {
-            border-color: var(--admin-primary);
+            border-color: var(--color-accent);
+            color: var(--color-accent-ink);
         }
 
         .pos-cat.active {
-            background: var(--admin-primary);
-            border-color: var(--admin-primary);
-            color: #fff;
-            box-shadow: 0 3px 10px rgba(145, 97, 0, .25);
+            border-color: var(--color-accent);
+            background: var(--color-accent-soft);
+            color: var(--color-accent-ink);
+            font-weight: var(--font-weight-medium);
+        }
+
+        /* ---------- Product grid ---------- */
+        .pos-grid-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: var(--space-md) var(--space-lg) var(--space-lg);
+            background: var(--color-surface-soft);
+        }
+
+        @media (max-width: 991.98px) {
+            .pos-grid-wrap {
+                max-height: 62vh;
+                border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+            }
         }
 
         .pos-result-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: .75rem;
-            color: var(--admin-muted);
-            margin-bottom: 10px;
+            margin-bottom: var(--space-sm);
+            font-size: var(--text-caption);
+            color: var(--color-text-muted);
         }
 
         .pos-result-bar a {
-            color: var(--admin-primary);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        /* ---------- Product grid (5 per row on a normal half-screen panel) ---------- */
-        .pos-grid-wrap {
-            flex: 1;
-            overflow-y: auto;
-            padding: 12px 14px;
-            background: var(--admin-surface-soft);
-            container-type: inline-size;
+            font-weight: var(--font-weight-medium);
         }
 
         .pos-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+            gap: var(--space-md);
         }
 
-        @container (min-width: 240px) {
+        @media (max-width: 575.98px) {
             .pos-grid {
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-            }
-        }
-
-        @container (min-width: 360px) {
-            .pos-grid {
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-            }
-        }
-
-        @container (min-width: 460px) {
-            .pos-grid {
-                grid-template-columns: repeat(5, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: var(--space-sm);
             }
         }
 
         .pos-product {
             position: relative;
-            background: var(--admin-surface);
-            border: 1px solid var(--admin-border);
-            border-radius: 12px;
-            overflow: hidden;
-            cursor: pointer;
-            text-align: left;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
             padding: 0;
-            color: var(--admin-text);
-            box-shadow: var(--admin-shadow-sm);
-            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            background: var(--color-surface);
+            color: var(--color-text);
+            text-align: left;
+            cursor: pointer;
+            transition: border-color .15s ease, box-shadow .15s ease;
         }
 
-        .pos-product:hover,
+        .pos-product:hover {
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-2);
+        }
+
         .pos-product:focus-visible {
-            transform: translateY(-3px);
-            box-shadow: var(--admin-shadow-lg);
-            border-color: var(--admin-primary);
             outline: none;
+            border-color: var(--color-focus);
+            box-shadow: var(--shadow-focus);
         }
 
         .pos-product.in-cart {
-            border-color: var(--admin-primary);
-            box-shadow: var(--admin-ring);
+            border-color: var(--color-accent);
+            box-shadow: 0 0 0 1px var(--color-accent);
         }
 
         .pos-product.out-of-stock {
             cursor: not-allowed;
+        }
+
+        .pos-product.out-of-stock:hover {
+            border-color: var(--color-border);
+            box-shadow: none;
         }
 
         .pos-product.out-of-stock .pos-product-img img {
@@ -279,328 +313,384 @@
             opacity: .5;
         }
 
-        .pos-product.out-of-stock:hover {
-            transform: none;
-            box-shadow: var(--admin-shadow-sm);
-            border-color: var(--admin-border);
-        }
-
         .pos-product-img {
             position: relative;
-            aspect-ratio: 1 / 1;
-            width: 100%;
-            background: radial-gradient(circle at 50% 35%, var(--admin-surface) 0%, var(--admin-surface-soft) 75%);
             display: flex;
             align-items: center;
             justify-content: center;
+            aspect-ratio: 4 / 3;
+            width: 100%;
             overflow: hidden;
+            background: var(--color-surface-soft);
         }
 
         .pos-product-img img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            padding: 6px;
-            transition: transform .25s ease;
+            padding: var(--space-sm);
         }
 
-        .pos-product:hover .pos-product-img img {
-            transform: scale(1.06);
+        .pos-product-initial {
+            font-size: var(--text-display-md);
+            font-weight: var(--font-weight-light);
+            color: var(--color-accent);
         }
 
         .pos-product-add {
             position: absolute;
-            right: 6px;
-            bottom: 6px;
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: var(--admin-primary);
-            color: #fff;
+            right: var(--space-sm);
+            bottom: var(--space-sm);
+            width: 32px;
+            height: 32px;
+            border-radius: var(--radius-pill);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: .9rem;
-            box-shadow: 0 3px 8px rgba(0, 0, 0, .2);
+            background: var(--color-button);
+            color: var(--color-button-text);
+            box-shadow: var(--shadow-2);
             opacity: 0;
-            transform: scale(.7);
-            transition: all .18s ease;
+            transition: opacity .15s ease;
         }
 
-        .pos-product:hover .pos-product-add {
+        .pos-product:hover .pos-product-add,
+        .pos-product:focus-visible .pos-product-add {
             opacity: 1;
-            transform: scale(1);
+        }
+
+        /* Touch screens have no hover: keep the add button visible. */
+        @media (hover: none) {
+            .pos-product-add {
+                opacity: 1;
+            }
         }
 
         .pos-product.out-of-stock .pos-product-add {
             display: none;
         }
 
-        .pos-product-initial {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--admin-primary);
-            opacity: .6;
-        }
-
         .pos-product-body {
-            padding: 6px 8px 8px;
-            border-top: 1px solid var(--admin-border);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xxs);
+            padding: var(--space-sm) var(--space-md) var(--space-md);
+            border-top: 1px solid var(--color-border);
         }
 
         .pos-product-brand {
-            font-size: .62rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: .4px;
-            color: var(--admin-muted);
-            white-space: nowrap;
             overflow: hidden;
+            white-space: nowrap;
             text-overflow: ellipsis;
+            font-size: var(--text-micro);
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--color-text-muted);
         }
 
         .pos-product-name {
-            font-size: .74rem;
-            font-weight: 600;
-            line-height: 1.25;
-            height: 2.5em;
-            overflow: hidden;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
+            min-height: calc(2 * var(--leading-caption) * var(--text-caption));
+            overflow: hidden;
+            font-size: var(--text-caption);
+            font-weight: var(--font-weight-medium);
+            line-height: var(--leading-caption);
         }
 
         .pos-product-price {
-            display: block;
-            margin-top: 4px;
-            font-weight: 700;
-            color: var(--admin-primary);
-            font-size: .8rem;
+            margin-top: var(--space-xs);
+            font-size: var(--text-body-tabular);
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
+            color: var(--color-text);
         }
 
         .pos-product-stock {
             display: flex;
             align-items: center;
-            gap: 4px;
-            font-size: .65rem;
-            color: var(--admin-muted);
+            gap: var(--space-xs);
+            font-size: var(--text-micro);
+            color: var(--color-text-muted);
         }
 
         .pos-dot {
             width: 6px;
             height: 6px;
-            border-radius: 50%;
-            background: var(--admin-success);
             flex: 0 0 6px;
+            border-radius: 50%;
+            background: var(--color-success);
         }
 
         .pos-dot.out {
-            background: var(--admin-danger);
+            background: var(--color-danger);
         }
 
         .pos-badge {
             position: absolute;
-            top: 6px;
+            top: var(--space-sm);
             z-index: 1;
-            font-size: .6rem;
-            font-weight: 600;
-            padding: 2px 7px;
-            border-radius: 999px;
-            backdrop-filter: blur(4px);
+            padding: var(--space-xxs) var(--space-sm);
+            border-radius: var(--radius-pill);
+            font-size: var(--text-micro);
+            font-weight: var(--font-weight-medium);
+            line-height: 1.3;
         }
 
         .pos-badge-variant {
-            left: 6px;
-            background: rgba(23, 27, 34, .72);
-            color: #fff;
+            left: var(--space-sm);
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
         }
 
         .pos-badge-out {
-            left: 6px;
-            background: var(--admin-danger);
-            color: #fff;
+            left: var(--space-sm);
+            background: var(--color-danger-soft);
+            color: var(--color-danger);
         }
 
         .pos-badge-qty {
-            right: 6px;
-            background: var(--admin-primary);
-            color: #fff;
-            min-width: 22px;
+            right: var(--space-sm);
+            min-width: 24px;
             text-align: center;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
+            background: var(--color-button);
+            color: var(--color-button-text);
         }
 
         .pos-empty {
+            padding: var(--space-huge) var(--space-md);
             text-align: center;
-            color: var(--admin-muted);
-            padding: 60px 10px;
+            color: var(--color-text-muted);
         }
 
         .pos-empty i {
-            font-size: 2.4rem;
             display: block;
-            margin-bottom: 8px;
-            opacity: .5;
+            margin-bottom: var(--space-sm);
+            font-size: var(--text-display-lg);
+            color: var(--color-border-input);
         }
 
-        /* ---------- Cart ---------- */
-        .pos-customer {
-            padding: 10px 16px;
-            border-top: 1px solid var(--admin-border);
-            background: var(--admin-surface-soft);
+        /* ---------- Cart panel ---------- */
+        .pos-cart-head-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
         }
 
-        .pos-customer .form-control,
-        .pos-summary .form-control,
-        .pos-summary .form-select {
-            height: 36px;
-            font-size: .85rem;
+        .pos-cart-head-actions .form-control {
+            width: 150px;
+            min-height: var(--pos-control);
+            height: var(--pos-control);
+            padding-top: var(--space-xs);
+            padding-bottom: var(--space-xs);
+            font-size: var(--text-caption);
         }
 
-        .pos-due-chip {
-            font-size: .75rem;
-            font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: rgba(180, 35, 24, .1);
-            color: var(--admin-danger);
-        }
-
-        .pos-due-chip.zero {
-            background: rgba(22, 115, 75, .1);
-            color: var(--admin-success);
+        .pos-cart-scroll {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
         }
 
         .pos-cart-items {
-            flex: 1;
-            min-height: 120px;
-            overflow-y: auto;
-            padding: 2px 16px;
+            padding: 0 var(--space-lg);
         }
 
         .pos-cart-items .pos-empty {
-            padding: 24px 10px;
+            padding: var(--space-xl) var(--space-md);
         }
 
+        /* one cart line: [thumb] [name] [total]  /  [controls] */
         .pos-cart-item {
-            display: flex;
-            gap: 8px;
-            padding: 7px 0;
-            border-bottom: 1px dashed var(--admin-border);
-            animation: posFadeIn .2s ease;
+            display: grid;
+            grid-template-columns: 44px minmax(0, 1fr) auto;
+            grid-template-areas:
+                "thumb info total"
+                "thumb controls controls";
+            gap: var(--space-xs) var(--space-md);
+            padding: var(--space-md) 0;
+            border-bottom: 1px solid var(--color-border);
         }
 
         .pos-cart-item:last-child {
             border-bottom: 0;
         }
 
-        @keyframes posFadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-4px);
-            }
-
-            to {
-                opacity: 1;
-                transform: none;
-            }
-        }
-
         .pos-cart-thumb {
-            width: 38px;
-            height: 38px;
-            flex: 0 0 38px;
-            border-radius: 10px;
-            overflow: hidden;
-            background: var(--admin-surface-soft);
-            border: 1px solid var(--admin-border);
+            grid-area: thumb;
+            width: 44px;
+            height: 44px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            color: var(--admin-primary);
+            overflow: hidden;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-surface-soft);
+            color: var(--color-accent);
         }
 
         .pos-cart-thumb img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+        }
+
+        .pos-cart-thumb .pos-product-initial {
+            font-size: var(--text-heading-sm);
         }
 
         .pos-cart-info {
-            flex: 1;
+            grid-area: info;
             min-width: 0;
         }
 
         .pos-cart-name {
-            font-weight: 600;
-            font-size: .85rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: var(--text-caption);
+            font-weight: var(--font-weight-medium);
+            line-height: var(--leading-caption);
         }
 
         .pos-cart-variant {
-            font-size: .7rem;
-            font-weight: 600;
-            background: rgba(145, 97, 0, .12);
-            color: var(--admin-primary);
-            border-radius: 6px;
-            padding: 1px 7px;
-            margin-left: 4px;
+            display: inline-block;
+            margin-left: var(--space-xs);
+            padding: 0 var(--space-sm);
+            border-radius: var(--radius-pill);
+            background: var(--color-accent-soft);
+            color: var(--color-accent-ink);
+            font-size: var(--text-micro);
+            font-weight: var(--font-weight-medium);
+        }
+
+        .pos-cart-total {
+            grid-area: total;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .pos-cart-total strong {
+            display: block;
+            font-size: var(--text-body-tabular);
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
+        }
+
+        .pos-cart-total small {
+            font-size: var(--text-micro);
+            color: var(--color-text-muted);
         }
 
         .pos-cart-controls {
+            grid-area: controls;
             display: flex;
-            align-items: center;
-            gap: 5px;
-            margin-top: 4px;
             flex-wrap: wrap;
-        }
-
-        .pos-cart-controls .cartVariant {
-            width: auto;
-            max-width: 110px;
+            align-items: center;
+            gap: var(--space-sm);
         }
 
         .pos-cart-controls .form-control,
         .pos-cart-controls .form-select {
-            height: 30px;
-            font-size: .78rem;
-            padding: 2px 6px;
+            min-height: var(--pos-control);
+            height: var(--pos-control);
+            padding: var(--space-xs) var(--space-sm);
+            font-size: var(--text-caption);
+        }
+
+        /* fixed rows: [variant] / [qty × price] / [discount ... remove] */
+        .pos-cart-controls .cartVariant {
+            flex: 1 1 100%;
+            padding-right: calc(var(--space-sm) * 3.5);
+        }
+
+        .pos-break {
+            flex-basis: 100%;
+            height: 0;
+            margin-bottom: calc(-1 * var(--space-sm));   /* the empty line would otherwise add a second row gap */
+        }
+
+        /* price and discount stretch/shrink so a narrow cart never pushes them onto their own line */
+        .pos-cart-controls .cartPrice {
+            flex: 1 1 72px;
+            min-width: 72px;
+            max-width: 120px;
+            text-align: right;
+        }
+
+        .pos-times {
+            color: var(--color-text-muted);
+            font-size: var(--text-caption);
+        }
+
+        .pos-disc {
+            display: flex;
+            flex: 0 1 132px;
+            min-width: 108px;
+        }
+
+        .pos-disc .form-select {
+            flex: 0 0 52px;
+            width: 52px;
+            /* Inter has no Bengali Taka (৳): name system fonts that do, for this symbol only */
+            font-family: var(--font-sans), "Nirmala UI", "Noto Sans Bengali", "Vrinda", sans-serif;
+            font-size: var(--text-body-tabular);
+            padding-right: var(--space-lg) !important;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            background-position: right var(--space-xs) center;
+            background-size: 10px 8px;
+        }
+
+        .pos-disc .form-control {
+            flex: 1 1 auto;
+            min-width: 0;
+            margin-left: -1px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+            text-align: right;
         }
 
         .pos-qty {
             display: inline-flex;
             align-items: center;
-            border: 1px solid var(--admin-border);
-            border-radius: 8px;
+            height: var(--pos-control);
             overflow: hidden;
+            border: 1px solid var(--color-border-input);
+            border-radius: var(--radius-sm);
+            background: var(--color-surface);
         }
 
         .pos-qty button {
-            width: 28px;
-            height: 28px;
+            width: var(--pos-control);
+            height: 100%;
             border: 0;
-            background: var(--admin-surface-soft);
-            color: var(--admin-text);
-            font-weight: 700;
+            background: var(--color-surface-soft);
+            color: var(--color-text);
+            font-size: var(--text-body-lg);
+            line-height: 1;
         }
 
         .pos-qty button:hover {
-            background: var(--admin-primary);
-            color: #fff;
+            background: var(--color-accent-soft);
+            color: var(--color-accent-ink);
         }
 
         .pos-qty input {
-            width: 46px;
-            height: 28px;
+            width: 48px;
+            height: 100%;
             border: 0;
-            text-align: center;
-            font-size: .8rem;
             background: transparent;
-            color: var(--admin-text);
+            color: var(--color-text);
+            text-align: center;
+            font-size: var(--text-caption);
+            font-feature-settings: var(--font-feature-numeric);
             -moz-appearance: textfield;
+        }
+
+        .pos-qty input:focus {
+            outline: none;
+            box-shadow: inset 0 0 0 2px var(--color-focus-ring);
         }
 
         .pos-qty input::-webkit-outer-spin-button,
@@ -609,209 +699,290 @@
             margin: 0;
         }
 
-        .pos-cart-total {
-            text-align: right;
-            min-width: 78px;
-        }
-
-        .pos-cart-total strong {
-            display: block;
-            font-size: .9rem;
-        }
-
-        .pos-cart-total small {
-            color: var(--admin-muted);
-            font-size: .7rem;
-        }
-
         .pos-remove {
+            margin-top: var(--space-xs);
+            padding: var(--space-xs);
             border: 0;
+            border-radius: var(--radius-pill);
             background: transparent;
-            color: var(--admin-muted);
-            padding: 0;
-            margin-top: 4px;
-            font-size: .85rem;
+            color: var(--color-text-muted);
+            font-size: var(--text-body-lg);
+            line-height: 1;
         }
 
         .pos-remove:hover {
-            color: var(--admin-danger);
+            background: var(--color-danger-soft);
+            color: var(--color-danger);
         }
 
-        .pos-summary {
-            border-top: 1px solid var(--admin-border);
-            padding: 12px 16px 14px;
-            background: var(--admin-surface-soft);
+        /* customer, discount, payment */
+        .pos-section {
+            padding: var(--space-md) var(--space-lg);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .pos-section .form-control,
+        .pos-section .form-select {
+            min-height: 40px;
+            height: 40px;
+            padding-top: var(--space-xs);
+            padding-bottom: var(--space-xs);
+            font-size: var(--text-body-tabular);
+        }
+
+        .pos-due-chip {
+            display: inline-block;
+            padding: var(--space-xs) var(--space-md);
+            border-radius: var(--radius-pill);
+            background: var(--color-danger-soft);
+            color: var(--color-danger);
+            font-size: var(--text-caption);
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
+            white-space: nowrap;
+        }
+
+        .pos-due-chip.zero {
+            background: var(--color-success-soft);
+            color: var(--color-success);
         }
 
         .pos-sum-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: .85rem;
-            margin-bottom: 4px;
+            gap: var(--space-md);
+            min-height: 40px;
+            font-size: var(--text-body-tabular);
         }
 
-        .pos-sum-row span:first-child {
-            color: var(--admin-muted);
+        .pos-sum-row > span:first-child {
+            color: var(--color-text-muted);
+        }
+
+        .pos-sum-row strong {
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
+        }
+
+        .pos-sum-row > div {
+            min-width: 0;
+        }
+
+        .pos-sum-row .pos-disc {
+            flex: 0 1 150px;
+            min-width: 100px;
+        }
+
+        .pos-sum-row .pos-disc .form-select {
+            flex-basis: 56px;
+            width: 56px;
+        }
+
+        .pos-discount-amount {
+            min-width: 56px;
+            text-align: right;
+            white-space: nowrap;
+            color: var(--color-danger);
+        }
+
+        .pos-redeem { width: 96px; min-height: var(--pos-control); height: var(--pos-control); text-align: right; }
+        .pos-credit-hint { display: block; margin-top: var(--space-xxs); font-size: var(--text-micro); color: var(--color-text-muted); }
+        .pos-credit-hint.over { color: var(--color-danger); font-weight: var(--font-weight-medium); }
+
+        .pos-pay-full {
+            font-weight: var(--font-weight-medium);
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        /* footer: always visible */
+        .pos-cart-footer {
+            flex: 0 0 auto;
+            padding: var(--space-md) var(--space-lg) var(--space-lg);
+            border-top: 1px solid var(--color-border);
+            background: var(--color-surface);
+            /* hints that the cart above scrolls */
+            box-shadow: 0 -10px 16px -14px color-mix(in srgb, var(--color-ink) 35%, transparent);
         }
 
         .pos-grand {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 10px 14px;
-            margin: 8px 0 10px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--admin-primary), var(--admin-primary-dark));
-            color: #fff;
+            align-items: baseline;
+            gap: var(--space-md);
+            margin-bottom: var(--space-md);
         }
 
         .pos-grand span {
-            font-size: .85rem;
-            opacity: .9;
+            font-size: var(--text-body-tabular);
+            color: var(--color-text-muted);
         }
 
         .pos-grand strong {
-            font-size: 1.45rem;
-            letter-spacing: .3px;
-        }
-
-        .pos-label {
-            font-size: .72rem;
-            font-weight: 600;
-            color: var(--admin-muted);
-            margin-bottom: 3px;
-            text-transform: uppercase;
-            letter-spacing: .4px;
+            font-size: var(--text-display-md);
+            font-weight: var(--font-weight-light);
+            letter-spacing: var(--tracking-display-md);
+            line-height: 1;
+            font-feature-settings: var(--font-feature-numeric);
+            color: var(--color-text);
         }
 
         .pos-checkout {
-            height: 48px;
-            font-weight: 700;
-            font-size: 1rem;
-            border-radius: 12px;
+            width: 100%;
+            min-height: 52px;
+            font-size: var(--text-button-md);
+        }
+
+        @media (max-width: 991.98px) {
+            .pos-cart-footer {
+                position: sticky;
+                bottom: 0;
+                z-index: 5;
+                border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+                box-shadow: 0 -8px 24px color-mix(in srgb, var(--color-ink) 8%, transparent);
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .pos-panel-head,
+            .pos-section,
+            .pos-cart-footer {
+                padding-left: var(--space-md);
+                padding-right: var(--space-md);
+            }
+
+            .pos-cart-items {
+                padding: 0 var(--space-md);
+            }
+
+            .pos-grid-wrap {
+                padding: var(--space-sm) var(--space-md) var(--space-md);
+            }
+
+            .pos-grand strong {
+                font-size: var(--text-heading-lg);
+            }
+
+            .pos-cart-head-actions .form-control {
+                width: 132px;
+            }
         }
 
         /* ---------- Variant modal ---------- */
-        .pos-variant-modal .modal-content {
-            border-radius: 16px;
-            border: 0;
-            background: var(--admin-surface);
-            color: var(--admin-text);
-        }
-
         .pos-variant-hero {
             display: flex;
-            gap: 14px;
             align-items: center;
+            gap: var(--space-md);
         }
 
         .pos-variant-hero .pos-cart-thumb {
-            width: 72px;
-            height: 72px;
-            flex-basis: 72px;
-            font-size: 1.5rem;
+            width: 64px;
+            height: 64px;
         }
 
         .pos-variant-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: var(--space-sm);
         }
 
         .pos-variant-option {
-            border: 2px solid var(--admin-border);
-            border-radius: 12px;
-            padding: 10px 12px;
-            background: var(--admin-surface);
-            color: var(--admin-text);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-xxs);
+            min-height: var(--control-height);
+            padding: var(--space-sm) var(--space-md);
+            border: 1px solid var(--color-border-input);
+            border-radius: var(--radius-md);
+            background: var(--color-surface);
+            color: var(--color-text);
             text-align: left;
-            transition: all .15s ease;
+            transition: border-color .15s ease, background-color .15s ease;
         }
 
         .pos-variant-option:hover:not(:disabled) {
-            border-color: var(--admin-primary);
+            border-color: var(--color-accent);
         }
 
         .pos-variant-option.active {
-            border-color: var(--admin-primary);
-            background: rgba(145, 97, 0, .08);
-            box-shadow: var(--admin-ring);
+            border-color: var(--color-accent);
+            background: var(--color-accent-soft);
+            box-shadow: 0 0 0 1px var(--color-accent);
         }
 
         .pos-variant-option:disabled {
-            opacity: .45;
+            opacity: .5;
             cursor: not-allowed;
         }
 
         .pos-variant-option .v-name {
-            font-weight: 600;
-            font-size: .85rem;
+            font-size: var(--text-caption);
+            font-weight: var(--font-weight-medium);
         }
 
         .pos-variant-option .v-price {
-            color: var(--admin-primary);
-            font-weight: 700;
-            font-size: .85rem;
+            font-size: var(--text-caption);
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
+            color: var(--color-accent-ink);
         }
 
         .pos-variant-option .v-stock {
-            font-size: .7rem;
-            color: var(--admin-muted);
+            font-size: var(--text-micro);
+            color: var(--color-text-muted);
         }
 
-        @media (max-width: 767.98px) {
-            .pos-panel {
-                height: auto;
-                min-height: 0;
-            }
+        .pos-variant-modal .pos-qty {
+            height: var(--control-height);
+        }
 
-            .pos-grid-wrap {
-                max-height: 60vh;
-            }
+        .pos-variant-modal .pos-qty button {
+            width: var(--control-height);
+        }
 
-            .pos-cart-items {
-                max-height: 50vh;
-            }
+        .pos-vm-price {
+            font-size: var(--text-heading-sm);
+            font-weight: var(--font-weight-medium);
+            font-feature-settings: var(--font-feature-numeric);
         }
     </style>
 @endpush
 
 @section('content')
     <div class="container-fluid pos-page">
-        <form id="posForm" autocomplete="off">
+        <form id="posForm" autocomplete="off" novalidate>
             <input type="hidden" name="sale_type" value="Walk-In">
 
             <div class="row g-3">
 
                 {{-- ================= Products ================= --}}
-                <div class="col-md-6">
+                <div class="col-lg-7 col-xxl-8">
                     <div class="pos-panel">
                         <div class="pos-panel-head">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div class="pos-head-row">
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="pos-head-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
-                                    <div>
+                                    <span class="pos-head-icon" aria-hidden="true"><i class="bi bi-grid-3x3-gap"></i></span>
+                                    <div class="min-w-0">
                                         <h5 class="pos-title">Products</h5>
                                         <div class="pos-subtitle">{{ count($products) }} products in catalogue</div>
                                     </div>
                                 </div>
-                                <a href="{{ route('sales.index', ['type' => 'Walk-In']) }}"
-                                    class="btn btn-sm btn-outline-secondary">
-                                    <i class="bi bi-list-ul me-1"></i> Sales List
+                                <a href="{{ route('sales.index', ['type' => 'Walk-In']) }}" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-list-ul"></i> Sales List
                                 </a>
                             </div>
 
-                            <div class="d-flex gap-2">
+                            <div class="pos-search-row">
                                 <div class="pos-search">
-                                    <i class="bi bi-search"></i>
-                                    <input type="text" id="posSearch" class="form-control"
-                                        placeholder="Search by name, SKU or scan barcode…">
-                                    <kbd>F2</kbd>
+                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                    <input type="text" id="posSearch" class="form-control" aria-label="Search products"
+                                        placeholder="Search name, SKU or scan barcode…">
+                                    <kbd aria-hidden="true">F2</kbd>
                                 </div>
-                                <button type="button" class="pos-filter-toggle" data-bs-toggle="collapse"
+                                <button type="button" class="btn btn-outline-secondary pos-filter-toggle" data-bs-toggle="collapse"
                                     data-bs-target="#posFilters" aria-expanded="false" aria-controls="posFilters">
-                                    <i class="bi bi-sliders me-1"></i> Filters
+                                    <i class="bi bi-sliders"></i> <span class="d-none d-sm-inline">Filters</span>
                                     <span class="pos-filter-count d-none" id="filterCount">0</span>
                                 </button>
                             </div>
@@ -819,8 +990,8 @@
                             <div class="collapse" id="posFilters">
                                 <div class="pos-filters">
                                     <div class="row g-2">
-                                        <div class="col-6">
-                                            <div class="pos-label">Brand</div>
+                                        <div class="col-sm-6">
+                                            <label class="pos-label" for="filterBrand">Brand</label>
                                             <select id="filterBrand" class="form-select">
                                                 <option value="">All Brands</option>
                                                 @foreach ($brands as $brand)
@@ -828,8 +999,8 @@
                                                 @endforeach
                                             </select>
                                         </div>
-                                        <div class="col-6">
-                                            <div class="pos-label">Category</div>
+                                        <div class="col-sm-6">
+                                            <label class="pos-label" for="filterCategory">Category</label>
                                             <select id="filterCategory" class="form-select">
                                                 <option value="">All Categories</option>
                                                 @foreach ($categories as $category)
@@ -837,25 +1008,23 @@
                                                 @endforeach
                                             </select>
                                         </div>
-                                        <div class="col-6">
-                                            <div class="pos-label">Sale Price</div>
+                                        <div class="col-sm-6">
+                                            <label class="pos-label" for="filterPriceMin">Sale Price</label>
                                             <div class="input-group">
-                                                <input type="number" id="filterPriceMin" class="form-control"
-                                                    min="0" step="0.01" placeholder="Min">
-                                                <input type="number" id="filterPriceMax" class="form-control"
-                                                    min="0" step="0.01" placeholder="Max">
+                                                <input type="number" id="filterPriceMin" class="form-control" min="0" step="0.01" placeholder="Min">
+                                                <input type="number" id="filterPriceMax" class="form-control" min="0" step="0.01" placeholder="Max" aria-label="Maximum price">
                                             </div>
                                         </div>
-                                        <div class="col-6">
+                                        <div class="col-sm-6">
                                             <div class="pos-label">Stock</div>
-                                            <div class="pos-stock-toggle" id="filterStock">
+                                            <div class="pos-stock-toggle" id="filterStock" role="group" aria-label="Stock">
                                                 <button type="button" class="active" data-stock="">All</button>
                                                 <button type="button" data-stock="in">In Stock</button>
                                                 <button type="button" data-stock="out">Out</button>
                                             </div>
                                         </div>
                                         <div class="col-8">
-                                            <div class="pos-label">Sort By</div>
+                                            <label class="pos-label" for="sortBy">Sort By</label>
                                             <select id="sortBy" class="form-select">
                                                 <option value="name">Name (A–Z)</option>
                                                 <option value="price_asc">Price: Low to High</option>
@@ -864,23 +1033,18 @@
                                             </select>
                                         </div>
                                         <div class="col-4 d-flex align-items-end">
-                                            <button type="button" class="btn btn-sm btn-outline-danger w-100"
-                                                id="resetFilters" style="height: 34px;">
-                                                <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+                                            <button type="button" class="btn btn-outline-secondary w-100" id="resetFilters">
+                                                <i class="bi bi-arrow-counterclockwise"></i> Reset
                                             </button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="pos-categories" id="posCategories">
-                                <button type="button" class="pos-cat active" data-category="">
-                                    <i class="bi bi-grid me-1"></i>All
-                                </button>
+                            <div class="pos-categories" id="posCategories" role="group" aria-label="Categories">
+                                <button type="button" class="pos-cat active" data-category="">All</button>
                                 @foreach ($categories as $category)
-                                    <button type="button" class="pos-cat" data-category="{{ $category['id'] }}">
-                                        {{ $category['name'] }}
-                                    </button>
+                                    <button type="button" class="pos-cat" data-category="{{ $category['id'] }}">{{ $category['name'] }}</button>
                                 @endforeach
                             </div>
                         </div>
@@ -895,119 +1059,130 @@
                     </div>
                 </div>
 
-                {{-- ================= Cart ================= --}}
-                <div class="col-md-6">
+                {{-- ================= Current sale ================= --}}
+                <div class="col-lg-5 col-xxl-4">
                     <div class="pos-panel">
-                        <div class="pos-panel-head d-flex justify-content-between align-items-center">
-                            <div>
-                                <h5 class="pos-title"><i class="bi bi-cart3 me-1"></i> Current Sale</h5>
-                                <div class="pos-subtitle"><span id="cartCount">0</span> items in cart</div>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <input type="date" name="sale_date" id="sale_date"
-                                    class="form-control form-control-sm" value="{{ date('Y-m-d') }}" style="width: 150px;">
-                                <button type="button" class="btn btn-sm btn-outline-danger" id="clearCartBtn"
-                                    title="Clear cart">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        {{-- Items --}}
-                        <div class="pos-cart-items" id="cartItems"></div>
-
-                        {{-- Customer --}}
-                        <div class="pos-customer">
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <div class="pos-label">Phone <span class="text-danger">*</span></div>
-                                    <input type="text" id="customer_phone" name="customer_phone" class="form-control"
-                                        placeholder="Customer phone">
+                        <div class="pos-panel-head">
+                            <div class="pos-head-row">
+                                <div>
+                                    <h5 class="pos-title">Current Sale</h5>
+                                    <div class="pos-subtitle"><span id="cartCount">0</span> item(s) in cart</div>
                                 </div>
-                                <div class="col-6">
-                                    <div class="pos-label">Name</div>
-                                    <input type="text" id="customer_name" name="customer_name" class="form-control"
-                                        placeholder="Walk-In Customer">
-                                </div>
-                                <div class="col-8">
-                                    <input type="text" id="customer_address" name="customer_address" class="form-control"
-                                        placeholder="Address (optional)">
-                                </div>
-                                <div class="col-4 d-flex align-items-center justify-content-end">
-                                    <span class="pos-due-chip zero" id="customerDueChip">Due: 0.00</span>
+                                <div class="pos-cart-head-actions">
+                                    <input type="date" name="sale_date" id="sale_date" class="form-control" value="{{ date('Y-m-d') }}" aria-label="Sale date">
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="clearCartBtn" title="Clear cart" aria-label="Clear cart">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
 
-                        {{-- Summary --}}
-                        <div class="pos-summary">
-                            <div class="pos-sum-row">
-                                <span>Subtotal</span>
-                                <strong id="subtotalText">0.00</strong>
-                            </div>
-                            <div class="pos-sum-row">
-                                <span>Discount</span>
-                                <div class="d-flex gap-1 align-items-center">
-                                    <select name="discount_type" id="discount_type" class="form-select"
-                                        style="width: 70px; height: 30px; font-size: .8rem; padding: 2px 6px;">
-                                        <option value="Amount">৳</option>
-                                        <option value="Percentage">%</option>
-                                    </select>
-                                    <input type="number" step="0.01" min="0" name="discount_value" id="discount_value"
-                                        class="form-control text-end" value="0"
-                                        style="width: 90px; height: 30px; font-size: .8rem;">
-                                    <strong class="text-danger ms-2" style="min-width: 70px; text-align: right;">
-                                        -<span id="discountText">0.00</span>
-                                    </strong>
+                        <div class="pos-cart-scroll">
+                            {{-- Items --}}
+                            <div class="pos-cart-items" id="cartItems"></div>
+
+                            {{-- Customer --}}
+                            <div class="pos-section">
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="pos-label" for="customer_phone">Phone <span class="text-danger">*</span></label>
+                                        <input type="text" id="customer_phone" name="customer_phone" class="form-control" placeholder="Customer phone" inputmode="tel">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="pos-label" for="customer_name">Name</label>
+                                        <input type="text" id="customer_name" name="customer_name" class="form-control" placeholder="Walk-In Customer">
+                                    </div>
+                                    <div class="col">
+                                        <input type="text" id="customer_address" name="customer_address" class="form-control" placeholder="Address (optional)" aria-label="Address">
+                                    </div>
+                                    <div class="col-auto d-flex align-items-center">
+                                        <span class="pos-due-chip zero" id="customerDueChip">Due: 0.00</span>
+                                        <span class="pos-credit-hint d-none" id="creditHint"></span>
+                                    </div>
                                 </div>
                             </div>
 
+                            {{-- Totals & payment --}}
+                            <div class="pos-section">
+                                <div class="pos-sum-row">
+                                    <span>Subtotal</span>
+                                    <strong id="subtotalText">0.00</strong>
+                                </div>
+                                <div class="pos-sum-row">
+                                    <span>Discount</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="pos-disc">
+                                            <select name="discount_type" id="discount_type" class="form-select" aria-label="Discount type">
+                                                <option value="Amount">৳</option>
+                                                <option value="Percentage">%</option>
+                                            </select>
+                                            <input type="number" step="0.01" min="0" name="discount_value" id="discount_value"
+                                                class="form-control" value="0" aria-label="Discount">
+                                        </div>
+                                        <strong class="pos-discount-amount">−<span id="discountText">0.00</span></strong>
+                                    </div>
+                                </div>
+
+                                @if ($programs['vat_enabled'])
+                                    <div class="pos-sum-row">
+                                        <span>VAT{{ $programs['vat_inclusive'] ? ' (included)' : '' }}</span>
+                                        <strong id="vatText">0.00</strong>
+                                    </div>
+                                @endif
+                                @if ($programs['loyalty'])
+                                    <div class="pos-sum-row d-none" id="loyaltyRow">
+                                        <span>Points <small class="text-muted" id="pointsHave"></small></span>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <input type="number" name="redeem_points" id="redeem_points" class="form-control pos-redeem" min="0" step="1"
+                                                placeholder="Redeem" aria-label="Points to redeem">
+                                            <strong class="pos-discount-amount">−<span id="loyaltyText">0.00</span></strong>
+                                        </div>
+                                    </div>
+                                @endif
+                                <div class="row g-2 mt-1">
+                                    <div class="col-6">
+                                        <label class="pos-label" for="payment_method">Payment Method</label>
+                                        <select id="payment_method" name="payment_method" class="form-select">
+                                            <option value="">Select Method</option>
+                                            @foreach ($childCoas as $childCoa)
+                                                <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="pos-label" for="payment_method_account">Payment Account</label>
+                                        <select id="payment_method_account" name="payment_method_account" class="form-select">
+                                            <option value="">Select Account</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="pos-label d-flex justify-content-between">
+                                            <label for="paid_amount" class="mb-0">Paid Amount</label>
+                                            <a href="#" id="payFullBtn" class="pos-pay-full">Pay full</a>
+                                        </div>
+                                        <input type="number" step="0.01" min="0" id="paid_amount" class="form-control text-end fw-semibold" value="0" inputmode="decimal">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="pos-label" id="balanceLabel" for="balance_amount">Due</label>
+                                        <input type="text" id="balance_amount" class="form-control text-end fw-semibold" value="0.00" readonly>
+                                    </div>
+                                    <div class="col-12">
+                                        <input type="text" name="remarks" id="remarks" class="form-control" placeholder="Remarks (optional)" aria-label="Remarks">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Always visible --}}
+                        <div class="pos-cart-footer">
                             <div class="pos-grand">
                                 <span>Grand Total</span>
                                 <strong id="grandTotalText">0.00</strong>
                             </div>
-
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <div class="pos-label">Payment Method</div>
-                                    <select id="payment_method" name="payment_method" class="form-select">
-                                        <option value="">Select Method</option>
-                                        @foreach ($childCoas as $childCoa)
-                                            <option value="{{ $childCoa->id }}">{{ $childCoa->account_name }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <div class="col-6">
-                                    <div class="pos-label">Payment Account</div>
-                                    <select id="payment_method_account" name="payment_method_account"
-                                        class="form-select">
-                                        <option value="">Select Account</option>
-                                    </select>
-                                </div>
-                                <div class="col-6">
-                                    <div class="pos-label d-flex justify-content-between">
-                                        <span>Paid Amount</span>
-                                        <a href="#" id="payFullBtn" class="text-decoration-none">Full</a>
-                                    </div>
-                                    <input type="number" step="0.01" min="0" id="paid_amount"
-                                        class="form-control text-end fw-bold" value="0">
-                                </div>
-                                <div class="col-6">
-                                    <div class="pos-label" id="balanceLabel">Due</div>
-                                    <input type="text" id="balance_amount" class="form-control text-end fw-bold"
-                                        value="0.00" readonly>
-                                </div>
-                                <div class="col-12">
-                                    <input type="text" name="remarks" id="remarks" class="form-control"
-                                        placeholder="Remarks (optional)">
-                                </div>
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-primary w-100 pos-checkout" id="checkoutBtn">
-                                        <i class="bi bi-check2-circle me-1"></i>
-                                        Complete Sale
-                                    </button>
-                                </div>
-                            </div>
+                            <button type="submit" class="btn btn-primary pos-checkout" id="checkoutBtn">
+                                <i class="bi bi-check2-circle me-1"></i>
+                                Complete Sale
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1043,7 +1218,7 @@
                         </div>
                         <div>
                             <div class="pos-subtitle">Price</div>
-                            <strong class="text-primary" id="vmPrice">0.00</strong>
+                            <strong class="pos-vm-price" id="vmPrice">0.00</strong>
                         </div>
                     </div>
                     <button type="button" class="btn btn-primary px-4" id="vmAddBtn">
@@ -1058,6 +1233,8 @@
 @push('scripts')
     <script>
         const POS_PRODUCTS = @json($products);
+        const PROGRAMS = @json($programs);
+        let customerProgram = null, customerDue = 0, lastTotals = null;
         const VARIANT_BARCODES = @json($variantBarcodes);
         const VARIANTS_URL = "{{ url('/admin/sales/products/variants') }}/";
 
@@ -1266,6 +1443,8 @@
                 calculateTotals();
             });
 
+            $(document).on('input', '#redeem_points', calculateTotals);
+
             /* ---------- Customer lookup ---------- */
             let phoneTimer;
             $('#customer_phone').on('input', function() {
@@ -1273,20 +1452,29 @@
                 let phone = $.trim($(this).val());
                 if (phone.length < 6) {
                     setCustomerDue(0);
+                    setCustomerProgram(null);
                     return;
                 }
                 phoneTimer = setTimeout(function() {
                     $.ajax({
                         url: "{{ url('/admin/sales/customer-by-phone') }}/" + encodeURIComponent(phone),
                         type: 'GET',
+                        dataType: 'json',
                         success: function(response) {
+                            // alert(JSON.stringify(response));
                             if (response.status && response.customer) {
                                 $('#customer_name').val(response.customer.name || '');
                                 $('#customer_address').val(response.customer.address || '');
                                 setCustomerDue(response.current_due);
+                                setCustomerProgram(response.programs || null);
                             } else {
                                 setCustomerDue(0);
+                                setCustomerProgram(null);
                             }
+                        },
+                        error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
+                            toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                         }
                     });
                 }, 350);
@@ -1297,11 +1485,17 @@
                 $.ajax({
                     url: "{{ route('admin.getCoaChilds') }}",
                     type: 'GET',
+                    dataType: 'html',
                     data: {
                         parent_id: $(this).val()
                     },
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         $('#payment_method_account').html(response);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                     }
                 });
             });
@@ -1527,7 +1721,9 @@
             $.ajax({
                 url: VARIANTS_URL + product.id,
                 type: 'GET',
+                dataType: 'json',
                 success: function(response) {
+                    // alert(JSON.stringify(response));
                     if (!response.status) {
                         toastr.error(response.message || 'Unable to load variants.');
                         return;
@@ -1535,6 +1731,7 @@
                     callback(response.data.variants || []);
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     toastr.error(xhr.responseJSON?.message || 'Unable to load variants.');
                 }
             });
@@ -1697,38 +1894,39 @@
                                 ${item.variant_name && !(item.variants && item.variants.length > 1) ?
                                     `<span class="pos-cart-variant">${escapeHtml(item.variant_name)}</span>` : ''}
                             </div>
-                            <div class="pos-cart-controls">
-                                ${item.variants && item.variants.length > 1 ? `
-                                <select class="form-select cartVariant" data-index="${index}" title="Change variant">
-                                    ${item.variants.map(v => `
-                                        <option value="${v.id}" ${String(v.id) === item.product_variant_id ? 'selected' : ''}
-                                            ${parseFloat(v.current_stock || 0) <= 0 ? 'disabled' : ''}>
-                                            ${escapeHtml(variantLabel(v))}
-                                        </option>`).join('')}
-                                </select>` : ''}
-                                <div class="pos-qty">
-                                    <button type="button" class="cartMinus" data-index="${index}">−</button>
-                                    <input type="number" class="cartQty" data-index="${index}" value="${item.qty}" min="0.01" step="1">
-                                    <button type="button" class="cartPlus" data-index="${index}">+</button>
-                                </div>
-                                <span class="text-muted small">×</span>
-                                <input type="number" class="form-control cartPrice" data-index="${index}"
-                                    value="${item.sale_price}" min="0" step="0.01" style="width: 80px;" title="Unit price">
-                                <div class="input-group" style="width: 120px;" title="Item discount">
-                                    <select class="form-select cartDiscType" data-index="${index}" style="max-width: 46px;">
-                                        <option value="Amount" ${item.discount_type === 'Amount' ? 'selected' : ''}>৳</option>
-                                        <option value="Percentage" ${item.discount_type === 'Percentage' ? 'selected' : ''}>%</option>
-                                    </select>
-                                    <input type="number" class="form-control cartDiscValue" data-index="${index}"
-                                        value="${item.discount_value}" min="0" step="0.01" placeholder="Disc">
-                                </div>
-                            </div>
                         </div>
                         <div class="pos-cart-total">
                             <strong>${money(t.total)}</strong>
                             ${t.discount > 0 ? `<small><s>${money(t.subtotal)}</s></small>` : `<small>Stock ${formatQty(item.stock)}</small>`}
-                            <div><button type="button" class="pos-remove cartRemove" data-index="${index}" title="Remove">
-                                <i class="bi bi-x-circle"></i></button></div>
+                        </div>
+                        <div class="pos-cart-controls">
+                            ${item.variants && item.variants.length > 1 ? `
+                            <select class="form-select cartVariant" data-index="${index}" title="Change variant" aria-label="Variant">
+                                ${item.variants.map(v => `
+                                    <option value="${v.id}" ${String(v.id) === item.product_variant_id ? 'selected' : ''}
+                                        ${parseFloat(v.current_stock || 0) <= 0 ? 'disabled' : ''}>
+                                        ${escapeHtml(variantLabel(v))}
+                                    </option>`).join('')}
+                            </select>` : ''}
+                            <div class="pos-qty">
+                                <button type="button" class="cartMinus" data-index="${index}" aria-label="Decrease quantity">−</button>
+                                <input type="number" class="cartQty" data-index="${index}" value="${item.qty}" min="0" step="any" aria-label="Quantity">
+                                <button type="button" class="cartPlus" data-index="${index}" aria-label="Increase quantity">+</button>
+                            </div>
+                            <span class="pos-times" aria-hidden="true">×</span>
+                            <input type="number" class="form-control cartPrice" data-index="${index}"
+                                value="${item.sale_price}" min="0" step="0.01" title="Unit price" aria-label="Unit price">
+                            <span class="pos-break" aria-hidden="true"></span>
+                            <div class="pos-disc" title="Item discount">
+                                <select class="form-select cartDiscType" data-index="${index}" aria-label="Discount type">
+                                    <option value="Amount" ${item.discount_type === 'Amount' ? 'selected' : ''}>৳</option>
+                                    <option value="Percentage" ${item.discount_type === 'Percentage' ? 'selected' : ''}>%</option>
+                                </select>
+                                <input type="number" class="form-control cartDiscValue" data-index="${index}"
+                                    value="${item.discount_value}" min="0" step="0.01" placeholder="Disc" aria-label="Discount">
+                            </div>
+                            <button type="button" class="pos-remove cartRemove ms-auto" data-index="${index}" title="Remove" aria-label="Remove item">
+                                <i class="bi bi-x-circle"></i></button>
                         </div>
                     </div>`;
             }).join(''));
@@ -1747,6 +1945,33 @@
             discountAmount = Math.min(subtotal, Math.max(0, discountAmount));
 
             let grandTotal = Math.max(0, subtotal - discountAmount);
+
+            // VAT (same rule as the server): rate per product, else the default; spread the sale discount over the lines.
+            let vat = 0;
+            if (PROGRAMS.vat_enabled && subtotal > 0) {
+                const share = Math.max(0, 1 - discountAmount / subtotal);
+                cart.forEach(function(item) {
+                    const p = POS_PRODUCTS.find(function(x) { return x.id == item.product_id; }) || {};
+                    const rate = p.vat_percent === null || p.vat_percent === undefined ? PROGRAMS.vat_rate : parseFloat(p.vat_percent);
+                    const base = itemTotals(item).total * share;
+                    vat += PROGRAMS.vat_inclusive ? base - base / (1 + rate / 100) : base * rate / 100;
+                });
+                vat = Math.round(vat * 100) / 100;
+                if (!PROGRAMS.vat_inclusive) grandTotal += vat;
+            }
+            $('#vatText').text(money(vat));
+
+            // Loyalty points as money off (capped like the server).
+            let loyalty = 0;
+            if (customerProgram && customerProgram.loyalty_enabled) {
+                const want = Math.min(parseFloat($('#redeem_points').val()) || 0, customerProgram.loyalty_points);
+                if (want >= customerProgram.min_redeem) {
+                    loyalty = Math.min(want * customerProgram.point_value, grandTotal * customerProgram.max_percent / 100);
+                }
+                grandTotal -= loyalty;
+            }
+            $('#loyaltyText').text(money(loyalty));
+
             let paid = parseFloat($('#paid_amount').val()) || 0;
             let due = Math.max(0, grandTotal - paid);
             let change = Math.max(0, paid - grandTotal);
@@ -1763,18 +1988,43 @@
                 $('#balance_amount').val(money(due)).toggleClass('text-danger', due > 0).removeClass('text-success');
             }
 
-            return {
-                subtotal,
-                discountAmount,
-                grandTotal,
-                paid,
-                due,
-                change
-            };
+            lastTotals = { subtotal, discountAmount, grandTotal, paid, due, change };
+            if (typeof creditHint === 'function' && customerProgram) {
+                const limit = customerProgram.credit_limit;
+                const after = customerDue + due;
+                if (limit && PROGRAMS.credit_mode !== 'off') {
+                    $('#creditHint').removeClass('d-none').toggleClass('over', after > limit)
+                        .text('Credit limit ' + money(limit) + (after > limit ? ' — over by ' + money(after - limit) : ''));
+                }
+            }
+
+            return lastTotals;
         }
+
+        function setCustomerProgram(p) {
+            customerProgram = p;
+            const show = !!(p && p.loyalty_enabled && p.loyalty_points > 0);
+            $('#loyaltyRow').toggleClass('d-none', !show);
+            $('#pointsHave').text(show ? '(' + Math.floor(p.loyalty_points) + ' = ' + money(p.loyalty_points * p.point_value) + ')' : '');
+            if (!show) $('#redeem_points').val('');
+            creditHint();
+            calculateTotals();
+        }
+
+        function creditHint() {
+            const limit = customerProgram ? customerProgram.credit_limit : 0;
+            if (!limit || PROGRAMS.credit_mode === 'off') { $('#creditHint').addClass('d-none'); return; }
+            const t = calculateTotalsQuiet();
+            const after = customerDue + (t ? t.due : 0);
+            $('#creditHint').removeClass('d-none').toggleClass('over', after > limit)
+                .text('Credit limit ' + money(limit) + (after > limit ? ' — over by ' + money(after - limit) : ''));
+        }
+
+        function calculateTotalsQuiet() { try { return lastTotals; } catch (e) { return null; } }
 
         function setCustomerDue(due) {
             due = parseFloat(due) || 0;
+            customerDue = due;
             $('#customerDueChip').text('Due: ' + money(due)).toggleClass('zero', due <= 0);
         }
 
@@ -1811,8 +2061,10 @@
             $.ajax({
                 url: "{{ route('sales.store') }}",
                 type: 'POST',
+                dataType: 'json',
                 data: $.param(data),
                 success: function(response) {
+                    // alert(JSON.stringify(response));
                     if (!response.status) {
                         toastr.error(response.message);
                         return;
@@ -1835,6 +2087,7 @@
                     resetPos();
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     let errors = xhr.responseJSON?.errors;
                     if (errors) {
                         Object.keys(errors).forEach(key => toastr.error(errors[key][0]));
@@ -1853,7 +2106,9 @@
             $('#customer_phone, #customer_name, #customer_address, #remarks').val('');
             $('#discount_type').val('Amount');
             $('#discount_value, #paid_amount').val(0);
+            $('#redeem_points').val('');
             setCustomerDue(0);
+            setCustomerProgram(null);   // the previous customer's loyalty/credit must not carry into the next sale
             renderCart();
             $('#posSearch').val('').focus();
             renderProducts();
@@ -1870,8 +2125,9 @@
             return Number.isInteger(n) ? n : n.toFixed(2);
         }
 
+        // Also escapes quotes: the result is used inside attributes (title="", alt="", src="").
         function escapeHtml(value) {
-            return $('<div>').text(value ?? '').html();
+            return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
         }
     </script>
 @endpush

@@ -26,6 +26,14 @@ use App\Http\Controllers\Admin\BillController;
 use App\Http\Controllers\Admin\AmountTransferController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\PayrollSetupController;
+use App\Http\Controllers\Admin\PayrollRunController;
+use App\Http\Controllers\Admin\SalaryAdjustmentController;
+use App\Http\Controllers\Admin\EmployeeLoanController;
+use App\Http\Controllers\Admin\HolidayCalendarController;
+use App\Http\Controllers\Admin\LeaveController;
+use App\Http\Controllers\Admin\LeaveSetupController;
+use App\Http\Controllers\Admin\SalaryPaymentController;
+use App\Http\Controllers\Admin\SaleQuotationController;
 use App\Http\Controllers\Admin\ReportController;
 
 
@@ -231,8 +239,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/attributes/{attributeTypeId}', [ProductController::class, 'attributes'])
             ->name('products.attributes');
 
-        Route::get('/data', [ProductController::class, 'data'])->name('products.data');
-
         Route::get('/generate/codes', [ProductController::class, 'generateCodes'])->name('products.generate.codes');
         Route::get('products/generate-variant-barcodes', [ProductController::class, 'generateVariantBarcodes'])->name('products.generate.variant.barcodes');
     });
@@ -252,7 +258,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/purchases/edit/{id}', [PurchaseController::class, 'edit'])->name('purchases.edit');
         Route::post('/purchases/update/{id}', [PurchaseController::class, 'update'])->name('purchases.update');
         Route::post('/purchases/delete/{id}', [PurchaseController::class, 'delete'])->name('purchases.delete');
-        Route::post('/purchases/status/{id}', [PurchaseController::class, 'status'])->name('purchases.status');
         Route::get('/purchases/supplier-due/{supplierId}', [PurchaseController::class, 'supplierDue'])->name('purchases.supplier.due');
         Route::get('/purchases/products/search', [PurchaseController::class, 'productSearch'])->name('purchases.products.search');
         Route::get('/purchases/products/variants/{productId}', [PurchaseController::class, 'variants'])->name('purchases.products.variants');
@@ -389,17 +394,17 @@ Route::middleware('auth')->group(function () {
         Route::get('/payment/index/{type}', [PaymentController::class, 'index'])->name('admin.payment.index');
         Route::get('/payment/list/{type}', [PaymentController::class, 'list'])->name('admin.payment.list');
         Route::post('/payment/store/', [PaymentController::class, 'store'])->name('admin.payment.store');
-        Route::get('/payment/delete', [PaymentController::class, 'delete'])->name('admin.payment.delete');
+        Route::post('/payment/delete', [PaymentController::class, 'delete'])->name('admin.payment.delete');
         Route::get('/payment/due', [PaymentController::class, 'party_due'])->name('admin.payment.due');
 
-        Route::get('/chart-of-accounts', [ChartOfAccountController::class, 'page'])->name('admin.chart-of-accounts.page');
-        Route::get('/chart-of-accounts/tree', [ChartOfAccountController::class, 'index'])->name('admin.chart-of-accounts.index');
-        Route::get('/chart-of-accounts/show/{id}', [ChartOfAccountController::class, 'show'])->name('admin.chart-of-accounts.show');
-        Route::post('/chart-of-accounts/store', [ChartOfAccountController::class, 'store'])->name('admin.chart-of-accounts.store');
-        Route::post('/chart-of-accounts/update/{id}', [ChartOfAccountController::class, 'update'])->name('admin.chart-of-accounts.update');
-        Route::post('/chart-of-accounts/destroy/{id}', [ChartOfAccountController::class, 'destroy'])->name('admin.chart-of-accounts.destroy');
-        Route::post('/chart-of-accounts/status/{id}', [ChartOfAccountController::class, 'status'])->name('admin.chart-of-accounts.status');
-        Route::get('/chart-of-accounts/next-code/{parentId}', [ChartOfAccountController::class, 'nextCode'])->name('admin.chart-of-accounts.next-code');
+        Route::get('/chart-of-accounts', [ChartOfAccountController::class, 'page'])->middleware('main.branch')->name('admin.chart-of-accounts.page');
+        Route::get('/chart-of-accounts/tree', [ChartOfAccountController::class, 'index'])->middleware('main.branch')->name('admin.chart-of-accounts.index');
+        Route::get('/chart-of-accounts/show/{id}', [ChartOfAccountController::class, 'show'])->middleware('main.branch')->name('admin.chart-of-accounts.show');
+        Route::post('/chart-of-accounts/store', [ChartOfAccountController::class, 'store'])->middleware('main.branch')->name('admin.chart-of-accounts.store');
+        Route::post('/chart-of-accounts/update/{id}', [ChartOfAccountController::class, 'update'])->middleware('main.branch')->name('admin.chart-of-accounts.update');
+        Route::post('/chart-of-accounts/destroy/{id}', [ChartOfAccountController::class, 'destroy'])->middleware('main.branch')->name('admin.chart-of-accounts.destroy');
+        Route::post('/chart-of-accounts/status/{id}', [ChartOfAccountController::class, 'status'])->middleware('main.branch')->name('admin.chart-of-accounts.status');
+        Route::get('/chart-of-accounts/next-code/{parentId}', [ChartOfAccountController::class, 'nextCode'])->middleware('main.branch')->name('admin.chart-of-accounts.next-code');
 
 
 
@@ -407,7 +412,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/expense/index/', [ExpenseController::class, 'index'])->name('admin.expense.index');
         Route::get('/expense/list/', [ExpenseController::class, 'list'])->name('admin.expense.list');
         Route::post('/expense/store/', [ExpenseController::class, 'store'])->name('admin.expense.store');
-        Route::get('/expense/delete', [ExpenseController::class, 'delete'])->name('admin.expense.delete');
+        Route::post('/expense/delete', [ExpenseController::class, 'delete'])->name('admin.expense.delete');
         Route::get('/expense/show/', [ExpenseController::class, 'show'])->name('admin.expense.show');
         Route::get('/expense/children/', [ExpenseController::class, 'children'])->name('admin.expense.children');
         Route::get('/expense/pdf/', [ExpenseController::class, 'pdf'])->name('admin.expense.pdf');
@@ -417,23 +422,23 @@ Route::middleware('auth')->group(function () {
         Route::get('/journal/list', [JournalController::class, 'list'])->name('admin.journal.list');
         Route::get('/journal/show', [JournalController::class, 'show'])->name('admin.journal.show');
         Route::post('/journal/store', [JournalController::class, 'store'])->name('admin.journal.store');
-        Route::get('/journal/delete', [JournalController::class, 'delete'])->name('admin.journal.delete');
+        Route::post('/journal/delete', [JournalController::class, 'delete'])->name('admin.journal.delete');
 
         // Bill + bill payments
         Route::get('/bill/index', [BillController::class, 'index'])->name('admin.bill.index');
         Route::get('/bill/list', [BillController::class, 'list'])->name('admin.bill.list');
         Route::get('/bill/show', [BillController::class, 'show'])->name('admin.bill.show');
         Route::post('/bill/store', [BillController::class, 'store'])->name('admin.bill.store');
-        Route::get('/bill/delete', [BillController::class, 'delete'])->name('admin.bill.delete');
+        Route::post('/bill/delete', [BillController::class, 'delete'])->name('admin.bill.delete');
         Route::post('/bill/payment/store', [BillController::class, 'paymentStore'])->name('admin.bill.payment.store');
-        Route::get('/bill/payment/delete', [BillController::class, 'paymentDelete'])->name('admin.bill.payment.delete');
+        Route::post('/bill/payment/delete', [BillController::class, 'paymentDelete'])->name('admin.bill.payment.delete');
 
         // Amount transfer (account to account)
         Route::get('/amount-transfer/index', [AmountTransferController::class, 'index'])->name('admin.transfer.index');
         Route::get('/amount-transfer/list', [AmountTransferController::class, 'list'])->name('admin.transfer.list');
         Route::get('/amount-transfer/show', [AmountTransferController::class, 'show'])->name('admin.transfer.show');
         Route::post('/amount-transfer/store', [AmountTransferController::class, 'store'])->name('admin.transfer.store');
-        Route::get('/amount-transfer/delete', [AmountTransferController::class, 'delete'])->name('admin.transfer.delete');
+        Route::post('/amount-transfer/delete', [AmountTransferController::class, 'delete'])->name('admin.transfer.delete');
 
         // Payroll: employees
         Route::get('/employee/index', [EmployeeController::class, 'index'])->name('admin.employee.index');
@@ -442,24 +447,137 @@ Route::middleware('auth')->group(function () {
         Route::get('/employee/search', [EmployeeController::class, 'search'])->name('admin.employee.search');
         Route::post('/employee/store', [EmployeeController::class, 'store'])->name('admin.employee.store');
         Route::post('/employee/status', [EmployeeController::class, 'status'])->name('admin.employee.status');
-        Route::get('/employee/delete', [EmployeeController::class, 'delete'])->name('admin.employee.delete');
+        Route::post('/employee/delete', [EmployeeController::class, 'delete'])->name('admin.employee.delete');
         Route::get('/employee/id-card', [EmployeeController::class, 'idCard'])->name('admin.employee.id-card');
         Route::get('/employee/profile-pdf', [EmployeeController::class, 'profilePdf'])->name('admin.employee.profile-pdf');
         Route::get('/employee/steps', [EmployeeController::class, 'steps'])->name('admin.employee.steps');
 
         // Payroll setup: departments, designations, pay grades, steps (one page, tabbed)
         Route::get('/payroll-setup', [PayrollSetupController::class, 'index'])->name('admin.payroll-setup.index');
+        Route::post('/payroll-setup/settings', [PayrollSetupController::class, 'saveSettings'])->name('admin.payroll-setup.settings');
+        Route::post('/payroll-setup/increment', [PayrollSetupController::class, 'increment'])->name('admin.payroll-setup.increment');
         Route::prefix('/payroll-setup/{type}')->whereIn('type', ['departments', 'designations', 'grades', 'steps'])
             ->name('admin.payroll-setup.')->group(function () {
                 Route::get('/list', [PayrollSetupController::class, 'list'])->name('list');
                 Route::get('/options', [PayrollSetupController::class, 'options'])->name('options');
-                Route::get('/edit/{id}', [PayrollSetupController::class, 'edit'])->name('edit');
+                Route::get('/edit/{id}', [PayrollSetupController::class, 'edit'])->whereNumber('id')->name('edit');
                 Route::post('/save', [PayrollSetupController::class, 'save'])->name('save');
-                Route::post('/status/{id}', [PayrollSetupController::class, 'status'])->name('status');
-                Route::post('/delete/{id}', [PayrollSetupController::class, 'delete'])->name('delete');
+                Route::post('/status/{id}', [PayrollSetupController::class, 'status'])->whereNumber('id')->name('status');
+                Route::post('/delete/{id}', [PayrollSetupController::class, 'delete'])->whereNumber('id')->name('delete');
             });
 
+        // Sale quotations (re-priceable, with history and a per-customer log)
+        Route::prefix('/quotations')->name('admin.quotations.')->group(function () {
+            Route::get('/', [SaleQuotationController::class, 'index'])->name('index');
+            Route::get('/list', [SaleQuotationController::class, 'list'])->name('list');
+            Route::get('/customers', [SaleQuotationController::class, 'customers'])->name('customers');
+            Route::get('/create', [SaleQuotationController::class, 'create'])->name('create');
+            Route::post('/', [SaleQuotationController::class, 'store'])->name('store');
+            Route::get('/customer/{customerId}', [SaleQuotationController::class, 'customerLog'])->whereNumber('customerId')->name('customer');
+            Route::get('/{id}', [SaleQuotationController::class, 'show'])->whereNumber('id')->name('show');
+            Route::get('/{id}/edit', [SaleQuotationController::class, 'edit'])->whereNumber('id')->name('edit');
+            Route::get('/{id}/pdf', [SaleQuotationController::class, 'pdf'])->whereNumber('id')->name('pdf');
+            Route::get('/{id}/send-info', [SaleQuotationController::class, 'sendInfo'])->whereNumber('id')->name('send-info');
+            Route::post('/{id}/send', [SaleQuotationController::class, 'send'])->whereNumber('id')->name('send');
+            Route::post('/{id}/share', [SaleQuotationController::class, 'share'])->whereNumber('id')->name('share');
+            Route::post('/{id}/status', [SaleQuotationController::class, 'status'])->whereNumber('id')->name('status');
+            Route::post('/{id}/duplicate', [SaleQuotationController::class, 'duplicate'])->whereNumber('id')->name('duplicate');
+            Route::post('/{id}/delete', [SaleQuotationController::class, 'delete'])->whereNumber('id')->name('delete');
+        });
+
+        // Salary payments (paid from the salary sheet)
+        Route::prefix('/salary-payments')->name('admin.salary-payments.')->group(function () {
+            Route::get('/', [SalaryPaymentController::class, 'index'])->name('index');
+            Route::get('/list', [SalaryPaymentController::class, 'list'])->name('list');
+            Route::get('/{id}', [SalaryPaymentController::class, 'show'])->whereNumber('id')->name('show');
+            Route::post('/', [SalaryPaymentController::class, 'store'])->name('store');
+            Route::post('/{id}/cancel', [SalaryPaymentController::class, 'cancel'])->whereNumber('id')->name('cancel');
+        });
+
+        // Processing a month's salary (freeze + post); paid afterwards by salary payments
+        Route::prefix('/payroll-runs')->name('admin.payroll-runs.')->group(function () {
+            Route::get('/', [PayrollRunController::class, 'runs'])->name('index');
+            Route::post('/', [PayrollRunController::class, 'store'])->name('store');
+            Route::post('/{id}/reverse', [PayrollRunController::class, 'reverse'])->whereNumber('id')->name('reverse');
+        });
+
+        // Bonus types / monthly bonuses / additions & deductions
+        Route::prefix('/payroll-adjustments')->name('admin.payroll-adjustments.')->group(function () {
+            Route::get('/', [SalaryAdjustmentController::class, 'index'])->name('index');
+            Route::get('/types', [SalaryAdjustmentController::class, 'types'])->name('types');
+            Route::post('/types', [SalaryAdjustmentController::class, 'saveType'])->name('types.save');
+            Route::post('/types/{id}/delete', [SalaryAdjustmentController::class, 'deleteType'])->whereNumber('id')->name('types.delete');
+            Route::get('/bonuses', [SalaryAdjustmentController::class, 'assignments'])->name('bonuses');
+            Route::post('/bonuses', [SalaryAdjustmentController::class, 'saveAssignment'])->name('bonuses.save');
+            Route::post('/bonuses/{id}/delete', [SalaryAdjustmentController::class, 'deleteAssignment'])->whereNumber('id')->name('bonuses.delete');
+            Route::get('/entries', [SalaryAdjustmentController::class, 'adjustments'])->name('entries');
+            Route::post('/entries', [SalaryAdjustmentController::class, 'saveAdjustment'])->name('entries.save');
+            Route::post('/entries/{id}/delete', [SalaryAdjustmentController::class, 'deleteAdjustment'])->whereNumber('id')->name('entries.delete');
+        });
+
+        // Advance salary / employee loans
+        Route::prefix('/employee-loans')->name('admin.employee-loans.')->group(function () {
+            Route::get('/', [EmployeeLoanController::class, 'index'])->name('index');
+            Route::get('/list', [EmployeeLoanController::class, 'list'])->name('list');
+            Route::get('/{id}', [EmployeeLoanController::class, 'show'])->whereNumber('id')->name('show');
+            Route::post('/', [EmployeeLoanController::class, 'store'])->name('store');
+            Route::post('/{id}/reschedule', [EmployeeLoanController::class, 'reschedule'])->whereNumber('id')->name('reschedule');
+            Route::post('/{id}/repay', [EmployeeLoanController::class, 'repay'])->whereNumber('id')->name('repay');
+            Route::post('/{id}/cancel', [EmployeeLoanController::class, 'cancel'])->whereNumber('id')->name('cancel');
+        });
+
+        // Holiday calendar (per year)
+        Route::prefix('/leave/calendar')->name('admin.leave.calendar.')->group(function () {
+            Route::get('/', [HolidayCalendarController::class, 'index'])->name('index');
+            Route::get('/data', [HolidayCalendarController::class, 'data'])->name('data');
+            Route::post('/weekend', [HolidayCalendarController::class, 'saveWeekend'])->name('weekend');
+            Route::post('/holiday', [HolidayCalendarController::class, 'saveHoliday'])->name('holiday');
+            Route::post('/holiday/delete/{id}', [HolidayCalendarController::class, 'deleteHoliday'])->whereNumber('id')->name('holiday.delete');
+            Route::post('/copy', [HolidayCalendarController::class, 'copy'])->name('copy');
+        });
+
+        // Leave setup: types, groups, yearly group rules
+        Route::get('/leave/setup', [LeaveSetupController::class, 'index'])->name('admin.leave.setup.index');
+        Route::get('/leave/setup/rules', [LeaveSetupController::class, 'rules'])->name('admin.leave.setup.rules');
+        Route::post('/leave/setup/rules', [LeaveSetupController::class, 'saveRules'])->name('admin.leave.setup.rules.save');
+        Route::post('/leave/setup/rules/copy', [LeaveSetupController::class, 'copyRules'])->name('admin.leave.setup.rules.copy');
+        Route::prefix('/leave/setup/{type}')->whereIn('type', ['types', 'groups'])
+            ->name('admin.leave.setup.')->group(function () {
+                Route::get('/list', [LeaveSetupController::class, 'list'])->name('list');
+                Route::get('/edit/{id}', [LeaveSetupController::class, 'edit'])->whereNumber('id')->name('edit');
+                Route::post('/save', [LeaveSetupController::class, 'save'])->name('save');
+                Route::post('/status/{id}', [LeaveSetupController::class, 'status'])->whereNumber('id')->name('status');
+                Route::post('/delete/{id}', [LeaveSetupController::class, 'delete'])->whereNumber('id')->name('delete');
+            });
+
+        // Leave applications and ledger
+        Route::prefix('/leave')->name('admin.leave.')->group(function () {
+            Route::get('/applications', [LeaveController::class, 'index'])->name('index');
+            Route::get('/applications/list', [LeaveController::class, 'list'])->name('list');
+            Route::get('/applications/preview', [LeaveController::class, 'preview'])->name('preview');
+            Route::get('/applications/{id}', [LeaveController::class, 'show'])->whereNumber('id')->name('show');
+            Route::post('/applications', [LeaveController::class, 'store'])->name('store');
+            Route::post('/applications/{id}/decide', [LeaveController::class, 'decide'])->whereNumber('id')->name('decide');
+            Route::post('/applications/{id}/delete', [LeaveController::class, 'delete'])->whereNumber('id')->name('delete');
+            Route::get('/ledger', [LeaveController::class, 'ledger'])->name('ledger');
+            Route::get('/ledger/data', [LeaveController::class, 'ledgerData'])->name('ledger.data');
+            Route::post('/ledger/adjustment', [LeaveController::class, 'saveAdjustment'])->name('adjustment');
+            Route::post('/ledger/adjustment/{id}/delete', [LeaveController::class, 'deleteAdjustment'])->whereNumber('id')->name('adjustment.delete');
+        });
+
         // Reports
+        Route::get('/reports/salary-sheet', [ReportController::class, 'salarySheet'])->name('admin.reports.salary-sheet');
+        Route::get('/reports/salary-sheet/data', [ReportController::class, 'salarySheetData'])->name('admin.reports.salary-sheet.data');
+        Route::get('/reports/salary-sheet/pdf', [ReportController::class, 'salarySheetPdf'])->name('admin.reports.salary-sheet.pdf');
+        Route::get('/reports/salary-sheet/excel', [ReportController::class, 'salarySheetExcel'])->name('admin.reports.salary-sheet.excel');
+        Route::get('/reports/cash-bank-book', [ReportController::class, 'liquidAsset'])->name('admin.reports.liquid-asset');
+        Route::get('/reports/cash-bank-book/data', [ReportController::class, 'liquidAssetData'])->name('admin.reports.liquid-asset.data');
+        Route::get('/reports/cash-bank-book/pdf', [ReportController::class, 'liquidAssetPdf'])->name('admin.reports.liquid-asset.pdf');
+        Route::get('/reports/cash-bank-book/excel', [ReportController::class, 'liquidAssetExcel'])->name('admin.reports.liquid-asset.excel');
+        Route::get('/reports/pf-ledger', [ReportController::class, 'pfLedger'])->name('admin.reports.pf-ledger');
+        Route::get('/reports/pf-ledger/data', [ReportController::class, 'pfLedgerData'])->name('admin.reports.pf-ledger.data');
+        Route::get('/reports/pf-ledger/pdf', [ReportController::class, 'pfLedgerPdf'])->name('admin.reports.pf-ledger.pdf');
+        Route::get('/reports/pf-ledger/excel', [ReportController::class, 'pfLedgerExcel'])->name('admin.reports.pf-ledger.excel');
         Route::get('/reports/stock-ledger', [ReportController::class, 'stockLedger'])->name('admin.reports.stock-ledger');
         Route::get('/reports/stock-ledger/data', [ReportController::class, 'stockLedgerData'])->name('admin.reports.stock-ledger.data');
         Route::get('/reports/stock-ledger/pdf', [ReportController::class, 'stockLedgerPdf'])->name('admin.reports.stock-ledger.pdf');
@@ -484,6 +602,22 @@ Route::middleware('auth')->group(function () {
 
         //common routes
         Route::get('/getCoaChilds', [ChartOfAccountController::class, 'getCoaChilds'])->name('admin.getCoaChilds');
+
+        // Branches (switcher + setup)
+        Route::prefix('/branches')->middleware('main.branch')->name('admin.branches.')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Admin\BranchController::class, 'index'])->name('index');
+            Route::get('/list', [\App\Http\Controllers\Admin\BranchController::class, 'list'])->name('list');
+            Route::post('/', [\App\Http\Controllers\Admin\BranchController::class, 'save'])->name('save');
+            Route::post('/{id}/main', [\App\Http\Controllers\Admin\BranchController::class, 'setMain'])->whereNumber('id')->name('main');
+            Route::post('/{id}/delete', [\App\Http\Controllers\Admin\BranchController::class, 'delete'])->whereNumber('id')->name('delete');
+            Route::get('/access/{userId}', [\App\Http\Controllers\Admin\BranchController::class, 'access'])->whereNumber('userId')->name('access');
+            Route::post('/access', [\App\Http\Controllers\Admin\BranchController::class, 'saveAccess'])->name('access.save');
+        });
+
+        // Module route files
+        foreach (['accounting', 'attendance', 'system', 'stock', 'customers', 'business-reports'] as $module) {
+            require __DIR__ . '/admin-' . $module . '.php';
+        }
 
     });
 });

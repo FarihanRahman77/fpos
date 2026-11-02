@@ -138,6 +138,17 @@ class PartyController extends Controller
             return response()->json(['message' => 'Party not found'], 404);
         }
 
+        // A party with ledger entries (sales, purchases, payments) would leave dues and reports pointing at a
+        // deleted party; such a party can only be made Inactive.
+        $used = DB::table('payments')->where('party_id', $party->id)->where('deleted', 'No')->exists()
+            || DB::table('sales')->where('customer_id', $party->id)->where('deleted', 'No')->exists()
+            || DB::table('purchases')->where('supplier_id', $party->id)->where('deleted', 'No')->exists();
+        if ($used) {
+            return response()->json([
+                'message' => 'This ' . strtolower($party->type) . ' has transactions and cannot be deleted. Set it to Inactive instead.',
+            ], 422);
+        }
+
         $party->deleted      = 'Yes';
         $party->status      = 'Inactive';
         $party->deleted_by   = auth()->id();
@@ -162,7 +173,7 @@ class PartyController extends Controller
         'address'              => ['required', 'string',  'max:1000'],
         'opening_balance'      => ['nullable', $money],
         'opening_balance_type' => ['required', Rule::in(['Due', 'Advance'])],
-        'opening_balance_date' => ['nullable'],
+        'opening_balance_date' => ['nullable', 'date'],
         'credit_limit'         => ['nullable', $money],
         'status'               => ['required', Rule::in(['Active', 'Inactive'])],
     ], [

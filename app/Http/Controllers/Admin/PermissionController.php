@@ -37,10 +37,10 @@ class PermissionController extends Controller
 
             $data[] = [
                 'id' => $permission->id,
-                'name' => $permission->name,
-                'slug' => $permission->slug,
-                'module' => $permission->module ?? '',
-                'description' => $permission->description ?? '',
+                'name' => e($permission->name),
+                'slug' => e($permission->slug),
+                'module' => e($permission->module ?? ''),
+                'description' => e($permission->description ?? ''),
                 'status' => $status,
                 'actions' => $actions,
             ];

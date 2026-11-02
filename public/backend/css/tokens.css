@@ -1,0 +1,192 @@
+/* ==========================================================================
+   Design tokens — from DESIGN.md/stripe/DESIGN.md
+   Loaded before style.css. Components use the semantic roles (--color-bg,
+   --color-text, --color-accent, ...), not the raw palette.
+   "App addition" = not defined by DESIGN.md, added because the admin needs it.
+   ========================================================================== */
+
+:root {
+  /* ---- Palette (DESIGN.md colors) ---- */
+  --color-primary: #533afd;
+  --color-primary-deep: #4434d4;
+  --color-primary-press: #2e2b8c;
+  --color-primary-soft: #665efd;
+  --color-primary-subdued: #b9b9f9;
+  --color-brand-dark: #1c1e54;
+  --color-ink: #0d253d;
+  --color-ink-secondary: #273951;
+  --color-ink-mute: #64748d;
+  --color-ink-mute-2: #61718a;
+  --color-on-primary: #ffffff;
+  --color-canvas: #ffffff;
+  --color-canvas-soft: #f6f9fc;
+  --color-canvas-cream: #f5e9d4;
+  --color-hairline: #e3e8ee;
+  --color-hairline-input: #a8c3de;
+  --color-ruby: #ea2261;
+  --color-magenta: #f96bee;
+  --color-lemon: #9b6829;
+  --color-shadow-blue: #003770;
+
+  /* ---- Status colors (app addition: DESIGN.md has no semantic palette).
+     Each passes 4.5:1 as text on white and with white text on it. ---- */
+  --color-success: #0e7c4a;
+  --color-warning: #9a5a0a;
+  --color-danger: #c0123c;
+  --color-info: var(--color-primary-deep);
+  --color-success-soft: color-mix(in srgb, var(--color-success) 10%, var(--color-canvas));
+  --color-warning-soft: color-mix(in srgb, var(--color-warning) 10%, var(--color-canvas));
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 9%, var(--color-canvas));
+  --color-info-soft: color-mix(in srgb, var(--color-primary) 9%, var(--color-canvas));
+
+  /* ---- Semantic roles (light) ---- */
+  --color-bg: var(--color-canvas-soft);              /* page behind cards */
+  --color-surface: var(--color-canvas);              /* cards, modals, top bar */
+  --color-surface-soft: var(--color-canvas-soft);    /* table heads, inset areas */
+  --color-surface-hover: color-mix(in srgb, var(--color-primary) 4%, var(--color-canvas));
+  --color-border: var(--color-hairline);
+  --color-border-input: var(--color-hairline-input);
+  --color-text: var(--color-ink);
+  --color-text-secondary: var(--color-ink-secondary);
+  --color-text-muted: var(--color-ink-mute-2);        /* ink-mute is 4.49:1 on canvas-soft; mute-2 passes AA */
+  --color-accent: var(--color-primary);              /* links, active tabs, highlights */
+  --color-accent-soft: var(--color-info-soft);       /* soft accent fills (pill-tag-soft family) */
+  --color-accent-ink: var(--color-primary-deep);     /* text on soft accent fills */
+  --color-button: var(--color-primary);
+  --color-button-hover: var(--color-primary-deep);
+  --color-button-press: var(--color-primary-press);
+  --color-button-text: var(--color-on-primary);
+  --color-focus: var(--color-primary);
+  --color-focus-ring: color-mix(in srgb, var(--color-primary) 28%, transparent);
+
+  /* Sidebar: the dashboard track's dark-app shell on brand-dark-900. */
+  --color-sidebar: var(--color-brand-dark);
+  --color-sidebar-soft: color-mix(in srgb, var(--color-brand-dark) 88%, var(--color-canvas));
+  --color-sidebar-border: color-mix(in srgb, var(--color-canvas) 10%, transparent);
+  --color-sidebar-text: #c6c9d7;                     /* canvas-soft at 78% over brand-dark */
+  --color-sidebar-text-strong: var(--color-on-primary);
+  --color-sidebar-muted: color-mix(in srgb, var(--color-sidebar-text) 65%, var(--color-brand-dark));
+  --color-sidebar-active: var(--color-primary-subdued);
+
+  /* ---- Typography ---- */
+  /* Sohne is proprietary; DESIGN.md names Inter as the substitute. */
+  --font-sans: "Inter", "SF Pro Display", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-feature-base: "ss01";
+  --font-feature-numeric: "ss01", "tnum";
+
+  --font-weight-light: 300;     /* display + headings (DESIGN.md) */
+  --font-weight-regular: 400;   /* body, labels, buttons (app: 300 is too thin for dense tables) */
+  --font-weight-medium: 500;    /* app addition: totals, active nav, table headings */
+
+  /* size / line-height / letter-spacing per role */
+  --text-display-xxl: 56px;  --leading-display-xxl: 1.03; --tracking-display-xxl: -1.4px;
+  --text-display-xl: 48px;   --leading-display-xl: 1.15;  --tracking-display-xl: -0.96px;
+  --text-display-lg: 32px;   --leading-display-lg: 1.1;   --tracking-display-lg: -0.64px;
+  --text-display-md: 26px;   --leading-display-md: 1.12;  --tracking-display-md: -0.26px;
+  --text-heading-lg: 22px;   --leading-heading-lg: 1.1;   --tracking-heading-lg: -0.22px;
+  --text-heading-md: 20px;   --leading-heading-md: 1.4;   --tracking-heading-md: -0.2px;
+  --text-heading-sm: 18px;   --leading-heading-sm: 1.4;   --tracking-heading-sm: 0;
+  --text-body-lg: 16px;      --leading-body-lg: 1.4;
+  --text-body-md: 15px;      --leading-body-md: 1.4;
+  --text-body-tabular: 14px; --leading-body-tabular: 1.4; --tracking-body-tabular: -0.42px;
+  --text-button-md: 16px;
+  --text-button-sm: 14px;
+  --text-caption: 13px;      --leading-caption: 1.4;      --tracking-caption: -0.39px;
+  --text-micro: 11px;        --leading-micro: 1.4;
+  --text-micro-cap: 10px;    --leading-micro-cap: 1.15;   --tracking-micro-cap: 0.1px;
+
+  /* ---- Spacing (8px base) ---- */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+  --space-huge: 64px;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px;     /* tags, table chrome */
+  --radius-sm: 6px;     /* inputs */
+  --radius-md: 8px;     /* compact cards, alerts */
+  --radius-lg: 12px;    /* cards */
+  --radius-xl: 16px;    /* large panels */
+  --radius-pill: 9999px;/* buttons, tag pills */
+
+  /* ---- Elevation ---- */
+  --shadow-0: none;
+  --shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
+  --shadow-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+  --shadow-focus: 0 0 0 3px var(--color-focus-ring);
+
+  /* ---- Sizing (app addition: WCAG touch target; DESIGN.md allows 40–44px) ---- */
+  --control-height: 44px;
+  --control-height-sm: 36px;   /* in-table actions; hit area padded to 44px */
+}
+
+/* Dark theme (app addition): built from DESIGN.md's navy ink and brand-dark. */
+html[data-theme="dark"] {
+  --color-success: #4fd194;
+  --color-warning: #f0b45a;
+  --color-danger: #ff7d9c;
+  --color-success-soft: color-mix(in srgb, var(--color-success) 14%, var(--color-ink));
+  --color-warning-soft: color-mix(in srgb, var(--color-warning) 14%, var(--color-ink));
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 14%, var(--color-ink));
+  --color-info-soft: color-mix(in srgb, var(--color-primary-soft) 20%, var(--color-ink));
+
+  --color-bg: color-mix(in srgb, var(--color-ink) 82%, #000000);
+  --color-surface: var(--color-ink);
+  --color-surface-soft: color-mix(in srgb, var(--color-ink) 90%, #000000);
+  --color-surface-hover: color-mix(in srgb, var(--color-primary-soft) 10%, var(--color-ink));
+  --color-border: var(--color-ink-secondary);
+  --color-border-input: color-mix(in srgb, var(--color-ink-mute) 70%, var(--color-ink));
+  --color-text: var(--color-canvas-soft);
+  --color-text-secondary: var(--color-hairline);
+  --color-text-muted: var(--color-hairline-input);
+  --color-accent: var(--color-primary-subdued);
+  --color-accent-soft: var(--color-info-soft);
+  --color-accent-ink: var(--color-primary-subdued);
+  --color-button: var(--color-primary-soft);
+  --color-button-hover: var(--color-primary);
+  --color-button-press: var(--color-primary-deep);
+  --color-focus: var(--color-primary-subdued);
+  --color-focus-ring: color-mix(in srgb, var(--color-primary-subdued) 35%, transparent);
+
+  --color-sidebar: color-mix(in srgb, var(--color-brand-dark) 70%, #000000);
+
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.32);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.36), 0 2px 6px rgba(0, 0, 0, 0.24);
+}
+
+/* ---- Global font application (was poppins.css) ---- */
+:root {
+  --bs-body-font-family: var(--font-sans);
+  --bs-font-sans-serif: var(--font-sans);
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: var(--font-feature-base);
+}
+
+button,
+input,
+select,
+textarea,
+.select2-container,
+.select2-dropdown,
+.select2-results__option,
+.dataTables_wrapper,
+.swal2-container .swal2-popup {
+  font-family: var(--font-sans);
+}
+
+/* Money and counts: tabular figures (DESIGN.md "Tabular-Figure Money Type"). */
+table,
+.text-end,
+.acc-grand,
+input[type="number"] {
+  font-feature-settings: var(--font-feature-numeric);
+}

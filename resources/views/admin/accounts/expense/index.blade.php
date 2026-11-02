@@ -7,19 +7,19 @@
 @push('styles')
 
     <style>
-        .exp-stat, .exp-card { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(30, 41, 59, .07); }
-        .exp-stat .icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
-        .exp-stat .i1 { background: #fee2e2; color: #b91c1c; }
-        .exp-stat .i2 { background: #e0e7ff; color: #4338ca; }
-        .exp-stat .i3 { background: #fef3c7; color: #b45309; }
-        .exp-stat .i4 { background: #dcfce7; color: #15803d; }
-        #expenseTable thead th { background: #f8fafc; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #64748b; white-space: nowrap; }
+        .exp-stat, .exp-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+        .exp-stat .icon { width: 46px; height: 46px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: var(--text-heading-sm); }
+        .exp-stat .i1 { background: var(--color-danger-soft); color: var(--color-danger); }
+        .exp-stat .i2 { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+        .exp-stat .i3 { background: var(--color-warning-soft); color: var(--color-warning); }
+        .exp-stat .i4 { background: var(--color-success-soft); color: var(--color-success); }
+        #expenseTable thead th { background: var(--color-surface-soft); font-size: var(--text-caption); text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-muted); white-space: nowrap; }
         #expenseTable tbody td { vertical-align: middle; }
-        .coa-code { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; background: #f1f5f9; padding: 1px 6px; border-radius: 6px; }
-        .exp-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
-        #detailsTable thead th { font-size: .75rem; text-transform: uppercase; color: #64748b; }
+        .coa-code { font-family: var(--font-mono); font-size: var(--text-caption); background: var(--color-surface-soft); padding: 1px 6px; border-radius: var(--radius-sm); }
+        .exp-section { background: var(--color-surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 14px; }
+        #detailsTable thead th { font-size: var(--text-micro); text-transform: uppercase; color: var(--color-text-muted); }
         #detailsTable td { vertical-align: top; }
-        .exp-grand { font-size: 1.15rem; font-weight: 700; }
+        .exp-grand { font-size: var(--text-heading-sm); font-weight: var(--font-weight-medium); }
 
         /* Select2 */
         .select2-container { width: 100% !important; }
@@ -375,16 +375,26 @@
                 return $.Deferred().resolve(childrenCache[parentId]).promise();
             }
 
-            return $.ajax({
+            const deferred = $.Deferred();
+
+            $.ajax({
                 url: childrenUrl,
                 type: 'GET',
-                data: { parent_id: parentId }
-            }).then(function(response) {
-                childrenCache[parentId] = response.data || [];
-                return childrenCache[parentId];
-            }, function(xhr) {
-                toastr.error(xhr.responseJSON?.message || 'Unable to load accounts.');
+                dataType: 'json',
+                data: { parent_id: parentId },
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    childrenCache[parentId] = response.data || [];
+                    deferred.resolve(childrenCache[parentId]);
+                },
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
+                    toastr.error(xhr.responseJSON?.message || 'Unable to load accounts.');
+                    deferred.resolve();
+                }
             });
+
+            return deferred.promise();
         }
 
         // Loads the 3rd layer accounts of a 2nd layer group into $select.
@@ -508,9 +518,11 @@
             $.ajax({
                 url: "{{ route('admin.expense.show') }}",
                 type: "GET",
+                dataType: 'json',
                 data: { id: id },
 
                 success: function(response) {
+                    // alert(JSON.stringify(response));
                     if (!response.status) {
                         toastr.error(response.message || 'Unable to load expense.');
                         return;
@@ -550,6 +562,7 @@
                 },
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     toastr.error(xhr.responseJSON?.message || 'Unable to load expense.');
                 }
             });
@@ -560,10 +573,12 @@
             const run = function() {
                 $.ajax({
                     url: "{{ route('admin.expense.delete') }}",
-                    type: "GET",
+                    type: "POST",
+                    dataType: 'json',
                     data: { id: id },
 
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         if (response.status) {
                             toastr.success(response.message);
                             expenseTable.ajax.reload(null, false);
@@ -573,6 +588,7 @@
                     },
 
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         toastr.error(xhr.responseJSON?.message || 'Unable to delete expense.');
                     }
                 });
@@ -584,7 +600,7 @@
                     text: 'Its amounts will be taken back out of the account balances.',
                     icon: 'warning',
                     showCancelButton: true,
-                    confirmButtonColor: '#dc3545',
+                    confirmButtonColor: 'var(--color-danger)',
                     confirmButtonText: 'Yes, delete',
                     reverseButtons: true
                 }).then(function(result) {
@@ -706,6 +722,7 @@
                 $.ajax({
                     url: "{{ route('admin.expense.store') }}",
                     type: "POST",
+                    dataType: 'json',
                     data: form.serialize(),
 
                     beforeSend: function() {
@@ -715,6 +732,7 @@
                     },
 
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         if (response.status) {
                             expenseModal.hide();
                             toastr.success(response.message);
@@ -725,6 +743,7 @@
                     },
 
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         if (xhr.status === 422 && xhr.responseJSON?.errors) {
                             showExpenseErrors(xhr.responseJSON.errors);
                         } else {

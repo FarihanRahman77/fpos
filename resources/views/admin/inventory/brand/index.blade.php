@@ -222,10 +222,12 @@ $(document).ready(function () {
 
             type: 'POST',
 
+            dataType: 'json',
+
             data: form.serialize(),
 
-            success: function (response) {
-               // alert(JSON.stringify(response));
+            success: function(response) {
+                // alert(JSON.stringify(response));
                 if (response.status) {
 
                     brandModal.hide();
@@ -248,8 +250,8 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
-                //alert(JSON.stringify(xhr));
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
                 if (xhr.status === 422) {
 
                     let errors = xhr.responseJSON.errors;
@@ -263,7 +265,7 @@ $(document).ready(function () {
 
                 } else {
 
-                    toastr.error('Something went wrong.');
+                    toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
                 }
 
@@ -315,7 +317,10 @@ function editBrand(id)
 
         type: 'GET',
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -339,9 +344,10 @@ function editBrand(id)
 
         },
 
-        error: function () {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
-            toastr.error('Something went wrong.');
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 
@@ -364,12 +370,14 @@ function deleteBrand(id)
 
         type: 'POST',
 
+        dataType: 'json',
+
         data: {
             _token: "{{ csrf_token() }}"
         },
 
-        success: function (response) {
-            alert(JSON.stringify(response));
+        success: function(response) {
+            // alert(JSON.stringify(response));
             if (response.status) {
                 brandTable.ajax.reload(null, false);
                 toastr.success(response.message);
@@ -377,9 +385,9 @@ function deleteBrand(id)
                 toastr.error(response.message);
             }
         },
-        error: function (xhr) {
-            alert(JSON.stringify(xhr));
-            toastr.error('Something went wrong.');
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 
@@ -397,12 +405,14 @@ function changeBrandStatus(id)
 
         type: 'POST',
 
+        dataType: 'json',
+
         data: {
             _token: "{{ csrf_token() }}"
         },
 
-        success: function (response) {
-            //alert(JSON.stringify(response));
+        success: function(response) {
+            // alert(JSON.stringify(response));
             if (response.status) {
 
                 brandTable.ajax.reload(null, false);
@@ -417,9 +427,9 @@ function changeBrandStatus(id)
 
         },
 
-        error: function (xhr) {
-           // alert(JSON.stringify(xhr));
-            toastr.error('Something went wrong.');
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 

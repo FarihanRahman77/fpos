@@ -1,6 +1,6 @@
 @php
     $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
-    $bal = fn ($v) => \App\Services\Reports\PartyLedgerReport::balanceText($v);
+    $bal = $balance_text;
     $badge = [
         'Receivable' => 'bg-warning ledger-badge-ink',
         'Payable'    => 'bg-warning ledger-badge-ink',
@@ -10,7 +10,7 @@
 @endphp
 
 @forelse ($items as $item)
-    @php $label = $service->balanceLabel($item['closing']); @endphp
+    @php $label = $balance_label($item['closing']); @endphp
     <div class="ledger-block mb-4">
         <div class="ledger-head d-flex flex-wrap align-items-center gap-2">
             <div>
@@ -25,7 +25,7 @@
                     @if ($item['address']) · {{ \Illuminate\Support\Str::limit($item['address'], 60) }} @endif
                 </div>
             </div>
-            <div class="ms-auto d-flex gap-3 small text-nowrap">
+            <div class="ms-auto d-flex flex-wrap column-gap-3 row-gap-1 small" style="white-space: nowrap">
                 <span>Opening <strong>{{ $bal($item['opening']) }}</strong></span>
                 <span>Debit <strong>{{ number_format($item['dr'], 2) }}</strong></span>
                 <span>Credit <strong>{{ number_format($item['cr'], 2) }}</strong></span>

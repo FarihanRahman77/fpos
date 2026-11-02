@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use PDF;
 use Exception;
@@ -84,7 +85,7 @@ class SaleController extends Controller
     */
     public function pos()
     {
-        $stockSubQuery = DB::table('stocks')
+        $stockSubQuery = DB::table('stocks')->where('branch_id', BranchController::activeId())
             ->select('product_id', DB::raw('SUM(in_qty) - SUM(out_qty) as current_stock'))
             ->where('deleted', 'No')
             ->groupBy('product_id');
@@ -111,6 +112,7 @@ class SaleController extends Controller
                 'p.barcode',
                 'p.image',
                 'p.sale_price',
+                'p.vat_percent',
                 'p.category_id',
                 'c.name as category_name',
                 'p.brand_id',
@@ -155,7 +157,15 @@ class SaleController extends Controller
             ? ChartOfAccount::where('deleted', 'No')->where('parent_id', $coa->id)->get()
             : collect();
 
-        return view('admin.inventory.sale.pos', compact('products', 'categories', 'brands', 'variantBarcodes', 'childCoas'));
+        $programs = [
+            'vat_enabled'   => CustomerProgramController::on('vat_enabled'),
+            'vat_rate'      => (float) CustomerProgramController::setting('vat_rate'),
+            'vat_inclusive' => CustomerProgramController::on('vat_inclusive'),
+            'loyalty'       => CustomerProgramController::on('loyalty_enabled'),
+            'credit_mode'   => CustomerProgramController::setting('credit_mode'),
+        ];
+
+        return view('admin.inventory.sale.pos', compact('products', 'categories', 'brands', 'variantBarcodes', 'childCoas', 'programs'));
     }
 
     /*
@@ -168,7 +178,7 @@ class SaleController extends Controller
         try {
             $sale_type = $request->input('type');
 
-            $query = DB::table('sales')
+            $query = BranchController::scope(DB::table('sales'), 'sales.branch_id')
                 ->leftJoin('parties', 'parties.id', '=', 'sales.customer_id')
                 ->leftJoin('chart_of_accounts', 'chart_of_accounts.id', '=', 'sales.payment_method_account')
                 ->select(
@@ -247,12 +257,7 @@ class SaleController extends Controller
                 return response()->json(['status' => false, 'found' => false, 'message' => 'Phone too short']);
             }
 
-            $customer = Party::where('deleted', 'No')
-                ->where(function ($q) use ($phone) {
-                    $q->where('phone', $phone)
-                        ->orWhere('phone', 'like', '%' . substr($phone, -11));
-                })
-                ->first();
+            $customer = $this->customerByPhoneNumber($phone);
 
             if ($customer) {
                 $due = $this->partyDue($customer->id);
@@ -260,7 +265,8 @@ class SaleController extends Controller
                     'status'      => true,
                     'found'       => true,
                     'customer'    => $customer,
-                    'current_due' => number_format((float) $due, 2, '.', '')
+                    'current_due' => number_format((float) $due, 2, '.', ''),
+                    'programs'    => CustomerProgramController::customerInfo((int) $customer->id)
                 ]);
             }
 
@@ -324,7 +330,7 @@ class SaleController extends Controller
 
             // Attach current stock
             foreach ($products as $product) {
-                $stock = DB::table('stocks')
+                $stock = DB::table('stocks')->where('branch_id', BranchController::activeId())
                     ->where('product_id', $product->id)
                     ->where('deleted', 'No')
                     ->selectRaw('COALESCE(SUM(in_qty) - SUM(out_qty), 0) as current_stock')
@@ -363,7 +369,7 @@ class SaleController extends Controller
             }
 
             // Calculate stock for base product
-            $baseStock = DB::table('stocks')
+            $baseStock = DB::table('stocks')->where('branch_id', BranchController::activeId())
                 ->where('product_id', $productId)
                 ->where('deleted', 'No')
                 ->selectRaw('COALESCE(SUM(in_qty) - SUM(out_qty), 0) as current_stock')
@@ -383,7 +389,7 @@ class SaleController extends Controller
                 ->get();
 
             foreach ($variants as $variant) {
-                $stock = DB::table('stocks')
+                $stock = DB::table('stocks')->where('branch_id', BranchController::activeId())
                     ->where('product_variant_id', $variant->id)
                     ->where('deleted', 'No')
                     ->selectRaw('COALESCE(SUM(in_qty) - SUM(out_qty), 0) as current_stock')
@@ -479,7 +485,14 @@ class SaleController extends Controller
 
             'items.*.product_id' => [
                 'required',
-                'integer'
+                'integer',
+                Rule::exists('products', 'id')->where('deleted', 'No')
+            ],
+
+            'items.*.product_variant_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('product_variants', 'id')->where('deleted', 'No')
             ],
 
             'items.*.qty' => [
@@ -508,8 +521,10 @@ class SaleController extends Controller
 
         if ($sale_type === 'Wholesale') {
 
-            $rules['customer_id'] =
-                'required|integer|exists:parties,id';
+            $rules['customer_id'] = [
+                'required', 'integer',
+                Rule::exists('parties', 'id')->where('deleted', 'No')->whereIn('type', ['Customer', 'Walk-In Customer']),
+            ];
         } else {
 
             $rules['customer_phone'] =
@@ -521,7 +536,16 @@ class SaleController extends Controller
 
         $validator = Validator::make(
             $request->all(),
-            $rules
+            $rules,
+            [
+                'items.required'         => 'Add at least one product to the sale.',
+                'items.*.product_id.exists' => 'A product in the cart no longer exists. Remove it and add it again.',
+                'items.*.product_variant_id.exists' => 'A product variant in the cart no longer exists. Remove it and add it again.',
+                'items.*.qty.min'        => 'Quantity must be more than zero.',
+                'customer_id.required'   => 'Select the customer.',
+                'customer_id.exists'     => 'Select a valid customer.',
+                'customer_phone.required' => 'Enter the customer phone number.',
+            ]
         );
 
         if ($validator->fails()) {
@@ -551,12 +575,7 @@ class SaleController extends Controller
             } else {
                 // Walk-In: check if exists by phone, or create new WIC
                 $phone = trim($request->customer_phone);
-                $existingParty = Party::where('deleted', 'No')
-                    ->where(function ($q) use ($phone) {
-                        $q->where('phone', $phone)
-                            ->orWhere('phone', 'like', '%' . substr($phone, -11));
-                    })
-                    ->first();
+                $existingParty = $this->customerByPhoneNumber($phone);
 
                 if ($existingParty) {
                     $customerId = $existingParty->id;
@@ -605,9 +624,37 @@ class SaleController extends Controller
             if ($discountAmount > $subtotal) $discountAmount = $subtotal;
 
             $grandTotal = $subtotal - $discountAmount;
+
+            // VAT on the lines after the sale discount: added on top, or already inside the prices.
+            $vatLines = [];
+            foreach ($items as $i => $item) {
+                $lineSub = (float) $item['qty'] * (float) $item['sale_price'];
+                $lineDisc = ($item['discount_type'] ?? 'Amount') === 'Percentage' ? $lineSub * (float) ($item['discount_value'] ?? 0) / 100 : (float) ($item['discount_value'] ?? 0);
+                $vatLines[$i] = ['product_id' => $item['product_id'], 'total' => $lineSub - min($lineDisc, $lineSub)];
+            }
+            $vat = CustomerProgramController::vat($vatLines, $discountAmount);
+            if (!$vat['inclusive']) {
+                $grandTotal += $vat['amount'];
+            }
+
+            // Loyalty points redeemed as money off.
+            [$pointsUsed, $loyaltyDiscount] = $request->filled('redeem_points')
+                ? CustomerProgramController::redeemValue((int) $customerId, (float) $request->input('redeem_points'), $grandTotal)
+                : [0.0, 0.0];
+            $grandTotal -= $loyaltyDiscount;
+
             $paidAmount = (float) ($request->paid_amount ?? 0);
             if ($paidAmount > $grandTotal) $paidAmount = $grandTotal;
             $dueAmount = $grandTotal - $paidAmount;
+
+            // Credit limit: block (or only warn, per Customer Programs settings).
+            if ($creditProblem = CustomerProgramController::creditCheck((int) $customerId, $dueAmount)) {
+                if (CustomerProgramController::setting('credit_mode') === 'block') {
+                    DB::rollBack();
+
+                    return response()->json(['status' => false, 'message' => $creditProblem . ' Collect more payment or raise the limit.'], 422);
+                }
+            }
 
             // Generate Invoice No: INV-XXXXXX
             $invoiceNo = $this->nextSequentialCode(Sale::class, 'invoice_no', 'INV');
@@ -622,6 +669,10 @@ class SaleController extends Controller
             $sale->discount_type    = $discountType;
             $sale->discount_value   = round($discountValue, 2);
             $sale->discount_amount  = round($discountAmount, 2);
+            $sale->vat_amount       = $vat['amount'];
+            $sale->vat_inclusive    = $vat['inclusive'] ? 'Yes' : 'No';
+            $sale->loyalty_points_redeemed = $pointsUsed;
+            $sale->loyalty_discount = $loyaltyDiscount;
             $sale->grand_total      = round($grandTotal, 2);
             $sale->paid_amount      = round($paidAmount, 2);
             $sale->due_amount       = round($dueAmount, 2);
@@ -637,7 +688,7 @@ class SaleController extends Controller
             // Save Sale Items & Deduct Stock
             $purchasePrices = Product::whereIn('id', array_column($items, 'product_id'))->pluck('purchase_price', 'id');
 
-            foreach ($items as $item) {
+            foreach ($items as $lineIndex => $item) {
                 $qty = (float) $item['qty'];
                 $price = (float) $item['sale_price'];
                 $itemSub = $qty * $price;
@@ -660,28 +711,34 @@ class SaleController extends Controller
                 $saleItem->discount_amount    = $itemDisc;
                 $saleItem->subtotal           = $itemSub;
                 $saleItem->total              = $itemTotal;
+                $saleItem->vat_percent        = $vat['lines'][$lineIndex]['rate'] ?? 0;
+                $saleItem->vat_amount         = $vat['lines'][$lineIndex]['vat'] ?? 0;
                 $saleItem->deleted            = 'No';
                 $saleItem->status             = 'Active';
                 $saleItem->created_by         = auth()->id();
                 $saleItem->created_date       = now();
                 $saleItem->save();
 
-                // Stock Reduction (out_qty)
-                $stock = new Stock();
-                $stock->product_id         = $item['product_id'];
-                $stock->product_variant_id = $saleItem->product_variant_id;
-                $stock->in_qty             = 0;
-                $stock->out_qty            = $qty;
-                $stock->sale_id            = $sale->id;
-                $stock->date               = $request->sale_date;
-                $stock->reference_type     = 'Sale';
-                $stock->reference_id       = $sale->id;
-                $stock->remarks            = 'Sale: ' . $invoiceNo;
-                $stock->deleted            = 'No';
-                $stock->status             = 'Active';
-                $stock->created_by         = auth()->id();
-                $stock->created_date       = now();
-                $stock->save();
+                // Stock Reduction (out_qty) — batch-tracked products leave earliest expiry first
+                foreach (StockController::allocate((int) $item['product_id'], $saleItem->product_variant_id ? (int) $saleItem->product_variant_id : null,
+                    (int) BranchController::activeId(), (float) $qty) as [$batchId, $part]) {
+                    $stock = new Stock();
+                    $stock->product_id         = $item['product_id'];
+                    $stock->product_variant_id = $saleItem->product_variant_id;
+                    $stock->batch_id           = $batchId;
+                    $stock->in_qty             = 0;
+                    $stock->out_qty            = $part;
+                    $stock->sale_id            = $sale->id;
+                    $stock->date               = $request->sale_date;
+                    $stock->reference_type     = 'Sale';
+                    $stock->reference_id       = $sale->id;
+                    $stock->remarks            = 'Sale: ' . $invoiceNo;
+                    $stock->deleted            = 'No';
+                    $stock->status             = 'Active';
+                    $stock->created_by         = auth()->id();
+                    $stock->created_date       = now();
+                    $stock->save();
+                }
             }
 
             // Accounting Payments using PaymentTrait
@@ -715,11 +772,34 @@ class SaleController extends Controller
                 ]);
             }
 
+            if ($pointsUsed > 0) {
+                CustomerProgramController::addPoints((int) $customerId, -$pointsUsed, 'Redeem', $sale->id, $loyaltyDiscount, 'Redeemed on ' . $invoiceNo);
+            }
+            $earned = CustomerProgramController::earnPoints($grandTotal);
+            if ($earned > 0) {
+                CustomerProgramController::addPoints((int) $customerId, $earned, 'Earn', $sale->id, $grandTotal, 'Earned on ' . $invoiceNo);
+                $sale->loyalty_points_earned = $earned;
+                $sale->save();
+            }
+
             DB::commit();
+
+            // Invoice SMS (never blocks the sale).
+            $smsNote = null;
+            if (SmsController::enabled('invoice_sms')) {
+                $party = Party::find($customerId);
+                if ($party && $party->phone) {
+                    $sms = SmsController::send($party->phone, SmsController::render('invoice_sms', [
+                        'customer' => $party->name, 'invoice' => $invoiceNo, 'amount' => $grandTotal, 'paid' => $paidAmount, 'due' => $dueAmount,
+                    ]), 'Invoice', (int) $customerId);
+                    $smsNote = $sms['ok'] ? 'SMS sent.' : 'SMS not sent: ' . $sms['message'];
+                }
+            }
 
             return response()->json([
                 'status'      => true,
-                'message'     => 'Sale completed successfully.',
+                'message'     => trim('Sale completed successfully. ' . ($earned > 0 ? number_format($earned, 0) . ' loyalty points earned. ' : '')
+                    . ($creditProblem ? 'Warning: ' . $creditProblem . ' ' : '') . ($smsNote ?? '')),
                 'sale_id'     => $sale->id,
                 'invoice_url' => route('sales.invoice.pdf', $sale->id)
             ]);
@@ -728,7 +808,7 @@ class SaleController extends Controller
             return response()->json([
                 'status'  => false,
                 'message' => $e->getMessage()
-            ], 500);
+            ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
         }
     }
 
@@ -739,7 +819,8 @@ class SaleController extends Controller
     */
     public function invoicePdf(Request $request, $id)
     {
-        $sale = Sale::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $sale = $this->branchSale($id);
+        abort_unless($sale, 404, 'Sale not found in this branch.');
         $customer = Party::find($sale->customer_id);
 
         $items = DB::table('sale_items')
@@ -785,19 +866,22 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            $sale = Sale::where('id', $id)->where('deleted', 'No')->first();
+            $sale = $this->branchSale($id);
             if (!$sale) {
-                return response()->json(['status' => false, 'message' => 'Sale not found'], 404);
+                DB::rollBack();
+                return response()->json(['status' => false, 'message' => 'Sale not found in this branch.'], 404);
             }
 
-            // Check if return exists for this sale
-            $hasReturn = SaleReturn::where('sale_id', $id)->where('deleted', 'No')->exists();
-            if ($hasReturn) {
+            // A sale with returns cannot be deleted (delete the returns first).
+            if (SaleReturn::where('sale_id', $id)->where('deleted', 'No')->exists()) {
+                DB::rollBack();
                 return response()->json([
                     'status' => false,
-                    'message' => 'Cannot delete sale because it has associated sale returns.'
+                    'message' => 'Cannot delete this sale because it has sale returns. Delete the returns first.'
                 ], 422);
             }
+
+            CustomerProgramController::reverseSale((int) $id);
 
             $userId = auth()->id();
             $now = now();
@@ -854,7 +938,7 @@ class SaleController extends Controller
         try {
             $sale_type = $request->input('type');
 
-            $query = DB::table('sale_returns')
+            $query = BranchController::scope(DB::table('sale_returns'), 'sale_returns.branch_id')
                 ->leftJoin('sales', 'sales.id', '=', 'sale_returns.sale_id')
                 ->leftJoin('parties', 'parties.id', '=', 'sale_returns.customer_id')
                 ->select(
@@ -911,7 +995,8 @@ class SaleController extends Controller
     */
     public function returnPage($id)
     {
-        $sale = Sale::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $sale = $this->branchSale($id);
+        abort_unless($sale, 404, 'Sale not found in this branch.');
         $customer = Party::find($sale->customer_id);
         $party_type = 'Return for ' . $sale->invoice_no;
 
@@ -921,7 +1006,10 @@ class SaleController extends Controller
     public function returnData($id)
     {
         try {
-            $sale = Sale::where('id', $id)->where('deleted', 'No')->firstOrFail();
+            $sale = $this->branchSale($id);
+            if (!$sale) {
+                return response()->json(['status' => false, 'message' => 'Sale not found in this branch.'], 404);
+            }
             $customer = Party::find($sale->customer_id);
 
             $items = DB::table('sale_items')
@@ -938,7 +1026,10 @@ class SaleController extends Controller
                 ->get();
 
             // replaces the old foreach loop
-            $items = $items->map(function ($item) {
+            $items = $items->map(function ($item) use ($sale) {
+                // Refund per unit (after line + sale discount, VAT and loyalty) — what storeReturn credits.
+                $item->refund_price = round(self::returnUnitValue($sale, $item), 4);
+
                 $returned = (float) DB::table('sale_return_items')
                     ->where('sale_item_id', $item->id)
                     ->where('deleted', 'No')
@@ -986,17 +1077,20 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            $sale = Sale::where('id', $request->sale_id)->where('deleted', 'No')->firstOrFail();
+            $sale = BranchController::scope(Sale::where('id', $request->sale_id)->where('deleted', 'No'), 'branch_id')->lockForUpdate()->first();
+            abort_unless($sale, 404, 'Sale not found in this branch.');
             $items = $request->input('items', []);
 
             $subtotal = 0;
             $itemsToReturn = [];
+            $requested = [];   // per sale line, so the same line sent twice cannot exceed what was sold
 
             foreach ($items as $itemInput) {
                 $saleItem = SaleItem::where('id', $itemInput['sale_item_id'])
                     ->where('sale_id', $sale->id)
                     ->where('deleted', 'No')
-                    ->firstOrFail();
+                    ->first();
+                abort_unless($saleItem, 422, 'A returned item does not belong to this sale.');
 
                 $alreadyReturned = DB::table('sale_return_items')
                     ->where('sale_item_id', $saleItem->id)
@@ -1005,12 +1099,14 @@ class SaleController extends Controller
 
                 $maxReturnable = (float)$saleItem->qty - (float)$alreadyReturned;
                 $returnQty = (float)$itemInput['qty'];
+                $requested[$saleItem->id] = ($requested[$saleItem->id] ?? 0) + $returnQty;
 
-                if ($returnQty > $maxReturnable) {
-                    throw new Exception("Return quantity for product exceeds sold quantity.");
+                if ($requested[$saleItem->id] > $maxReturnable + 0.0005) {
+                    $name = Product::where('id', $saleItem->product_id)->value('name') ?? 'a product';
+                    abort(422, 'Return quantity for "' . $name . '" is more than what is left to return (' . round(max(0, $maxReturnable), 3) . ').');
                 }
 
-                $effectiveUnitPrice = (float)$saleItem->total / (float)$saleItem->qty;
+                $effectiveUnitPrice = self::returnUnitValue($sale, $saleItem);
                 $itemTotal = round($returnQty * $effectiveUnitPrice, 2);
                 $subtotal += $itemTotal;
 
@@ -1064,10 +1160,16 @@ class SaleController extends Controller
                 $returnItem->created_date   = now();
                 $returnItem->save();
 
-                // Restock inventory (in_qty)
+                // Restock inventory (in_qty) — back into the batch the goods were sold from (latest expiry first)
+                // Columns qualified: product_batches also has product_id / product_variant_id / deleted.
+                $batchId = Stock::where('stocks.sale_id', $sale->id)->where('stocks.product_id', $sItem->product_id)
+                    ->where('stocks.product_variant_id', $sItem->product_variant_id)->where('stocks.deleted', 'No')->whereNotNull('stocks.batch_id')
+                    ->join('product_batches as pb', 'pb.id', '=', 'stocks.batch_id')
+                    ->orderByDesc('pb.expiry_date')->value('stocks.batch_id');
                 $stock = new Stock();
                 $stock->product_id         = $sItem->product_id;
                 $stock->product_variant_id = $sItem->product_variant_id;
+                $stock->batch_id           = $batchId;
                 $stock->in_qty             = $ret['qty'];
                 $stock->out_qty            = 0;
                 $stock->sale_return_id     = $saleReturn->id;
@@ -1107,13 +1209,15 @@ class SaleController extends Controller
             ]);
         } catch (Exception $e) {
             DB::rollBack();
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => $e->getMessage()],
+                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
         }
     }
 
     public function returnView($id)
     {
-        $saleReturn = SaleReturn::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $saleReturn = $this->branchSaleReturn($id);
+        abort_unless($saleReturn, 404, 'Sale return not found in this branch.');
         $sale = Sale::find($saleReturn->sale_id);
         $customer = Party::find($saleReturn->customer_id);
 
@@ -1137,7 +1241,8 @@ class SaleController extends Controller
 
     public function returnInvoicePdf(Request $request, $id)
     {
-        $saleReturn = SaleReturn::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $saleReturn = $this->branchSaleReturn($id);
+        abort_unless($saleReturn, 404, 'Sale return not found in this branch.');
         $sale = Sale::find($saleReturn->sale_id);
         $customer = Party::find($saleReturn->customer_id);
 
@@ -1173,7 +1278,11 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            $saleReturn = SaleReturn::where('id', $id)->where('deleted', 'No')->firstOrFail();
+            $saleReturn = $this->branchSaleReturn($id);
+            if (!$saleReturn) {
+                DB::rollBack();
+                return response()->json(['status' => false, 'message' => 'Sale return not found in this branch.'], 404);
+            }
             $userId = auth()->id();
             $now = now();
 
@@ -1248,7 +1357,7 @@ class SaleController extends Controller
     public function orderList()
     {
         try {
-            $orders = DB::table('sale_orders')
+            $orders = BranchController::scope(DB::table('sale_orders'), 'sale_orders.branch_id')
                 ->leftJoin('parties', 'parties.id', '=', 'sale_orders.customer_id')
                 ->select(
                     'sale_orders.*',
@@ -1350,7 +1459,7 @@ class SaleController extends Controller
 
 
         $validator = Validator::make($request->all(), [
-            'customer_id'    => 'required|integer|exists:parties,id',
+            'customer_id'    => ['required', 'integer', Rule::exists('parties', 'id')->where('deleted', 'No')->whereIn('type', ['Customer', 'Walk-In Customer'])],
             'order_date'     => 'required|date',
             'delivery_date'  => 'nullable|date|after_or_equal:order_date',
 
@@ -1533,7 +1642,8 @@ class SaleController extends Controller
     */
     public function orderInvoicePdf(Request $request, $id)
     {
-        $order    = SaleOrder::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $order    = $this->branchOrderQuery($id)->first();
+        abort_unless($order, 404, 'Sale order not found in this branch.');
         $customer = Party::find($order->customer_id);
 
         $items = DB::table('sale_order_items')
@@ -1575,436 +1685,8 @@ class SaleController extends Controller
     */
     public function orderDeliver(Request $request, $id)
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Decode items JSON
-        |--------------------------------------------------------------------------
-        */
-        if (
-            $request->filled('items') &&
-            is_string($request->input('items'))
-        ) {
-
-            $decodedItems = json_decode(
-                $request->input('items'),
-                true
-            );
-
-            if (
-                json_last_error() !== JSON_ERROR_NONE ||
-                !is_array($decodedItems)
-            ) {
-
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'Invalid delivery items data.'
-                ], 422);
-            }
-
-            $request->merge([
-                'items' => $decodedItems
-            ]);
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Validation
-        |--------------------------------------------------------------------------
-        */
-        $validator = Validator::make(
-            $request->all(),
-            [
-
-                'items' =>
-                'required|array|min:1',
-
-                'items.*.sale_order_item_id' =>
-                'required|integer',
-
-                'items.*.delivery_qty' =>
-                'required|numeric|min:0',
-            ]
-        );
-
-
-        if ($validator->fails()) {
-
-            return response()->json([
-                'status'  => false,
-                'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors()
-            ], 422);
-        }
-
-
-        DB::beginTransaction();
-
-
-        try {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Lock Sale Order
-            |--------------------------------------------------------------------------
-            */
-            $order = SaleOrder::where('id', $id)
-                ->where('deleted', 'No')
-                ->lockForUpdate()
-                ->first();
-
-
-            if (!$order) {
-
-                DB::rollBack();
-
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'Sale order not found.'
-                ], 404);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Status Check
-            |--------------------------------------------------------------------------
-            */
-            if ($order->order_status === 'Cancelled') {
-
-                DB::rollBack();
-
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'A cancelled order cannot be delivered.'
-                ], 422);
-            }
-
-
-            if ($order->order_status === 'Delivered') {
-
-                DB::rollBack();
-
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'This order is already fully delivered.'
-                ], 422);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Get Order Items
-            |--------------------------------------------------------------------------
-            */
-            $orderItems = SaleOrderItem::where(
-                'sale_order_id',
-                $order->id
-            )
-                ->where('deleted', 'No')
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('id');
-
-
-            if ($orderItems->isEmpty()) {
-
-                DB::rollBack();
-
-                return response()->json([
-                    'status'  => false,
-                    'message' => 'This order has no items.'
-                ], 422);
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Prepare delivery lines
-            |--------------------------------------------------------------------------
-            */
-            $deliveryLines = [];
-
-            $totalDeliveryValueBeforeHeaderDiscount = 0;
-
-            $hasDelivery = false;
-
-
-            foreach ($request->items as $deliveryItem) {
-
-                $saleOrderItemId =
-                    (int) $deliveryItem['sale_order_item_id'];
-
-                $deliveryQty =
-                    (float) $deliveryItem['delivery_qty'];
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Ignore zero quantities
-                |--------------------------------------------------------------------------
-                */
-                if ($deliveryQty <= 0) {
-                    continue;
-                }
-
-
-                $item =
-                    $orderItems->get(
-                        $saleOrderItemId
-                    );
-
-
-                if (!$item) {
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status'  => false,
-                        'message' =>
-                        'Invalid Sale Order Item selected.'
-                    ], 422);
-                }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Original Ordered Quantity
-                |--------------------------------------------------------------------------
-                */
-                $orderedQty =
-                    (float) $item->qty;
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Already Delivered Quantity
-                |--------------------------------------------------------------------------
-                */
-                $alreadyDeliveredQty =
-                    (float) ($item->delivery_qty ?? 0);
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Remaining Quantity
-                |--------------------------------------------------------------------------
-                */
-                $remainingQty =
-                    $orderedQty -
-                    $alreadyDeliveredQty;
-
-
-                if ($remainingQty < 0) {
-                    $remainingQty = 0;
-                }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | CRITICAL VALIDATION
-                |--------------------------------------------------------------------------
-                |
-                | New delivery quantity MUST NOT exceed remaining quantity.
-                |
-                |--------------------------------------------------------------------------
-                */
-                if ($deliveryQty > $remainingQty) {
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status'  => false,
-                        'message' =>
-                        'Delivery quantity for product ID '
-                            . $item->product_id
-                            . ' cannot be greater than remaining quantity '
-                            . $remainingQty
-                            . '. Ordered: '
-                            . $orderedQty
-                            . ', Already Delivered: '
-                            . $alreadyDeliveredQty
-                            . '.'
-                    ], 422);
-                }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Stock Check
-                |--------------------------------------------------------------------------
-                */
-                $stockQuery = DB::table('stocks')
-                    ->where(
-                        'product_id',
-                        $item->product_id
-                    )
-                    ->where(
-                        'deleted',
-                        'No'
-                    );
-
-
-                if ($item->product_variant_id) {
-
-                    $stockQuery->where(
-                        'product_variant_id',
-                        $item->product_variant_id
-                    );
-                }
-
-
-                $availableStock = (float) (
-                    $stockQuery
-                    ->selectRaw(
-                        'COALESCE(SUM(in_qty) - SUM(out_qty), 0) as current_stock'
-                    )
-                    ->value(
-                        'current_stock'
-                    ) ?? 0
-                );
-
-
-                if ($deliveryQty > $availableStock) {
-
-                    $productName =
-                        Product::find(
-                            $item->product_id
-                        )->name
-                        ?? (
-                            'Product #' .
-                            $item->product_id
-                        );
-
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status'  => false,
-                        'message' =>
-                        'Insufficient stock for "'
-                            . $productName
-                            . '". Available: '
-                            . $availableStock
-                            . ', required: '
-                            . $deliveryQty
-                            . '.'
-                    ], 422);
-                }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Delivery Line Value
-                |--------------------------------------------------------------------------
-                */
-                $lineSubtotal =
-                    $deliveryQty *
-                    (float) $item->sale_price;
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Item Discount
-                |--------------------------------------------------------------------------
-                |
-                | Calculate discount based on the quantity being delivered.
-                |
-                |--------------------------------------------------------------------------
-                */
-                $discountType =
-                    $item->discount_type ?? 'Amount';
-
-
-                $originalQty =
-                    max(
-                        (float) $item->qty,
-                        0
-                    );
-
-
-                $originalItemSubtotal =
-                    $originalQty *
-                    (float) $item->sale_price;
-
-
-                $originalDiscount =
-                    (float) (
-                        $item->discount_amount ?? 0
-                    );
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | Allocate original item discount proportionally
-                |--------------------------------------------------------------------------
-                */
-                $deliveryItemDiscount = 0;
-
-
-                if ($originalItemSubtotal > 0) {
-
-                    $deliveryItemDiscount =
-                        $originalDiscount *
-                        (
-                            $lineSubtotal /
-                            $originalItemSubtotal
-                        );
-                }
-
-
-                if (
-                    $deliveryItemDiscount >
-                    $lineSubtotal
-                ) {
-
-                    $deliveryItemDiscount =
-                        $lineSubtotal;
-                }
-
-
-                $deliveryItemTotal =
-                    $lineSubtotal -
-                    $deliveryItemDiscount;
-
-
-                $totalDeliveryValueBeforeHeaderDiscount +=
-                    $deliveryItemTotal;
-
-
-                $hasDelivery = true;
-
-
-                $deliveryLines[] = [
-                    'item' => $item,
-                    'delivery_qty' => $deliveryQty,
-                    'subtotal' => round(
-                        $lineSubtotal,
-                        2
-                    ),
-                    'discount_amount' => round(
-                        $deliveryItemDiscount,
-                        2
-                    ),
-                    'total' => round(
-                        $deliveryItemTotal,
-                        2
-                    )
-                ];
-            }
-            DB::commit();
-            return response()->json([
-                'status'  => true,
-                'message' => 'Delivery processed successfully.',
-            ], 200);
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return response()->json([
-                'status'  => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
+        // Older route name; the delivery page posts to orderDelivery().
+        return $this->orderDelivery($request, $id);
     }
     /*
     |--------------------------------------------------------------------------
@@ -2027,8 +1709,7 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            $order = SaleOrder::where('id', $id)
-                ->where('deleted', 'No')
+            $order = $this->branchOrderQuery($id)
                 ->lockForUpdate()
                 ->first();
 
@@ -2060,11 +1741,39 @@ class SaleController extends Controller
             $order->updated_date = now();
             $order->save();
 
+            // The order charged the customer its full total when it was placed. After cancelling they owe only
+            // for what was delivered (nothing, or the delivered part of a partial order). Any advance stays
+            // on the customer's account as a credit.
+            $delivered = 0.0;
+            foreach (SaleOrderItem::where('sale_order_id', $order->id)->where('deleted', 'No')->get() as $line) {
+                if ((float) $line->qty > 0) {
+                    $delivered += (float) $line->total * min(1, (float) $line->delivery_qty / (float) $line->qty);
+                }
+            }
+            if ((float) $order->subtotal > 0) {
+                $delivered *= (float) $order->grand_total / (float) $order->subtotal;
+            }
+            $delivered = round($delivered, 2);
+
+            $charges = Payment::where('order_id', $order->id)->where('payment_type', 'Sale Order')
+                ->where('deleted', 'No')->orderBy('id')->get();
+            foreach ($charges as $i => $charge) {
+                if ($i === 0 && $delivered > 0) {
+                    $charge->credit = $delivered;
+                    $charge->remarks = trim(($charge->remarks ? $charge->remarks . ' ' : '') . '(cancelled: delivered part only)');
+                    $charge->save();
+                } else {
+                    $this->deletePaymentsBy('id', $charge->id);
+                }
+            }
+
             DB::commit();
 
             return response()->json([
                 'status'  => true,
-                'message' => 'Sale order cancelled.'
+                'message' => 'Sale order cancelled.' . ((float) $order->advance_paid > 0
+                    ? ' The advance of ' . number_format((float) $order->advance_paid, 2) . ' stays on the customer\'s account as credit.'
+                    : '')
             ]);
         } catch (Exception $e) {
             DB::rollBack();
@@ -2078,14 +1787,13 @@ class SaleController extends Controller
 
     public function orderDeliveryPage($id)
     {
-        $order = SaleOrder::where('id', $id)->where('deleted', 'No')->firstOrFail();
+        $order = $this->branchOrderQuery($id)->first();
+        abort_unless($order, 404, 'Sale order not found in this branch.');
 
-        if ($order->order_status === 'Cancelled') {
-            abort(422, 'A cancelled order cannot be delivered.');
-        }
-
-        if ($order->order_status === 'Delivered') {
-            abort(422, 'This order is already fully delivered.');
+        if (in_array($order->order_status, ['Cancelled', 'Delivered'], true)) {
+            return redirect()->route('sales.orders.index')->with('warning', $order->order_status === 'Cancelled'
+                ? "Order {$order->order_no} is cancelled, so it cannot be delivered."
+                : "Order {$order->order_no} is already fully delivered.");
         }
 
         $customer = Party::find($order->customer_id);
@@ -2097,123 +1805,110 @@ class SaleController extends Controller
         return view('admin.inventory.sale_order.delivery', compact('order', 'items', 'customer'));
     }
 
+    /**
+     * Deliver (part of) a sale order: checks each quantity against what is still to deliver and the branch's
+     * stock, moves the goods out of stock and sets the order Partial / Delivered — all in one transaction.
+     */
     public function orderDelivery(Request $request, $id)
     {
-        $saleOrder = SaleOrder::where('id', $id)
-            ->where('deleted', 'No')
-            ->first();
-
-        if (!$saleOrder) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Sale order not found.',
-            ], 404);
+        $items = $request->input('items');
+        if (is_string($items)) {
+            $items = json_decode($items, true);
+        }
+        if (!is_array($items) || !$items) {
+            return response()->json(['status' => false, 'message' => 'Enter the quantity to deliver.'], 422);
         }
 
-        if ($saleOrder->order_status == 'Delivered') {
-            return response()->json([
-                'status' => false,
-                'message' => 'This order is already delivered.',
-            ], 422);
-        }
+        DB::beginTransaction();
 
-        /*
-    |--------------------------------------------------------------------------
-    | Decode Items
-    |--------------------------------------------------------------------------
-    */
+        try {
+            $saleOrder = $this->branchOrderQuery($id)->lockForUpdate()->first();
+            abort_unless($saleOrder, 404, 'Sale order not found in this branch.');
+            abort_if($saleOrder->order_status === 'Cancelled', 422, 'A cancelled order cannot be delivered.');
+            abort_if($saleOrder->order_status === 'Delivered', 422, 'This order is already delivered.');
 
-        $items = json_decode($request->items, true);
+            $orderItems = SaleOrderItem::where('sale_order_id', $saleOrder->id)->where('deleted', 'No')
+                ->lockForUpdate()->get()->keyBy('id');
 
-        if (!is_array($items)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Invalid order items.',
-            ], 422);
-        }
+            // Sum per order line (the same line sent twice must still fit the remaining quantity).
+            $wanted = [];
+            foreach ($items as $item) {
+                if (!is_array($item) || !isset($item['sale_order_item_id'], $item['delivery_qty'])) {
+                    continue;
+                }
+                abort_unless(is_numeric($item['delivery_qty']), 422, 'Delivery quantity must be a number.');
+                $qty = (float) $item['delivery_qty'];
+                abort_if($qty < 0, 422, 'Delivery quantity cannot be negative.');
+                if ($qty <= 0) {
+                    continue;
+                }
+                $lineId = (int) $item['sale_order_item_id'];
+                abort_unless($orderItems->has($lineId), 422, 'An item does not belong to this order.');
+                $wanted[$lineId] = ($wanted[$lineId] ?? 0) + $qty;
+            }
+            abort_if(!$wanted, 422, 'Enter a delivery quantity for at least one item.');
 
-        /*
-    |--------------------------------------------------------------------------
-    | Update Delivery Quantity
-    |--------------------------------------------------------------------------
-    */
+            $branchId = (int) BranchController::activeId();
+            $today = now()->toDateString();
 
-        foreach ($items as $item) {
+            foreach ($wanted as $lineId => $qty) {
+                $orderItem = $orderItems[$lineId];
+                $name = Product::where('id', $orderItem->product_id)->value('name') ?? ('Product #' . $orderItem->product_id);
+                $variantId = $orderItem->product_variant_id ? (int) $orderItem->product_variant_id : null;
 
-            if (
-                !isset($item['sale_order_item_id']) ||
-                !isset($item['delivery_qty'])
-            ) {
-                continue;
+                $remaining = max(0, (float) $orderItem->qty - (float) $orderItem->delivery_qty);
+                abort_if($qty > $remaining + 0.0005, 422, 'Delivery quantity for "' . $name . '" is more than the remaining ' . round($remaining, 3) . '.');
+
+                $available = StockController::onHand((int) $orderItem->product_id, $variantId, $branchId);
+                abort_if($qty > $available + 0.0005, 422, 'Not enough stock for "' . $name . '". Available: ' . round($available, 3) . ', required: ' . round($qty, 3) . '.');
+
+                $orderItem->delivery_qty = (float) $orderItem->delivery_qty + $qty;
+                $orderItem->save();
+
+                // Stock Reduction (out_qty) — batch-tracked products leave earliest expiry first
+                foreach (StockController::allocate((int) $orderItem->product_id, $variantId, $branchId, $qty) as [$batchId, $part]) {
+                    $stock = new Stock();
+                    $stock->product_id         = $orderItem->product_id;
+                    $stock->product_variant_id = $orderItem->product_variant_id;
+                    $stock->batch_id           = $batchId;
+                    $stock->in_qty             = 0;
+                    $stock->out_qty            = $part;
+                    $stock->order_id           = $saleOrder->id;
+                    $stock->date               = $today;
+                    $stock->reference_type     = 'Order';
+                    $stock->reference_id       = $saleOrder->id;
+                    $stock->remarks            = 'Order: ' . $saleOrder->order_no;
+                    $stock->deleted            = 'No';
+                    $stock->status             = 'Active';
+                    $stock->created_by         = auth()->id();
+                    $stock->created_date       = now();
+                    $stock->save();
+                }
             }
 
-            $saleOrderItem = SaleOrderItem::where('id', $item['sale_order_item_id'])
-                ->where('sale_order_id', $saleOrder->id)
-                ->where('deleted', 'No')
-                ->first();
+            $isPartial = $orderItems->contains(fn ($l) => (float) $l->delivery_qty + 0.0005 < (float) $l->qty);
 
-            if ($saleOrderItem) {
-                $previousDeliveryQty = (float) $saleOrderItem->delivery_qty;
-                $saleOrderItem->delivery_qty = $item['delivery_qty'] + $previousDeliveryQty;
-                $saleOrderItem->save();
-            }
+            $saleOrder->order_status      = $isPartial ? 'Partial' : 'Delivered';
+            $saleOrder->delivery_datetime = now();
+            $saleOrder->updated_by        = auth()->id();
+            $saleOrder->updated_date      = now();
+            $saleOrder->save();
 
-            // Stock Reduction (out_qty)
-                $stock = new Stock();
-                $stock->product_id         = $saleOrderItem->product_id;
-                $stock->product_variant_id =  $saleOrderItem->product_variant_id;
-                $stock->in_qty             = 0;
-                $stock->out_qty            = $item['delivery_qty'];
-                $stock->order_id            = $id;
-                $stock->date               = now();
-                $stock->reference_type     = 'Order';
-                $stock->reference_id       = $id;
-                $stock->remarks            = 'Order: ' . $saleOrder->order_no;
-                $stock->deleted            = 'No';
-                $stock->status             = 'Active';
-                $stock->created_by         = auth()->id();
-                $stock->created_date       = now();
-                $stock->save();
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => $isPartial
+                    ? 'Order marked as partially delivered successfully.'
+                    : 'Order marked as delivered successfully.',
+                'order_status' => $saleOrder->order_status,
+            ]);
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            return response()->json(['status' => false, 'message' => $e->getMessage()],
+                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
         }
-
-        /*
-    |--------------------------------------------------------------------------
-    | Determine Order Status
-    |--------------------------------------------------------------------------
-    */
-
-        $orderItems = SaleOrderItem::where('sale_order_id', $saleOrder->id)
-            ->where('deleted', 'No')
-            ->get();
-
-        $isPartial = false;
-
-        foreach ($orderItems as $orderItem) {
-
-            if ((float) $orderItem->delivery_qty < (float) $orderItem->qty) {
-                $isPartial = true;
-                break;
-            }
-        }
-
-        if ($isPartial) {
-            $saleOrder->order_status = 'Partial';
-        } else {
-            $saleOrder->order_status = 'Delivered';
-        }
-
-        $saleOrder->delivery_datetime = now();
-        $saleOrder->updated_by = auth()->id();
-        $saleOrder->updated_date = date('Y-m-d H:i:s');
-        $saleOrder->save();
-
-        return response()->json([
-            'status' => true,
-            'message' => $saleOrder->order_status == 'Partial'
-                ? 'Order marked as partially delivered successfully.'
-                : 'Order marked as delivered successfully.',
-            'order_status' => $saleOrder->order_status,
-        ]);
     }
 
 
@@ -2222,7 +1917,7 @@ class SaleController extends Controller
         DB::beginTransaction();
 
         try {
-            $order = SaleOrder::where('id', $id)->where('deleted', 'No')->first();
+            $order = $this->branchOrderQuery($id)->lockForUpdate()->first();
 
             if (!$order) {
                 DB::rollBack();
@@ -2281,21 +1976,65 @@ class SaleController extends Controller
 
 
 
-    private function calculateCustomerDue($customerId): float
+    /**
+     * Customer (or walk-in customer) with this phone. Exact match first; the "ends with" match is used only for a
+     * full-length number (e.g. +8801711... vs 01711...), so a short number never picks some other customer
+     * whose phone merely ends with the same digits. Suppliers are never matched.
+     */
+    private function customerByPhoneNumber(string $phone): ?Party
     {
-        $customer = Party::find($customerId);
-        if (!$customer) return 0.0;
+        $phone = trim($phone);
+        $base = Party::where('deleted', 'No')->whereIn('type', ['Customer', 'Walk-In Customer']);
 
-        $saleDue = (float) Sale::where('customer_id', $customerId)
-            ->where('deleted', 'No')
-            ->where('status', 'Active')
-            ->sum('due_amount');
+        $exact = (clone $base)->where('phone', $phone)->orderBy('id')->first();
+        if ($exact || strlen($phone) < 11) {
+            return $exact;
+        }
 
-        $openingDue = ($customer->opening_balance_type === 'Due')
-            ? (float) $customer->opening_balance
-            : 0.0;
+        return (clone $base)->where('phone', 'like', '%' . substr($phone, -11))->orderBy('id')->first();
+    }
 
-        return $saleDue + $openingDue;
+    /** A sale of the logged-in branch (null if missing, deleted or another branch's). */
+    private function branchSale($id): ?Sale
+    {
+        return BranchController::scope(Sale::where('id', $id)->where('deleted', 'No'), 'branch_id')->first();
+    }
+
+    private function branchSaleReturn($id): ?SaleReturn
+    {
+        return BranchController::scope(SaleReturn::where('id', $id)->where('deleted', 'No'), 'branch_id')->first();
+    }
+
+    private function branchOrderQuery($id)
+    {
+        return BranchController::scope(SaleOrder::where('id', $id)->where('deleted', 'No'), 'branch_id');
+    }
+
+    /**
+     * What one returned unit is worth to the customer: the line total after its own discount, less its share of
+     * the sale discount, plus its VAT when VAT was added on top, less its share of the loyalty discount.
+     * So returning everything credits exactly the sale's grand total.
+     */
+    private static function returnUnitValue(object $sale, object $item): float
+    {
+        $qty = (float) $item->qty;
+        if ($qty <= 0) {
+            return 0.0;
+        }
+        $subtotal = (float) $sale->subtotal;
+        $line = (float) $item->total;
+        if ($subtotal > 0) {
+            $line -= $line / $subtotal * (float) $sale->discount_amount;
+        }
+        if (($sale->vat_inclusive ?? 'No') !== 'Yes') {
+            $line += (float) ($item->vat_amount ?? 0);
+        }
+        $beforeLoyalty = (float) $sale->grand_total + (float) ($sale->loyalty_discount ?? 0);
+        if ($beforeLoyalty > 0 && (float) ($sale->loyalty_discount ?? 0) > 0) {
+            $line *= (float) $sale->grand_total / $beforeLoyalty;
+        }
+
+        return max(0.0, $line / $qty);
     }
 
     private function generatePartyCode(string $type): string

@@ -64,7 +64,7 @@ class AmountTransferController extends Controller
         }
 
         try {
-            $query = $this->baseQuery();
+            $query = BranchController::scope($this->baseQuery(), 't.branch_id');
 
             if ($request->filled('from')) {
                 $query->whereDate('t.transfer_date', '>=', $request->query('from'));
@@ -107,10 +107,10 @@ class AmountTransferController extends Controller
             $output['summary'] = [
                 'filtered_total' => number_format((float) $transfers->sum('amount'), 2),
                 'filtered_count' => $transfers->count(),
-                'month_total'    => number_format((float) DB::table('internal_amount_transfers')->where('deleted', 'No')
+                'month_total'    => number_format((float) BranchController::scope(DB::table('internal_amount_transfers'))->where('deleted', 'No')
                     ->whereBetween('transfer_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
                     ->sum('amount'), 2),
-                'today_total'    => number_format((float) DB::table('internal_amount_transfers')->where('deleted', 'No')
+                'today_total'    => number_format((float) BranchController::scope(DB::table('internal_amount_transfers'))->where('deleted', 'No')
                     ->whereDate('transfer_date', now()->toDateString())->sum('amount'), 2),
             ];
 
@@ -129,7 +129,7 @@ class AmountTransferController extends Controller
     public function show(Request $request)
     {
         try {
-            $t = $this->baseQuery()->where('t.id', (int) $request->query('id'))->first();
+            $t = BranchController::scope($this->baseQuery(), 't.branch_id')->where('t.id', (int) $request->query('id'))->first();
 
             if (!$t) {
                 return response()->json(['status' => false, 'message' => 'Transfer not found.'], 404);
@@ -201,11 +201,15 @@ class AmountTransferController extends Controller
 
         try {
             if ($request->filled('id')) {
-                $transfer = InternalAmountTransfer::where('id', (int) $request->input('id'))
+                $transfer = BranchController::scope(InternalAmountTransfer::where('id', (int) $request->input('id')))
                     ->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$transfer) {
                     abort(404, 'Transfer not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($transfer->transfer_date)) {
+                    abort(422, $closed);
                 }
 
                 $this->post($transfer, -1);   // undo the old movement
@@ -263,11 +267,15 @@ class AmountTransferController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $transfer = InternalAmountTransfer::where('id', (int) $request->input('id'))
+                $transfer = BranchController::scope(InternalAmountTransfer::where('id', (int) $request->input('id')))
                     ->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$transfer) {
                     abort(404, 'Transfer not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($transfer->transfer_date)) {
+                    abort(422, $closed);
                 }
 
                 $this->post($transfer, -1);

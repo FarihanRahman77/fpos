@@ -209,9 +209,12 @@ $(document).ready(function () {
 
             type: 'POST',
 
+            dataType: 'json',
+
             data: form.serialize(),
 
-            success: function (response) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (response.status) {
 
@@ -235,7 +238,8 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 if (xhr.status === 422) {
 
@@ -250,7 +254,7 @@ $(document).ready(function () {
 
                 } else {
 
-                    toastr.error('Something went wrong.');
+                    toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
                 }
 
@@ -302,7 +306,10 @@ function editUnit(id)
 
         type: 'GET',
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -326,9 +333,10 @@ function editUnit(id)
 
         },
 
-        error: function () {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
-            toastr.error('Something went wrong.');
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 
@@ -351,11 +359,14 @@ function deleteUnit(id)
 
         type: 'POST',
 
+        dataType: 'json',
+
         data: {
             _token: "{{ csrf_token() }}"
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -371,9 +382,10 @@ function deleteUnit(id)
 
         },
 
-        error: function () {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
-            toastr.error('Something went wrong.');
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 
@@ -391,11 +403,14 @@ function changeUnitStatus(id)
 
         type: 'POST',
 
+        dataType: 'json',
+
         data: {
             _token: "{{ csrf_token() }}"
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -411,9 +426,10 @@ function changeUnitStatus(id)
 
         },
 
-        error: function () {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
-            toastr.error('Something went wrong.');
+            toastr.error((xhr && xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong.');
 
         }
 

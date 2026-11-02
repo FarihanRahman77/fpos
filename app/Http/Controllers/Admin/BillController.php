@@ -72,7 +72,7 @@ class BillController extends Controller
         }
 
         try {
-            $query = DB::table('bills as b')
+            $query = BranchController::scope(DB::table('bills as b'), 'b.branch_id')
                 ->leftJoin('parties as p', 'p.id', '=', 'b.party_id')
                 ->where('b.deleted', 'No')
                 ->select('b.*', 'p.name as party_name', 'p.code as party_code');
@@ -133,7 +133,7 @@ class BillController extends Controller
                 ];
             }
 
-            $active = DB::table('bills')->where('deleted', 'No');
+            $active = BranchController::scope(DB::table('bills'))->where('deleted', 'No');
 
             $output['summary'] = [
                 'filtered_total' => number_format((float) $bills->sum('grand_total'), 2),
@@ -159,7 +159,7 @@ class BillController extends Controller
     public function show(Request $request)
     {
         try {
-            $bill = DB::table('bills as b')
+            $bill = BranchController::scope(DB::table('bills as b'), 'b.branch_id')
                 ->leftJoin('parties as p', 'p.id', '=', 'b.party_id')
                 ->where('b.id', (int) $request->query('id'))
                 ->where('b.deleted', 'No')
@@ -306,10 +306,14 @@ class BillController extends Controller
             $partyId    = (int) $request->input('party_id');
 
             if ($request->filled('id')) {
-                $bill = Bill::where('id', (int) $request->input('id'))->where('deleted', 'No')->lockForUpdate()->first();
+                $bill = BranchController::scope(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$bill) {
                     abort(404, 'Bill not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($bill->bill_date)) {
+                    abort(422, $closed);
                 }
 
                 $paid = $this->paidTotal($bill->id);
@@ -405,10 +409,14 @@ class BillController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $bill = Bill::where('id', (int) $request->input('id'))->where('deleted', 'No')->lockForUpdate()->first();
+                $bill = BranchController::scope(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$bill) {
                     abort(404, 'Bill not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($bill->bill_date)) {
+                    abort(422, $closed);
                 }
 
                 if ($this->paidTotal($bill->id) > 0) {
@@ -469,7 +477,7 @@ class BillController extends Controller
         DB::beginTransaction();
 
         try {
-            $bill = Bill::where('id', (int) $request->input('bill_id'))->where('deleted', 'No')->lockForUpdate()->first();
+            $bill = BranchController::scope(Bill::where('id', (int) $request->input('bill_id')))->where('deleted', 'No')->lockForUpdate()->first();
 
             if (!$bill) {
                 abort(404, 'Bill not found.');
@@ -484,6 +492,10 @@ class BillController extends Controller
 
                 if (!$payment) {
                     abort(404, 'Payment not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($payment->payment_date)) {
+                    abort(422, $closed);
                 }
 
                 $oldAmount = (float) $payment->amount;
@@ -560,10 +572,14 @@ class BillController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $payment = BillPayment::where('id', (int) $request->input('id'))->where('deleted', 'No')->lockForUpdate()->first();
+                $payment = BranchController::scope(BillPayment::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$payment) {
                     abort(404, 'Payment not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($payment->payment_date)) {
+                    abort(422, $closed);
                 }
 
                 Bill::where('id', $payment->bill_id)->lockForUpdate()->first();

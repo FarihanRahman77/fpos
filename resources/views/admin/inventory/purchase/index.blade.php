@@ -60,7 +60,10 @@
                     url: "{{ route('purchases.list') }}",
                     type: 'GET',
 
+                    dataType: 'json',
+
                     success: function(response) {
+                        // alert(JSON.stringify(response));
 
                         if (response.status) {
 
@@ -78,7 +81,8 @@
                         }
                     },
 
-                    error: function() {
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         toastr.error('Something went wrong while loading purchases.');
                     }
                 });
@@ -128,6 +132,8 @@
 
                         type: 'POST',
 
+                        dataType: 'json',
+
                         data: {
 
                             _token: "{{ csrf_token() }}"
@@ -135,6 +141,7 @@
                         },
 
                         success: function(response) {
+                            // alert(JSON.stringify(response));
 
                             if (response.status) {
 
@@ -151,6 +158,7 @@
                         },
 
                         error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
 
                             toastr.error(
                                 xhr.responseJSON?.message ||
@@ -160,59 +168,6 @@
                         }
 
                     });
-                });
-
-            });
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Status
-            |--------------------------------------------------------------------------
-            */
-
-            $(document).on('click', '.statusBtn', function() {
-
-                let id = $(this).data('id');
-
-
-                $.ajax({
-
-                    url: "{{ url('/admin/purchases/status') }}/" + id,
-
-                    type: 'POST',
-
-                    data: {
-
-                        _token: "{{ csrf_token() }}"
-
-                    },
-
-                    success: function(response) {
-
-                        if (response.status) {
-
-                            toastr.success(response.message);
-
-                            loadPurchases();
-
-                        } else {
-
-                            toastr.error(response.message);
-
-                        }
-
-                    },
-
-                    error: function(xhr) {
-
-                        toastr.error(
-                            xhr.responseJSON?.message ||
-                            'Something went wrong.'
-                        );
-
-                    }
-
                 });
 
             });

@@ -290,9 +290,12 @@ $(document).ready(function () {
 
             type: "POST",
 
+            dataType: 'json',
+
             data: $(this).serialize(),
 
-            success: function (response) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (response.status) {
 
@@ -310,7 +313,8 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error(
                     xhr.responseJSON?.message ||

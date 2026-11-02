@@ -306,9 +306,12 @@ $(document).ready(function () {
 
             type: "POST",
 
+            dataType: 'json',
+
             data: $(this).serialize(),
 
-            success: function (response) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (response.status) {
 
@@ -324,7 +327,8 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 if (xhr.status === 422) {
 
@@ -366,7 +370,10 @@ $(document).ready(function () {
 
                 type: "GET",
 
-                success: function (response) {
+                dataType: 'json',
+
+                success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -398,6 +405,11 @@ $(document).ready(function () {
 
                     }
 
+                },
+
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
+                    toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                 }
 
             });
@@ -437,12 +449,15 @@ $(document).ready(function () {
 
                         type: "POST",
 
+                        dataType: 'json',
+
                         data: {
                             _token:
                                 "{{ csrf_token() }}"
                         },
 
-                        success: function (response) {
+                        success: function(response) {
+                            // alert(JSON.stringify(response));
 
                             if (response.status) {
 
@@ -455,6 +470,11 @@ $(document).ready(function () {
 
                             }
 
+                        },
+
+                        error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
+                            toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                         }
 
                     });

@@ -5,7 +5,7 @@
     <title>Print Barcodes</title>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; padding: 10px; font-family: Arial, Helvetica, sans-serif; background: #fff; }
+        body { margin: 0; padding: 10px; font-family: Arial, Helvetica, sans-serif; background: {{ $pc['paper'] }}; }
         .toolbar { margin-bottom: 12px; }
         .toolbar button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
         .sheet {
@@ -16,7 +16,7 @@
         .label {
             width: {{ $settings['label_width'] }}mm;
             height: {{ $settings['label_height'] }}mm;
-            border: 1px dashed #ccc;
+            border: 1px dashed {{ $pc['border'] }};
             padding: 1.5mm;
             display: flex;
             flex-direction: column;
@@ -36,7 +36,7 @@
         }
         .label .barcode-svg { max-width: 100%; }
         .label .barcode-svg svg { width: 100%; height: auto; }
-        .label .barcode-error { font-size: 8px; color: #c00; line-height: 1.2; }
+        .label .barcode-error { font-size: 8px; color: {{ $pc['danger'] }}; line-height: 1.2; }
         .label .price { font-size: 9px; font-weight: bold; margin-top: 1px; }
         @media print {
             .toolbar { display: none; }
@@ -72,7 +72,9 @@
                         @endif
                     </div>
 
-
+                    @if ($settings['show_price'] && $line['price'] !== null && $line['price'] !== '')
+                        <div class="price">Price: {{ number_format((float) $line['price'], 2) }}</div>
+                    @endif
                 </div>
             @endfor
         @endforeach

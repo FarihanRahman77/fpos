@@ -118,7 +118,10 @@ function loadSaleOrders() {
 
         type: "GET",
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (
                 $.fn.DataTable &&
@@ -149,7 +152,8 @@ function loadSaleOrders() {
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -221,6 +225,8 @@ $(document).on(
 
                 type: "POST",
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -231,7 +237,8 @@ $(document).on(
 
                 },
 
-                success: function (response) {
+                success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -250,7 +257,8 @@ $(document).on(
 
                 },
 
-                error: function (xhr) {
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||
@@ -318,6 +326,8 @@ $(document).on(
                 type:
                     "POST",
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -325,7 +335,8 @@ $(document).on(
 
                 },
 
-                success: function (response) {
+                success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -344,7 +355,8 @@ $(document).on(
 
                 },
 
-                error: function (xhr) {
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||

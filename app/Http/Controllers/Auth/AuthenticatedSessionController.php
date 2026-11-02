@@ -33,6 +33,11 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        // The branch chosen at login is the only branch this session sees; it cannot be changed until sign-out.
+        $branchId = $request->chosenBranch();
+        $request->session()->put(\App\Http\Controllers\Admin\BranchController::SESSION_KEY, $branchId);
+        \Illuminate\Support\Facades\Cookie::queue('fpos_branch', (string) $branchId, 60 * 24 * 365);
+
         return redirect()->intended(RouteServiceProvider::HOME);
     }
 

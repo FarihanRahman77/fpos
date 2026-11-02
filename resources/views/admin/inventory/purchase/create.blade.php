@@ -239,6 +239,24 @@
                                 </tr>
 
 
+                                {{-- Input VAT (when enabled in Customer Programs settings) --}}
+                                @if ($purchaseVat)
+                                    <tr>
+                                        <td colspan="5" class="text-end">
+                                            <strong>VAT</strong>
+                                        </td>
+                                        <td>
+                                            <div class="input-group">
+                                                <input type="number" step="0.01" min="0" max="100" id="vat_percent" class="form-control text-end" value="0" aria-label="VAT percent">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <input type="text" id="vat_amount" class="form-control text-end" value="0.00" readonly aria-label="VAT amount">
+                                        </td>
+                                    </tr>
+                                @endif
+
                                 {{-- Grand Total --}}
                                 <tr>
 
@@ -612,7 +630,10 @@
 
                     type: 'GET',
 
+                    dataType: 'json',
+
                     success: function(response) {
+                        // alert(JSON.stringify(response));
 
                         if (response && response.status) {
 
@@ -633,6 +654,7 @@
                     },
 
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
 
                         toastr.error(
                             'Something went wrong.'
@@ -679,10 +701,9 @@
                     dataType: 'json',
 
                     success: function(response) {
+                        // alert(JSON.stringify(response));
 
                         console.log('Success:', response);
-
-                        //  alert(JSON.stringify(response));
 
                         if (response && response.data) {
 
@@ -699,6 +720,7 @@
                     },
 
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
 
                         console.log('AJAX Error:', xhr);
 
@@ -771,6 +793,12 @@
 
                             discount_value: 0,
 
+                            track_batch: product.track_batch || 'No',
+
+                            batch_no: '',
+
+                            expiry_date: '',
+
                             discount_amount: 0,
 
                             subtotal: 0,
@@ -841,6 +869,12 @@
                         discount_type: 'Amount',
 
                         discount_value: 0,
+
+                        track_batch: product.track_batch || 'No',
+
+                        batch_no: '',
+
+                        expiry_date: '',
 
                         discount_amount: 0,
 
@@ -947,7 +981,7 @@
                             value="${variant.id}"
                             ${selected}>
 
-                            ${variantText}
+                            ${escapeHtml(variantText)}
 
                         </option>
 
@@ -976,8 +1010,16 @@
                     <td>
 
                         <strong>
-                            ${item.product_name}
+                            ${escapeHtml(item.product_name)}
                         </strong>
+
+                        ${item.track_batch === 'Yes' ? `
+                        <div class="d-flex gap-1 mt-1">
+                            <input type="text" class="form-control form-control-sm batchInput" data-index="${index}"
+                                placeholder="Batch no." maxlength="60" value="${escapeHtml(item.batch_no || '')}" aria-label="Batch number">
+                            <input type="date" class="form-control form-control-sm expiryInput" data-index="${index}"
+                                value="${item.expiry_date || ''}" aria-label="Expiry date" title="Expiry date">
+                        </div>` : ''}
 
 
                     </td>
@@ -1387,6 +1429,11 @@
                 let grandTotal =
                     subtotal - discountAmount;
 
+                // Input VAT on the purchase after its discount.
+                let vatAmount = Math.round((subtotal - discountAmount) * (parseFloat($('#vat_percent').val()) || 0)) / 100;
+                $('#vat_amount').val(vatAmount.toFixed(2));
+                grandTotal += vatAmount;
+
 
                 let paidAmount =
                     parseFloat(
@@ -1556,7 +1603,11 @@
 
                             discount_type: item.discount_type,
 
-                            discount_value: item.discount_value
+                            discount_value: item.discount_value,
+
+                            batch_no: item.batch_no || '',
+
+                            expiry_date: item.expiry_date || ''
 
                         });
 
@@ -1580,6 +1631,8 @@
                         discount_type: $('#discount_type').val(),
 
                         discount_value: $('#discount_value').val(),
+
+                        vat_percent: $('#vat_percent').val() || 0,
 
                         paid_amount: $('#paid_amount').val(),
 
@@ -1615,10 +1668,12 @@
 
                         type: 'POST',
 
+                        dataType: 'json',
+
                         data: formData,
 
                         success: function(response) {
-                          //  alert(JSON.stringify(response));
+                            // alert(JSON.stringify(response));
                             if (response && response.status) {
 
                                 toastr.success(
@@ -1647,7 +1702,7 @@
                         },
 
                         error: function(xhr) {
-                           // alert(JSON.stringify(xhr));
+                            // alert(JSON.stringify(xhr));
                             let message =
                                 'Something went wrong.';
 
@@ -1689,18 +1744,29 @@
                 $.ajax({
                     url: "{{ route('admin.getCoaChilds') }}",
                     type: 'GET',
+                    dataType: 'html',
                     data: {
                         parent_id: payment_method
                     },
                     success: function(response) {
-                        //alert(JSON.stringify(response));
+                        // alert(JSON.stringify(response));
                         $('#payment_method_account').html(response);
                     },
                     error: function(xhr) {
-                        //alert(JSON.stringify(xhr));
+                        // alert(JSON.stringify(xhr));
                     }
                 });
             });
+
+            // Batch / expiry for batch-tracked products (kept on the cart line; the cart is re-rendered often).
+            // These must live inside this ready() block: `cart` and calculateSummary() are local to it.
+            $(document).on('input change', '.batchInput', function() { cart[$(this).data('index')].batch_no = $(this).val(); });
+            $(document).on('input', '#vat_percent', function() { calculateSummary(); });
+            $(document).on('change', '.expiryInput', function() { cart[$(this).data('index')].expiry_date = $(this).val(); });
+
+            function escapeHtml(value) {
+                return $('<div>').text(value ?? '').html();
+            }
 
         });
     </script>

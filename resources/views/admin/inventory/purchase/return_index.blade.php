@@ -5,8 +5,6 @@
 @endsection
 
 @section('content')
-
-```
 <div class="container-fluid">
 
     <div class="row">
@@ -86,7 +84,6 @@
     </div>
 
 </div>
-```
 
 @endsection
 
@@ -113,9 +110,11 @@ $(document).ready(function () {
 
             type: "GET",
 
-            success: function (response) {
+            dataType: 'json',
 
-                //alert(JSON.stringify(response));
+            success: function(response) {
+                // alert(JSON.stringify(response));
+
                 if (response.status) {
 
                     /*
@@ -187,8 +186,8 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
-                //alert(JSON.stringify(xhr));
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
                 toastr.error(
 
                     xhr.responseJSON?.message ||
@@ -248,6 +247,8 @@ $(document).ready(function () {
 
                 type: "POST",
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -255,8 +256,8 @@ $(document).ready(function () {
 
                 },
 
-                success: function (response) {
-                   // alert(JSON.stringify(response));
+                success: function(response) {
+                    // alert(JSON.stringify(response));
                     if (response.status) {
 
                         toastr.success(
@@ -276,8 +277,8 @@ $(document).ready(function () {
 
                 },
 
-                error: function (xhr) {
-                   // alert(JSON.stringify(xhr));
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     toastr.error(
 
                         xhr.responseJSON?.message ||
@@ -292,84 +293,6 @@ $(document).ready(function () {
         }
     );
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Status
-    |--------------------------------------------------------------------------
-    */
-
-    $(document).on(
-        'click',
-        '.returnStatusBtn',
-        function () {
-
-            let id =
-                $(this).data('id');
-
-
-            if (!id) {
-
-                toastr.error(
-                    'Invalid purchase return.'
-                );
-
-                return;
-
-            }
-
-
-            $.ajax({
-
-                url:
-                    "{{ url('/admin/purchases/returns/status') }}/" +
-                    id,
-
-                type: "POST",
-
-                data: {
-
-                    _token:
-                        "{{ csrf_token() }}"
-
-                },
-
-                success: function (response) {
-
-                    if (response.status) {
-
-                        toastr.success(
-                            response.message
-                        );
-
-
-                        loadPurchaseReturns();
-
-                    } else {
-
-                        toastr.error(
-                            response.message
-                        );
-
-                    }
-
-                },
-
-                error: function (xhr) {
-
-                    toastr.error(
-
-                        xhr.responseJSON?.message ||
-                        'Something went wrong.'
-
-                    );
-
-                }
-
-            });
-
-        }
-    );
 
 });
 

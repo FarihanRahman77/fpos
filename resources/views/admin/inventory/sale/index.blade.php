@@ -102,6 +102,8 @@ function loadSales() {
 
         type: "GET",
 
+        dataType: 'json',
+
         data: {
             type: type
         },
@@ -118,7 +120,8 @@ function loadSales() {
 
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             $('#salesTableBody').html(response.html);
 
@@ -138,7 +141,8 @@ function loadSales() {
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -182,11 +186,14 @@ $(document).on('click', '.deleteSaleBtn', function () {
 
             type: 'POST',
 
+            dataType: 'json',
+
             data: {
                 _token: "{{ csrf_token() }}"
             },
 
-            success: function (response) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (response.status) {
 
@@ -202,7 +209,8 @@ $(document).on('click', '.deleteSaleBtn', function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error(
                     xhr.responseJSON?.message ||

@@ -387,6 +387,43 @@
 
                     </div>
 
+                    <!-- LOGIN PAGE BACKGROUND -->
+                    <div class="col-12 mb-4">
+                        <label class="form-label" for="login_background">Login Page Background</label>
+                        <div class="row g-3 align-items-start">
+                            <div class="col-md-6">
+                                <input type="file" name="login_background" id="login_background" class="form-control image-input"
+                                    accept="image/png,image/jpeg,image/webp" data-preview="loginBgPreview">
+                                <small class="text-muted d-block mt-1">Shown behind the right-hand panel of the login page. A wide photo works best (about 1600 × 1200, up to 5 MB).</small>
+
+                                <label class="form-label mt-3" for="login_overlay">
+                                    Brand color over the image: <span id="loginOverlayValue">{{ (int) ($setting->login_overlay ?? 70) }}</span>%
+                                </label>
+                                <input type="range" class="form-range" name="login_overlay" id="login_overlay" min="0" max="95" step="5"
+                                    value="{{ (int) ($setting->login_overlay ?? 70) }}">
+                                <small class="text-muted d-block">Higher keeps the text easy to read; lower shows more of the photo. The color is the Sidebar background from Theme Colors.</small>
+
+                                @if (!empty($setting->login_background))
+                                    <div class="form-check mt-3">
+                                        <input class="form-check-input" type="checkbox" name="remove_login_background" id="remove_login_background" value="1">
+                                        <label class="form-check-label" for="remove_login_background">Remove the background image</label>
+                                    </div>
+                                @endif
+                            </div>
+                            <div class="col-md-6">
+                                <div class="login-bg-preview" id="loginBgBox" style="--login-overlay: {{ (int) ($setting->login_overlay ?? 70) }}%;">
+                                    <img id="loginBgPreview" src="{{ !empty($setting->login_background) ? asset($setting->login_background) : '' }}"
+                                        alt="Login background preview" class="image-preview"
+                                        style="{{ empty($setting->login_background) ? 'display:none;' : '' }}">
+                                    <div class="login-bg-shade"></div>
+                                    <div class="login-bg-text">Everything in its right place.</div>
+                                    <div class="no-image-text" id="loginBgNoImage" style="{{ !empty($setting->login_background) ? 'display:none;' : '' }}"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
                 </div>
 
             </div>
@@ -992,6 +1029,94 @@
 
 
         <!-- ========================================================= -->
+        <!-- THEME COLORS -->
+        <!-- ========================================================= -->
+
+        @php
+            $themeSaved  = (array) old('theme_colors', $setting->theme_colors ?? []);
+        @endphp
+
+        <div class="card shadow-sm mb-4" id="themeColors">
+
+            <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+                <h5 class="mb-0">
+                    <i class="bi bi-palette me-2"></i>
+                    Theme Colors
+                </h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="themeResetAll">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Reset all to default
+                </button>
+            </div>
+
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Leave a color on <b>default</b> to keep the built-in theme. Hover, soft and dark-mode shades are worked out automatically.
+                    Top bar, page background and status colors apply to the light theme; the others apply to both themes.
+                </p>
+
+                @error('theme_colors.*')<div class="alert alert-danger py-2">{{ $message }}</div>@enderror
+
+                <div class="row g-4">
+                    <div class="col-xl-7">
+                        @foreach (collect($themeFields)->groupBy(fn ($f) => $f[3], true) as $group => $fields)
+                            <h6 class="text-uppercase text-muted small fw-semibold mb-2 {{ $loop->first ? '' : 'mt-3' }}">{{ $group }}</h6>
+                            <div class="row g-3">
+                                @foreach ($fields as $key => [$label, $help, $default])
+                                    @php $value = $themeSaved[$key] ?? ''; @endphp
+                                    <div class="col-md-6">
+                                        <label class="form-label mb-1" for="theme_{{ $key }}_hex">{{ $label }}</label>
+                                        <div class="input-group theme-color" data-key="{{ $key }}" data-default="{{ $default }}">
+                                            <input type="color" class="form-control form-control-color theme-picker" value="{{ $value ?: $default }}"
+                                                aria-label="{{ $label }} picker" title="Pick a color">
+                                            <input type="text" class="form-control theme-hex" id="theme_{{ $key }}_hex" name="theme_colors[{{ $key }}]"
+                                                value="{{ $value }}" placeholder="default {{ $default }}" maxlength="7" pattern="#[0-9a-fA-F]{6}" autocomplete="off">
+                                            <button type="button" class="btn btn-outline-secondary theme-default" title="Back to default {{ $default }}">Default</button>
+                                        </div>
+                                        <div class="form-text">{{ $help }}</div>
+                                        <div class="small text-danger theme-warning"></div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="col-xl-5">
+                        <h6 class="text-uppercase text-muted small fw-semibold mb-2">Preview</h6>
+                        <div class="theme-preview" id="themePreview" aria-hidden="true">
+                            <div class="tp-sidebar">
+                                <div class="tp-brand">FPOS</div>
+                                <div class="tp-item"><i class="bi bi-speedometer2"></i> Dashboard</div>
+                                <div class="tp-item tp-active"><i class="bi bi-people"></i> Employees</div>
+                                <div class="tp-item"><i class="bi bi-bar-chart"></i> Reports</div>
+                            </div>
+                            <div class="tp-main">
+                                <div class="tp-topbar"><span class="tp-burger">☰</span><span class="tp-search">Search…</span><i class="bi bi-moon"></i></div>
+                                <div class="tp-page">
+                                    <div class="tp-card">
+                                        <div class="tp-title">Employees <a href="javascript:void(0)" class="tp-link">View all</a></div>
+                                        <div class="tp-muted mb-2">12 active · 3 on leave</div>
+                                        <div class="d-flex flex-wrap gap-1 mb-2">
+                                            <span class="tp-badge" data-status="success">Active</span>
+                                            <span class="tp-badge" data-status="warning">Pending</span>
+                                            <span class="tp-badge" data-status="danger">Rejected</span>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <span class="tp-btn">Save</span>
+                                            <span class="tp-btn tp-btn-outline">Cancel</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text">The preview shows the light theme. Save to apply everywhere.</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- ========================================================= -->
         <!-- SAVE BUTTON -->
         <!-- ========================================================= -->
 
@@ -1026,7 +1151,157 @@
 <!-- IMAGE PREVIEW SCRIPT -->
 <!-- ============================================================= -->
 
+<style>
+    .theme-color .form-control-color { max-width: 52px; min-height: 44px; padding: 4px; }
+    .theme-color .theme-hex, .theme-color .btn { min-height: 44px; }
+    .theme-color .theme-hex { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: lowercase; }
+    .theme-preview { display: flex; min-height: 230px; border: 1px solid var(--admin-border); border-radius: var(--radius-lg); overflow: hidden; font-size: var(--text-caption); }
+    .tp-sidebar { width: 38%; padding: 10px 8px; }
+    .tp-brand { font-weight: var(--font-weight-medium); font-size: var(--text-body-lg); padding: 2px 8px 10px; }
+    .tp-item { padding: 7px 8px; border-radius: var(--radius-sm); margin-bottom: 2px; }
+    .tp-item i { margin-right: 4px; }
+    .tp-main { flex: 1; display: flex; flex-direction: column; }
+    .tp-topbar { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-bottom: 1px solid; }
+    .tp-search { flex: 1; border: 1px solid; border-radius: var(--radius-sm); padding: 2px 8px; opacity: .8; }
+    .tp-page { flex: 1; padding: 10px; }
+    .tp-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 10px; color: var(--color-text); }
+    .tp-title { font-weight: var(--font-weight-medium); display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .tp-link { text-decoration: none; font-weight: var(--font-weight-medium); }
+    .tp-badge { border-radius: var(--radius-pill); padding: 2px 8px; color: var(--color-on-primary); font-weight: var(--font-weight-medium); font-size: var(--text-micro); }
+    .tp-btn { border-radius: var(--radius-sm); padding: 5px 12px; font-weight: var(--font-weight-medium); border: 1px solid; }
+
+    /* Login background preview: the image, the brand color at the chosen strength, sample text. */
+    .login-bg-preview { position: relative; height: 190px; overflow: hidden; border-radius: var(--radius-lg); background: var(--color-sidebar); }
+    .login-bg-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; max-height: none !important; max-width: none !important; }
+    .login-bg-shade { position: absolute; inset: 0; background: color-mix(in srgb, var(--color-sidebar) var(--login-overlay, 70%), transparent); }
+    .login-bg-text { position: absolute; left: 0; right: 0; bottom: var(--space-lg); text-align: center; color: var(--color-sidebar-text-strong); font-size: var(--text-body-lg); font-weight: var(--font-weight-medium); }
+    .login-bg-preview .no-image-text { display: none !important; }
+</style>
+
 <script>
+
+/* Theme colors: picker <-> hex box, default buttons, contrast warnings and the live preview. */
+document.addEventListener('DOMContentLoaded', function () {
+
+    const card = document.getElementById('themeColors');
+    if (!card) return;
+
+    const rows = Array.from(card.querySelectorAll('.theme-color'));
+    const valid = function (v) { return /^#[0-9a-f]{6}$/i.test(v); };
+    const get = function (key) {
+        const row = card.querySelector('.theme-color[data-key="' + key + '"]');
+        const v = row.querySelector('.theme-hex').value.trim();
+        return (valid(v) ? v : row.dataset.default).toLowerCase();
+    };
+
+    // Same math as SettingController (theme color helpers).
+    const rgb = function (h) { return [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16); }); };
+    const lum = function (h) {
+        const c = rgb(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const contrast = function (a, b) { const l = [lum(a), lum(b)].sort(function (x, y) { return y - x; }); return (l[0] + 0.05) / (l[1] + 0.05); };
+    const textOn = function (bg) { return contrast(bg, '#ffffff') >= contrast(bg, '#0d253d') ? '#ffffff' : '#0d253d'; };
+    const mix = function (a, b, t) {
+        const x = rgb(a), y = rgb(b);
+        return '#' + x.map(function (v, i) { return Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0'); }).join('');
+    };
+    const alpha = function (h, a) { return 'rgba(' + rgb(h).join(',') + ',' + a + ')'; };
+
+    // [key, against, what] pairs checked for readability (WCAG AA 4.5:1 for text, 3:1 for large/UI).
+    const checks = {
+        primary: [function (c) { return contrast(c.primary, c.surface); }, 4.5, 'Links in this color are hard to read on the cards.'],
+        sidebar_text: [function (c) { return contrast(c.sidebar_text, c.sidebar_bg); }, 4.5, 'Sidebar text is hard to read on the sidebar background.'],
+        sidebar_active: [function (c) { return contrast(c.sidebar_active, c.sidebar_bg); }, 3, 'Active item barely stands out from the sidebar.'],
+        topbar_text: [function (c) { return contrast(c.topbar_text, c.topbar_bg); }, 4.5, 'Top bar text is hard to read on its background.'],
+        text: [function (c) { return Math.min(contrast(c.text, c.surface), contrast(c.text, c.page_bg)); }, 4.5, 'Text is hard to read on the cards or the page.'],
+        text_muted: [function (c) { return Math.min(contrast(c.text_muted, c.surface), contrast(c.text_muted, c.page_bg)); }, 4.5, 'Secondary text is hard to read on the cards or the page.'],
+        border: [function (c) { return contrast(c.border, c.surface); }, 1.15, 'Borders are almost invisible on the cards.'],
+        success: [function (c) { return contrast(c.success, c.surface); }, 4.5, 'Too light for text on the cards.'],
+        warning: [function (c) { return contrast(c.warning, c.surface); }, 4.5, 'Too light for text on the cards.'],
+        danger: [function (c) { return contrast(c.danger, c.surface); }, 4.5, 'Too light for text on the cards.']
+    };
+
+    function refresh() {
+        const c = {};
+        rows.forEach(function (row) { c[row.dataset.key] = get(row.dataset.key); });
+
+        rows.forEach(function (row) {
+            const key = row.dataset.key;
+            const hex = row.querySelector('.theme-hex');
+            const warn = row.parentElement.querySelector('.theme-warning');
+            let msg = hex.value.trim() && !valid(hex.value.trim()) ? 'Use a hex code like #916100.' : '';
+            if (!msg && checks[key]) {
+                const ratio = checks[key][0](c);
+                if (ratio < checks[key][1]) msg = checks[key][2] + ' (contrast ' + ratio.toFixed(1) + ':1)';
+            }
+            warn.textContent = msg;
+            hex.classList.toggle('is-invalid', hex.value.trim() !== '' && !valid(hex.value.trim()));
+        });
+
+        const p = document.getElementById('themePreview');
+        const side = p.querySelector('.tp-sidebar');
+        side.style.background = c.sidebar_bg;
+        side.style.color = c.sidebar_text;
+        p.querySelector('.tp-brand').style.color = c.sidebar_active;
+        const active = p.querySelector('.tp-active');
+        active.style.background = alpha(c.sidebar_active, 0.14);
+        active.style.boxShadow = 'inset 3px 0 0 ' + c.sidebar_active;
+        active.style.color = textOn(c.sidebar_bg);
+        active.querySelector('i').style.color = c.sidebar_active;
+
+        const top = p.querySelector('.tp-topbar');
+        top.style.background = c.topbar_bg;
+        top.style.color = c.topbar_text;
+        top.style.borderColor = mix(c.topbar_bg, c.topbar_text, 0.12);
+        p.querySelector('.tp-search').style.borderColor = mix(c.topbar_bg, c.topbar_text, 0.18);
+        p.querySelector('.tp-page').style.background = c.page_bg;
+        const tpCard = p.querySelector('.tp-card');
+        tpCard.style.background = c.surface;
+        tpCard.style.borderColor = c.border;
+        tpCard.style.color = c.text;
+        p.querySelector('.tp-muted').style.color = c.text_muted;
+        p.querySelector('.tp-link').style.color = c.primary;
+
+        const btn = p.querySelector('.tp-btn:not(.tp-btn-outline)');
+        btn.style.background = c.button;
+        btn.style.borderColor = c.button;
+        btn.style.color = textOn(c.button);
+        const outline = p.querySelector('.tp-btn-outline');
+        outline.style.color = c.button;
+        outline.style.borderColor = c.button;
+        p.querySelectorAll('.tp-badge').forEach(function (b) {
+            b.style.background = c[b.dataset.status];
+            b.style.color = textOn(c[b.dataset.status]);
+        });
+    }
+
+    rows.forEach(function (row) {
+        const picker = row.querySelector('.theme-picker');
+        const hex = row.querySelector('.theme-hex');
+
+        picker.addEventListener('input', function () { hex.value = picker.value; refresh(); });
+        hex.addEventListener('input', function () {
+            if (valid(hex.value.trim())) picker.value = hex.value.trim().toLowerCase();
+            refresh();
+        });
+        row.querySelector('.theme-default').addEventListener('click', function () {
+            hex.value = '';
+            picker.value = row.dataset.default;
+            refresh();
+        });
+    });
+
+    document.getElementById('themeResetAll').addEventListener('click', function () {
+        rows.forEach(function (row) {
+            row.querySelector('.theme-hex').value = '';
+            row.querySelector('.theme-picker').value = row.dataset.default;
+        });
+        refresh();
+    });
+
+    refresh();
+});
 
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -1124,6 +1399,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 
+</script>
+
+<script>
+    // Login background: live overlay strength in the preview.
+    document.addEventListener('DOMContentLoaded', function () {
+        const range = document.getElementById('login_overlay');
+        if (!range) return;
+        range.addEventListener('input', function () {
+            document.getElementById('loginOverlayValue').textContent = range.value;
+            document.getElementById('loginBgBox').style.setProperty('--login-overlay', range.value + '%');
+        });
+    });
 </script>
 
 

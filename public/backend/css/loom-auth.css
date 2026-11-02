@@ -1,31 +1,27 @@
 :root {
   color-scheme: light;
-  --loom-page: #f8f7f3;
-  --loom-surface: #ffffff;
-  --loom-text: #292820;
-  --loom-muted: #6f6e65;
-  --loom-border: #deddd4;
-  --loom-field: #fffefa;
-  --loom-field-hover: #ffffff;
-  --loom-gold: #c18a2d;
-  --loom-gold-deep: #78500e;
-  --loom-gold-wash: rgba(193, 138, 45, 0.11);
-  --loom-ring: rgba(174, 117, 24, 0.23);
+  /* Mapped to the design tokens (tokens.css); colors follow Settings > Theme Colors. */
+  --loom-page: var(--color-bg);
+  --loom-surface: var(--color-surface);
+  --loom-text: var(--color-text);
+  --loom-muted: var(--color-text-muted);
+  --loom-border: var(--color-border);
+  --loom-field: var(--color-surface);
+  --loom-field-hover: var(--color-surface);
+  --loom-gold: var(--color-accent);
+  --loom-gold-deep: var(--color-accent-ink);
+  --loom-gold-wash: var(--color-accent-soft);
+  --loom-ring: var(--color-focus-ring);
+  /* brand panel = the sidebar's dark shell */
+  --loom-panel: var(--color-sidebar);
+  --loom-panel-text: var(--color-sidebar-text-strong);
+  --loom-panel-muted: var(--color-sidebar-text);
+  --loom-panel-faint: var(--color-sidebar-muted);
+  --loom-panel-accent: var(--color-sidebar-active);
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --loom-page: #171815;
-  --loom-surface: #1d1f1a;
-  --loom-text: #f3f0e7;
-  --loom-muted: #aaa99f;
-  --loom-border: #3c3e36;
-  --loom-field: #22241f;
-  --loom-field-hover: #282a24;
-  --loom-gold: #e2b761;
-  --loom-gold-deep: #f0ca7b;
-  --loom-gold-wash: rgba(226, 183, 97, 0.12);
-  --loom-ring: rgba(226, 183, 97, 0.24);
 }
 
 * {
@@ -62,10 +58,11 @@ body.loom-auth-body {
   overflow: hidden;
   padding: clamp(2rem, 5.5vw, 5.5rem) clamp(2rem, 6.4vw, 6.5rem) 2.25rem;
   background:
-    radial-gradient(ellipse at 80% 65%, rgba(183, 132, 48, 0.13), transparent 43%),
-    radial-gradient(ellipse at 5% 100%, rgba(196, 157, 87, 0.08), transparent 45%),
-    #171915;
-  color: #f2efe7;
+    radial-gradient(ellipse at 85% 10%, color-mix(in srgb, var(--color-primary) 38%, transparent), transparent 45%),
+    radial-gradient(ellipse at 100% 60%, color-mix(in srgb, var(--color-ruby) 16%, transparent), transparent 40%),
+    radial-gradient(ellipse at 0% 100%, color-mix(in srgb, var(--loom-panel-accent) 14%, transparent), transparent 45%),
+    var(--loom-panel);
+  color: var(--loom-panel-text);
   isolation: isolate;
 }
 
@@ -73,8 +70,8 @@ body.loom-auth-body {
   position: absolute;
   z-index: -1;
   inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-image: linear-gradient(color-mix(in srgb, var(--loom-panel-text) 2.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--loom-panel-text) 2.5%, transparent) 1px, transparent 1px);
   background-position: center;
   background-size: 52px 52px;
   content: "";
@@ -95,7 +92,7 @@ body.loom-auth-body {
 
 .loom-brand-lockup:focus-visible {
   border-radius: 4px;
-  outline: 2px solid #e0b660;
+  outline: 2px solid var(--loom-panel-accent);
   outline-offset: 6px;
 }
 
@@ -107,7 +104,7 @@ body.loom-auth-body {
 }
 
 .loom-wordmark {
-  color: #e3b45c;
+  color: var(--loom-panel-accent);
   font-family: var(--font-sans);
   font-size: 2rem;
   font-weight: 700;
@@ -119,11 +116,11 @@ body.loom-auth-body {
   width: 1px;
   height: 1.7rem;
   margin-inline: 0.1rem;
-  background: rgba(226, 219, 200, 0.26);
+  background: color-mix(in srgb, var(--loom-panel-text) 26%, transparent);
 }
 
 .loom-brand-category {
-  color: #c1beb3;
+  color: var(--loom-panel-muted);
   font-size: 0.63rem;
   font-weight: 600;
   letter-spacing: 0.16em;
@@ -152,18 +149,18 @@ body.loom-auth-body {
 }
 
 .loom-brand-message .loom-eyebrow {
-  color: #c8bd9d;
+  color: var(--loom-panel-muted);
 }
 
 .loom-brand-message .loom-eyebrow span {
   width: 1.4rem;
   height: 1px;
-  background: #d6a84f;
+  background: var(--loom-panel-accent);
 }
 
 .loom-brand-message h1 {
   margin: 1.45rem 0 1.2rem;
-  color: #f5f1e8;
+  color: var(--loom-panel-text);
   font-family: var(--font-sans);
   font-size: clamp(2.9rem, 4.6vw, 4.45rem);
   font-weight: 600;
@@ -172,7 +169,7 @@ body.loom-auth-body {
 }
 
 .loom-brand-message h1 em {
-  color: #dfb45f;
+  color: var(--loom-panel-accent);
   font-style: normal;
   font-weight: 700;
 }
@@ -180,7 +177,7 @@ body.loom-auth-body {
 .loom-brand-description {
   max-width: 25rem;
   margin: 0;
-  color: #b9b8ae;
+  color: var(--loom-panel-muted);
   font-size: 0.98rem;
   line-height: 1.8;
 }
@@ -198,12 +195,12 @@ body.loom-auth-body {
   width: 100%;
   height: 100%;
   overflow: visible;
-  color: #e1b45d;
+  color: var(--loom-panel-accent);
   opacity: 0.68;
 }
 
 .loom-thread {
-  stroke: #cca456;
+  stroke: var(--loom-panel-accent);
   stroke-linecap: round;
   stroke-width: 1;
   opacity: 0.28;
@@ -230,11 +227,11 @@ body.loom-auth-body {
   align-items: center;
   gap: 0.7rem;
   padding: 0.8rem 1rem;
-  border: 1px solid rgba(233, 218, 183, 0.15);
+  border: 1px solid color-mix(in srgb, var(--loom-panel-text) 15%, transparent);
   border-radius: 0.8rem;
-  background: rgba(31, 33, 28, 0.78);
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
-  color: #f3eee2;
+  background: color-mix(in srgb, var(--loom-panel) 78%, transparent);
+  box-shadow: var(--shadow-2);
+  color: var(--loom-panel-text);
   backdrop-filter: blur(14px);
   animation: loom-card-float 7s ease-in-out infinite;
 }
@@ -250,7 +247,7 @@ body.loom-auth-body {
 }
 
 .loom-product-note small {
-  color: #b2b0a5;
+  color: var(--loom-panel-muted);
   font-size: 0.66rem;
   white-space: nowrap;
 }
@@ -271,9 +268,9 @@ body.loom-auth-body {
   width: 2rem;
   height: 2rem;
   place-items: center;
-  border: 1px solid rgba(226, 183, 97, 0.27);
+  border: 1px solid color-mix(in srgb, var(--loom-panel-accent) 27%, transparent);
   border-radius: 0.55rem;
-  color: #e5b65c;
+  color: var(--loom-panel-accent);
   font-size: 1.1rem;
 }
 
@@ -287,14 +284,14 @@ body.loom-auth-body {
   width: 4px;
   height: 4px;
   border-radius: 1px;
-  background: #e5b65c;
+  background: var(--loom-panel-accent);
 }
 
 .loom-scene-caption {
   position: absolute;
   right: 2%;
   bottom: 4%;
-  color: #908c7e;
+  color: var(--loom-panel-faint);
   font-size: 0.56rem;
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -304,7 +301,7 @@ body.loom-auth-body {
   position: relative;
   z-index: 1;
   margin: 1.2rem 0 0;
-  color: #a19f94;
+  color: var(--loom-panel-faint);
   font-size: 0.75rem;
   letter-spacing: 0.02em;
 }
@@ -395,12 +392,12 @@ body.loom-auth-body {
 
 .loom-status {
   margin: -0.8rem 0 1.4rem;
-  color: #277456;
+  color: var(--color-success);
   font-size: 0.86rem;
 }
 
 html[data-theme="dark"] .loom-status {
-  color: #86d2aa;
+  color: var(--color-success);
 }
 
 .loom-login-form {
@@ -471,7 +468,7 @@ html[data-theme="dark"] .loom-status {
 }
 
 .loom-input[aria-invalid="true"] {
-  border-color: #b64a3f;
+  border-color: var(--color-danger);
 }
 
 .loom-password-input {
@@ -508,14 +505,14 @@ html[data-theme="dark"] .loom-status {
   gap: 0.25rem;
   margin: 0.5rem 0 0;
   padding: 0;
-  color: #a43830;
+  color: var(--color-danger);
   font-size: 0.78rem;
   line-height: 1.45;
   list-style: none;
 }
 
 html[data-theme="dark"] .loom-field-errors {
-  color: #f0a097;
+  color: var(--color-danger);
 }
 
 .loom-form-options {
@@ -576,30 +573,32 @@ html[data-theme="dark"] .loom-field-errors {
   gap: 0.65rem;
   margin-top: 0.15rem;
   padding: 0.8rem 1.15rem;
-  border: 1px solid #bc862b;
-  border-radius: 0.55rem;
-  background: #c18a2d;
-  color: #241c0e;
+  border: 1px solid var(--color-button);
+  border-radius: var(--radius-pill);
+  background: var(--color-button);
+  color: var(--color-button-text);
   cursor: pointer;
   font: inherit;
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: var(--text-button-md);
+  font-weight: var(--font-weight-regular);
   transition: transform 160ms ease, background-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
 }
 
-html[data-theme="dark"] .loom-submit-button {
-  border-color: #dcb156;
-  background: #e0b65f;
-}
+
 
 .loom-submit-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  background: #d09b3d;
-  box-shadow: 0 8px 20px rgba(149, 100, 18, 0.19);
+  border-color: var(--color-button-hover);
+  background: var(--color-button-hover);
 }
 
-html[data-theme="dark"] .loom-submit-button:hover:not(:disabled) {
-  background: #ecc778;
+.loom-submit-button:active:not(:disabled) {
+  border-color: var(--color-button-press);
+  background: var(--color-button-press);
+}
+
+.loom-submit-button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
 }
 
 .loom-submit-button:disabled {
@@ -833,6 +832,233 @@ html[data-theme="dark"] .loom-submit-button:hover:not(:disabled) {
   }
 }
 
+/* Branch select on the login form, styled like the inputs with its own chevron. */
+.loom-select {
+  padding-right: 2.6rem;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--loom-muted) 50%), linear-gradient(135deg, var(--loom-muted) 50%, transparent 50%);
+  background-position: calc(100% - 1.2rem) 50%, calc(100% - 0.85rem) 50%;
+  background-size: 0.35rem 0.35rem;
+  background-repeat: no-repeat;
+}
+
+.loom-select:invalid { color: var(--loom-muted); }
+
+/* ---------- Product preview (brand panel) ---------- */
+.loom-preview {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 330px;
+  margin-top: 1.6rem;
+}
+
+.loom-glow {
+  position: absolute;
+  inset: 8% 6% 10% 10%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 45%, transparent), transparent 65%);
+  filter: blur(30px);
+  opacity: 0.55;
+}
+
+.loom-card {
+  position: absolute;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--loom-panel-text) 14%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--loom-panel) 62%, transparent);
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--color-ink) 45%, transparent);
+  color: var(--loom-panel-text);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: loom-float 7s ease-in-out infinite;
+}
+
+.loom-card strong { display: block; font-size: 0.82rem; font-weight: 500; }
+.loom-card small { display: block; color: var(--loom-panel-muted); font-size: 0.7rem; }
+
+.loom-card-icon {
+  display: inline-grid;
+  flex: 0 0 2rem;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: var(--loom-panel-text);
+  font-size: 0.9rem;
+}
+
+.loom-card-icon.warn { background: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+.loom-card-icon.ok { background: color-mix(in srgb, var(--color-success) 40%, transparent); }
+
+.loom-card-sales {
+  top: 0;
+  left: 0;
+  width: min(320px, 60%);
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.1rem 1.2rem 1rem;
+}
+
+.loom-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--loom-panel-muted);
+  font-size: 0.78rem;
+}
+
+.loom-chip-up {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-success) 30%, transparent);
+  color: var(--loom-panel-text);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.loom-card-value {
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  font-feature-settings: var(--font-feature-numeric);
+}
+
+.loom-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 64px;
+}
+
+.loom-bars i {
+  flex: 1 1 0;
+  height: var(--h);
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--loom-panel-accent) 45%, transparent);
+  transform-origin: bottom;
+  animation: loom-grow 900ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.loom-bars i:nth-child(n) { animation-delay: calc(var(--h) * 4ms); }
+.loom-bars i.is-now { background: var(--loom-panel-accent); }
+
+.loom-card-stock {
+  top: 2.2rem;
+  right: 0;
+  align-items: center;
+  animation-delay: -2s;
+}
+
+.loom-card-pos {
+  right: 0;
+  bottom: 0.5rem;
+  width: min(250px, 46%);
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  animation-delay: -4s;
+}
+
+.loom-receipt-row,
+.loom-receipt-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--loom-panel-muted);
+}
+
+.loom-receipt-row b,
+.loom-receipt-total b { color: var(--loom-panel-text); font-weight: 500; font-feature-settings: var(--font-feature-numeric); }
+
+.loom-receipt-total {
+  margin-top: 0.3rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed color-mix(in srgb, var(--loom-panel-text) 25%, transparent);
+  color: var(--loom-panel-text);
+}
+
+.loom-card-pay {
+  left: 4%;
+  bottom: 1.5rem;
+  align-items: center;
+  animation-delay: -1s;
+}
+
+.loom-modules {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loom-modules li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--loom-panel-text) 14%, transparent);
+  border-radius: var(--radius-pill);
+  color: var(--loom-panel-muted);
+  font-size: 0.75rem;
+}
+
+.loom-modules i { color: var(--loom-panel-accent); }
+
+/* ---------- Form card ---------- */
+.loom-form-card {
+  padding: clamp(1.6rem, 3vw, 2.4rem);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--radius-xl);
+  background: var(--loom-surface);
+  box-shadow: var(--shadow-2);
+}
+
+.loom-form-card .loom-form-heading h2 { font-size: clamp(2.2rem, 3.4vw, 2.9rem); }
+
+@keyframes loom-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes loom-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
+  .loom-card-pay { display: none; }
+}
+
+@media (max-width: 1100px) and (min-width: 761px) {
+  .loom-card-pos { display: none; }
+  .loom-card-sales { width: min(300px, 82%); }
+  .loom-card-stock { top: auto; right: 0; bottom: 0.5rem; }
+  .loom-card-pay { display: none; }
+}
+
+@media (max-width: 760px) {
+  .loom-preview,
+  .loom-modules { display: none; }
+
+  .loom-form-card {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -842,4 +1068,233 @@ html[data-theme="dark"] .loom-submit-button:hover:not(:disabled) {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ======================================================================
+   Split login (form left, brand right) — layout of the reference design.
+   ====================================================================== */
+.loom-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* ---- Form side ---- */
+.loom-split .loom-form-panel {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  padding: 6.5rem clamp(2rem, 7vw, 7rem) 2rem;
+  background: var(--color-surface);
+}
+
+.loom-split .loom-brand-lockup {
+  position: absolute;
+  top: 1.8rem;
+  left: clamp(1.5rem, 3vw, 2.5rem);
+  color: var(--color-text);
+}
+
+.loom-split .loom-wordmark { font-size: 1.6rem; color: var(--color-text); }
+.loom-split .loom-brand-symbol { width: auto; max-width: 9rem; height: 2.2rem; object-fit: contain; }
+.loom-split .loom-brand-divider { height: 1.2rem; background: var(--color-border); }
+.loom-split .loom-brand-category { color: var(--color-text-muted); font-size: 0.6rem; }
+
+.loom-split .loom-form-content { width: min(100%, 25rem); }
+
+.loom-split .loom-form-heading { margin-bottom: 1.8rem; }
+.loom-split .loom-form-eyebrow { margin-bottom: 0.6rem; }
+.loom-split .loom-form-heading h2 {
+  font-size: clamp(1.6rem, 2.2vw, 1.9rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.loom-split .loom-form-heading > p:last-child { font-size: 0.9rem; }
+
+.loom-split .loom-field-label { font-size: 0.82rem; font-weight: 500; }
+
+/* filled, borderless inputs */
+.loom-split .loom-input {
+  height: 3.1rem;
+  border-color: transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-soft);
+  font-size: 0.88rem;
+}
+.loom-split .loom-input:hover { border-color: var(--color-border); }
+.loom-split .loom-input:focus {
+  border-color: var(--color-focus);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-focus);
+}
+
+/* solid, squared button */
+.loom-split .loom-submit-button {
+  min-height: 3.1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-button);
+  color: var(--color-button-text);
+  font-weight: 500;
+  box-shadow: none;
+}
+.loom-split .loom-submit-button:hover:not(:disabled) { background: var(--color-button-hover); transform: none; }
+
+.loom-split .loom-signup-link {
+  position: relative;
+  margin-top: 1.6rem;
+  padding-top: 1.6rem;
+  text-align: center;
+}
+.loom-split .loom-signup-link::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 15%;
+  right: 15%;
+  border-top: 1px solid var(--color-border);
+}
+
+.loom-split .loom-privacy-note { margin-top: 2rem; }
+
+/* ---- Brand side ---- */
+.loom-split .loom-brand-panel {
+  align-items: center;
+  justify-content: center;
+  padding: 3rem clamp(2rem, 5vw, 5rem) 2rem;
+  background: var(--color-sidebar);
+  text-align: center;
+}
+.loom-split .loom-brand-panel::before { display: none; }
+
+.loom-squares {
+  position: absolute;
+  z-index: -1;
+  display: grid;
+  grid-template-columns: repeat(4, 34px);
+  gap: 10px;
+  pointer-events: none;
+}
+.loom-squares i {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-sidebar-text-strong) 9%, transparent);
+}
+.loom-squares i:nth-child(3n) { opacity: 0.45; }
+.loom-squares i:nth-child(4n + 1) { opacity: 0.7; }
+.loom-squares i:nth-child(5) { visibility: hidden; }
+.loom-squares-top { top: 1.2rem; right: 1.2rem; }
+.loom-squares-bottom { bottom: 1.2rem; left: 1.2rem; transform: rotate(180deg); }
+
+.loom-showcase {
+  position: relative;
+  width: min(100%, 26rem);
+  margin: 0 auto 2.6rem;
+  padding: 0 0 2.4rem;
+}
+
+.loom-chart-card,
+.loom-donut-card {
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 24px 48px color-mix(in srgb, var(--color-ink) 35%, transparent);
+  text-align: left;
+}
+
+.loom-chart-card { width: 82%; padding: 1rem 1.1rem 0.9rem; animation: loom-float 8s ease-in-out infinite; }
+
+.loom-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; font-weight: 500; }
+.loom-tabs { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden; }
+.loom-tabs b, .loom-tabs i { padding: 0.15rem 0.45rem; font-size: 0.6rem; font-style: normal; font-weight: 400; color: var(--color-text-muted); }
+.loom-tabs b { background: var(--color-surface-soft); color: var(--color-text); font-weight: 500; }
+
+.loom-chart-value { margin-top: 0.35rem; font-size: 1.35rem; font-weight: 300; letter-spacing: -0.02em; font-feature-settings: var(--font-feature-numeric); }
+.loom-chart-value small { margin-left: 0.3rem; font-size: 0.68rem; font-weight: 500; color: var(--color-success); }
+
+.loom-chart { display: block; width: 100%; height: 92px; margin-top: 0.4rem; }
+.loom-chart line { stroke: var(--color-border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.loom-chart .area { fill: var(--color-accent); opacity: 0.08; }
+.loom-chart .line { fill: none; stroke: var(--color-accent); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.loom-chart .line.alt { stroke: var(--color-border-input); }
+.loom-chart-days { display: flex; justify-content: space-between; margin-top: 0.4rem; font-size: 0.6rem; color: var(--color-text-muted); }
+
+.loom-donut-card {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 42%;
+  padding: 0.9rem;
+  animation: loom-float 8s ease-in-out -3s infinite;
+}
+.loom-donut {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(var(--color-accent) 0 82%, var(--color-surface-soft) 82% 100%);
+}
+.loom-donut span {
+  display: grid;
+  place-items: center;
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--color-surface);
+  line-height: 1.1;
+}
+.loom-donut small { font-size: 0.6rem; color: var(--color-text-muted); }
+.loom-donut b { font-size: 1.05rem; font-weight: 500; }
+.loom-donut-note { margin-top: 0.6rem; font-size: 0.66rem; text-align: center; color: var(--color-text-muted); }
+
+.loom-split .loom-brand-message { max-width: 28rem; margin: 0 auto; }
+.loom-split .loom-brand-message .loom-eyebrow { justify-content: center; }
+.loom-split .loom-brand-message h1 {
+  margin: 0.8rem 0 0.6rem;
+  font-size: clamp(1.5rem, 2.2vw, 1.9rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.loom-split .loom-brand-description { margin: 0 auto; font-size: 0.88rem; }
+.loom-split .loom-modules { justify-content: center; margin-top: 1.4rem; }
+.loom-split .loom-brand-footer { position: absolute; bottom: 1.4rem; left: 0; right: 0; margin: 0; }
+
+@media (max-width: 900px) {
+  .loom-split { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); }
+  .loom-split .loom-modules { display: none; }
+}
+
+@media (max-width: 760px) {
+  .loom-split .loom-brand-panel { display: none; }
+  .loom-split .loom-form-panel { min-height: 100vh; min-height: 100svh; justify-content: center; padding: 5.5rem 1.35rem 2rem; }
+  .loom-split .loom-brand-lockup { top: 1.1rem; left: 1.35rem; }
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
+  .loom-split .loom-modules { display: none; }
+  .loom-showcase { margin-bottom: 1.6rem; }
+}
+
+/* Background image from Settings > Login Page Background, under the brand color at the chosen strength. */
+.loom-split .loom-brand-panel.has-image {
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-sidebar) var(--loom-bg-overlay, 70%), transparent),
+      color-mix(in srgb, var(--color-sidebar) var(--loom-bg-overlay, 70%), transparent)),
+    var(--loom-bg-image) center / cover no-repeat,
+    var(--color-sidebar);
+}
+.loom-split .loom-brand-panel.has-image .loom-brand-message,
+.loom-split .loom-brand-panel.has-image .loom-brand-footer {
+  text-shadow: 0 1px 12px color-mix(in srgb, var(--color-sidebar) 70%, transparent);
+}
+
+/* With a Settings logo the image carries the name; keep the wordmark for screen readers only. */
+.loom-brand-lockup.has-logo .loom-wordmark {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

@@ -147,7 +147,7 @@
                                      style="width:150px;height:150px;">
 
                                     <i class="bi bi-person"
-                                       style="font-size:60px;color:#aaa;">
+                                       style="font-size:60px;color:var(--color-text-muted);">
                                     </i>
 
                                 </div>
@@ -272,6 +272,35 @@
                                 </div>
 
 
+                                <!-- BRANCH ACCESS -->
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="branch_id">Home Branch <span class="text-danger">*</span></label>
+                                    <select name="branch_id" id="branch_id" class="form-select">
+                                        @foreach ($branches as $b)
+                                            <option value="{{ $b->id }}">{{ $b->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <small class="text-muted">Where this user's sales, purchases and stock go by default.</small>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="all_branches">Can Sign In To</label>
+                                    <select name="all_branches" id="all_branches" class="form-select">
+                                        <option value="No">Only the branches chosen</option>
+                                        <option value="Yes">Every branch (head office)</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-12 mb-3" id="branchesBox">
+                                    <label class="form-label" for="branches">Also Works In</label>
+                                    <select name="branches[]" id="branches" class="form-select" multiple>
+                                        @foreach ($branches as $b)
+                                            <option value="{{ $b->id }}">{{ $b->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+
                                 <!-- DESIGNATION -->
 
                                 <div class="col-md-6 mb-3">
@@ -357,8 +386,19 @@
 
 
 @push('scripts')
+    <script>
+        $(function() {
+            $('#all_branches').on('change', function() { $('#branchesBox').toggleClass('d-none', $(this).val() === 'Yes'); });
+        });
+    </script>
 
 <script>
+
+function escHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
 
 $(document).ready(function () {
 
@@ -385,6 +425,7 @@ $(document).ready(function () {
 
             success: function(response)
             {
+                // alert(JSON.stringify(response));
 
                 let html = '';
 
@@ -400,7 +441,7 @@ $(document).ready(function () {
                         {
 
                             image = `
-                                <img src="{{ asset('') }}${user.image}"
+                                <img src="{{ asset('') }}${escHtml(user.image)}"
                                      style="width:45px;height:45px;object-fit:cover;"
                                      class="rounded-circle">
                             `;
@@ -459,20 +500,20 @@ $(document).ready(function () {
 
                                 <td>
                                     <strong>
-                                        ${user.name ?? ''}
+                                        ${escHtml(user.name)}
                                     </strong>
                                 </td>
 
                                 <td>
-                                    ${user.email ?? ''}
+                                    ${escHtml(user.email)}
                                 </td>
 
                                 <td>
-                                    ${user.designation ?? '-'}
+                                    ${escHtml(user.designation ?? '-')}
                                 </td>
 
                                 <td>
-                                    ${user.role_name ?? '-'}
+                                    ${escHtml(user.role_name ?? '-')}
                                 </td>
 
                                 <td>
@@ -516,8 +557,9 @@ $(document).ready(function () {
 
             },
 
-            error: function()
+            error: function(xhr)
             {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error('Unable to load users.');
 
@@ -660,9 +702,11 @@ $(document).ready(function () {
 
             contentType: false,
 
+            dataType: "json",
+
             success: function(response)
             {
-              //  alert(JSON.stringify(response));
+                // alert(JSON.stringify(response));
                 if(response.status)
                 {
 
@@ -684,7 +728,7 @@ $(document).ready(function () {
 
             error: function(xhr)
             {
-               // alert(JSON.stringify(xhr));
+                // alert(JSON.stringify(xhr));
                 if(xhr.status === 422)
                 {
 
@@ -699,7 +743,7 @@ $(document).ready(function () {
                         {
 
                             errorHtml += `
-                                <li>${message}</li>
+                                <li>${escHtml(message)}</li>
                             `;
 
                         });
@@ -769,6 +813,7 @@ $(document).ready(function () {
 
             success: function(response)
             {
+                // alert(JSON.stringify(response));
 
                 if(!response.status)
                 {
@@ -789,6 +834,12 @@ $(document).ready(function () {
                 $('#designation').val(user.designation);
 
                 $('#role_id').val(user.role_id);
+
+                $('#branch_id').val(user.branch_id || $('#branch_id option:first').val());
+
+                $('#all_branches').val(user.all_branches || 'No').trigger('change');
+
+                $('#branches').val((response.branches || []).map(String)).trigger('change');
 
                 $('#status').val(user.status);
 
@@ -845,8 +896,9 @@ $(document).ready(function () {
 
             },
 
-            error: function()
+            error: function(xhr)
             {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error(
                     'Unable to load user.'
@@ -898,13 +950,15 @@ $(document).ready(function () {
 
                     type: "POST",
 
+                    dataType: "json",
+
                     data: {
                         _token: "{{ csrf_token() }}"
                     },
 
                     success: function(response)
                     {
-                       // alert(JSON.stringify(response));
+                        // alert(JSON.stringify(response));
                         if(response.status)
                         {
 
@@ -928,7 +982,7 @@ $(document).ready(function () {
 
                     error: function(xhr)
                     {
-                        //alert(JSON.stringify(xhr));
+                        // alert(JSON.stringify(xhr));
                         toastr.error(
                             xhr.responseJSON?.message ??
                             'Unable to delete user.'
@@ -962,6 +1016,12 @@ $(document).ready(function () {
         $('#status').val('Active');
 
         $('#role_id').val('');
+
+        $('#branch_id').val($('#branch_id option:first').val());
+
+        $('#all_branches').val('No').trigger('change');
+
+        $('#branches').val([]).trigger('change');
 
         $('#validationErrors')
             .addClass('d-none')

@@ -6,30 +6,30 @@
 
 @push('styles')
     <style>
-        .coa-stat { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(30, 41, 59, .07); }
-        .coa-stat .icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
-        .coa-stat .icon.i1 { background: #e0e7ff; color: #4338ca; }
-        .coa-stat .icon.i2 { background: #fef3c7; color: #b45309; }
-        .coa-stat .icon.i3 { background: #dcfce7; color: #15803d; }
-        .coa-stat .icon.i4 { background: #f1f5f9; color: #475569; }
+        .coa-stat { border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+        .coa-stat .icon { width: 46px; height: 46px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: var(--text-heading-sm); }
+        .coa-stat .icon.i1 { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+        .coa-stat .icon.i2 { background: var(--color-warning-soft); color: var(--color-warning); }
+        .coa-stat .icon.i3 { background: var(--color-success-soft); color: var(--color-success); }
+        .coa-stat .icon.i4 { background: var(--color-surface-soft); color: var(--color-text-secondary); }
 
-        .coa-card { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(30, 41, 59, .07); }
-        #coaTable thead th { background: #f8fafc; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #64748b; white-space: nowrap; }
+        .coa-card { border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+        #coaTable thead th { background: var(--color-surface-soft); font-size: var(--text-caption); text-transform: uppercase; letter-spacing: .03em; color: var(--color-text-muted); white-space: nowrap; }
         #coaTable tbody td { vertical-align: middle; }
-        #coaTable tbody tr:hover { background: #f8fafc; }
+        #coaTable tbody tr:hover { background: var(--color-surface-soft); }
 
-        .coa-code { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; background: #f1f5f9; padding: 2px 8px; border-radius: 6px; }
+        .coa-code { font-family: var(--font-mono); font-size: var(--text-caption); background: var(--color-surface-soft); padding: 2px 8px; border-radius: var(--radius-sm); }
         .coa-indent-1 { padding-left: 1.5rem; }
         .coa-indent-2 { padding-left: 3rem; }
-        .coa-layer { font-weight: 600; border: 1px solid transparent; }
-        .coa-layer-1 { background: #e0e7ff; color: #3730a3; }
-        .coa-layer-2 { background: #fef3c7; color: #92400e; }
-        .coa-layer-3 { background: #dcfce7; color: #166534; }
+        .coa-layer { font-weight: var(--font-weight-medium); border: 1px solid transparent; }
+        .coa-layer-1 { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+        .coa-layer-2 { background: var(--color-warning-soft); color: var(--color-warning); }
+        .coa-layer-3 { background: var(--color-success-soft); color: var(--color-success); }
         .coa-status-toggle { cursor: pointer; user-select: none; }
 
-        .select2-container--default .select2-results__option .coa-opt-root { font-weight: 700; }
+        .select2-container--default .select2-results__option .coa-opt-root { font-weight: var(--font-weight-medium); }
         .select2-container--default .select2-results__option .coa-opt-group { padding-left: 18px; }
-        .coa-preview { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 12px; }
+        .coa-preview { background: var(--color-surface-soft); border: 1px dashed var(--color-border-input); border-radius: var(--radius-md); padding: 12px; }
     </style>
 @endpush
 
@@ -392,41 +392,49 @@
 
         /* ---------- modal: edit ---------- */
         function openEditModal(id) {
-            $.get(coaUrl('show', id)).done(function(response) {
-                if (!response.status) {
-                    coaNotify('error', response.message || 'Unable to load account.');
-                    return;
+            $.ajax({
+                url: coaUrl('show', id),
+                type: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        coaNotify('error', response.message || 'Unable to load account.');
+                        return;
+                    }
+
+                    const a = response.data;
+
+                    $('#coaForm')[0].reset();
+                    clearCoaErrors();
+
+                    $('#account_id').val(a.id);
+                    $('#account_code').val(a.account_code);
+                    $('#account_type').val(a.account_type);
+                    $('#normal_balance').val(a.normal_balance);
+                    $('#parent_label').val(a.parent_label);
+                    $('#account_name').val(a.account_name);
+                    $('#account_status').val(a.status).prop('disabled', Number(a.layer_level) === 1);
+                    $('#opening_balance').val(a.opening_balance);
+                    $('#opening_balance_entry_datetime').val(a.opening_balance_entry_datetime);
+
+                    $('#parentSelectGroup').hide();
+                    $('#parentNameGroup').show();
+
+                    $('#coaHint').text(
+                        a.layer_label + ' account.' +
+                        (Number(a.layer_level) === 1 ? ' 1st layer accounts cannot be deactivated or deleted.' : '')
+                    );
+
+                    $('#coaModalTitle').text('Edit Chart Of Account');
+                    $('#coaSaveBtn').prop('disabled', false).text('Update');
+
+                    coaModal.show();
+                },
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
+                    coaNotify('error', xhr.responseJSON?.message || 'Unable to load account.');
                 }
-
-                const a = response.data;
-
-                $('#coaForm')[0].reset();
-                clearCoaErrors();
-
-                $('#account_id').val(a.id);
-                $('#account_code').val(a.account_code);
-                $('#account_type').val(a.account_type);
-                $('#normal_balance').val(a.normal_balance);
-                $('#parent_label').val(a.parent_label);
-                $('#account_name').val(a.account_name);
-                $('#account_status').val(a.status).prop('disabled', Number(a.layer_level) === 1);
-                $('#opening_balance').val(a.opening_balance);
-                $('#opening_balance_entry_datetime').val(a.opening_balance_entry_datetime);
-
-                $('#parentSelectGroup').hide();
-                $('#parentNameGroup').show();
-
-                $('#coaHint').text(
-                    a.layer_label + ' account.' +
-                    (Number(a.layer_level) === 1 ? ' 1st layer accounts cannot be deactivated or deleted.' : '')
-                );
-
-                $('#coaModalTitle').text('Edit Chart Of Account');
-                $('#coaSaveBtn').prop('disabled', false).text('Update');
-
-                coaModal.show();
-            }).fail(function(xhr) {
-                coaNotify('error', xhr.responseJSON?.message || 'Unable to load account.');
             });
         }
 
@@ -439,11 +447,19 @@
                 text: '"' + name + '" will be marked ' + next + '.',
                 confirmButtonText: 'Yes, mark ' + next
             }, function() {
-                $.post(coaUrl('status', id)).done(function(response) {
-                    coaNotify(response.status ? 'success' : 'error', response.message);
-                    coaTable.ajax.reload(null, false);
-                }).fail(function(xhr) {
-                    coaNotify('error', xhr.responseJSON?.message || 'Unable to change status.');
+                $.ajax({
+                    url: coaUrl('status', id),
+                    type: 'POST',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        coaNotify(response.status ? 'success' : 'error', response.message);
+                        coaTable.ajax.reload(null, false);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        coaNotify('error', xhr.responseJSON?.message || 'Unable to change status.');
+                    }
                 });
             });
         }
@@ -452,14 +468,22 @@
             coaConfirm({
                 title: 'Delete account?',
                 text: 'Delete "' + name + '"? It must have no child accounts, no journal history and a zero opening balance.',
-                confirmButtonColor: '#dc3545',
+                confirmButtonColor: 'var(--color-danger)',
                 confirmButtonText: 'Yes, delete'
             }, function() {
-                $.post(coaUrl('destroy', id)).done(function(response) {
-                    coaNotify(response.status ? 'success' : 'error', response.message);
-                    coaTable.ajax.reload(null, false);
-                }).fail(function(xhr) {
-                    coaNotify('error', xhr.responseJSON?.message || 'Unable to delete account.');
+                $.ajax({
+                    url: coaUrl('destroy', id),
+                    type: 'POST',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        coaNotify(response.status ? 'success' : 'error', response.message);
+                        coaTable.ajax.reload(null, false);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        coaNotify('error', xhr.responseJSON?.message || 'Unable to delete account.');
+                    }
                 });
             });
         }
@@ -545,18 +569,26 @@
                     return;
                 }
 
-                $.get(coaUrl('nextCode', parentId)).done(function(response) {
-                    if (!response.status) return;
+                $.ajax({
+                    url: coaUrl('nextCode', parentId),
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) return;
 
-                    const d = response.data;
-                    $('#account_code').val(d.account_code);
-                    $('#account_type').val(d.account_type);
-                    $('#normal_balance').val(d.normal_balance);
-                    $('#coaHint').text('This will create a ' + d.layer_label + ' account.');
-                    $('#parent_id_error').text('');
-                }).fail(function(xhr) {
-                    resetPreview();
-                    showCoaErrors(xhr.responseJSON?.errors || { parent_id: [xhr.responseJSON?.message || 'Invalid parent.'] });
+                        const d = response.data;
+                        $('#account_code').val(d.account_code);
+                        $('#account_type').val(d.account_type);
+                        $('#normal_balance').val(d.normal_balance);
+                        $('#coaHint').text('This will create a ' + d.layer_label + ' account.');
+                        $('#parent_id_error').text('');
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        resetPreview();
+                        showCoaErrors(xhr.responseJSON?.errors || { parent_id: [xhr.responseJSON?.message || 'Invalid parent.'] });
+                    }
                 });
             });
 
@@ -605,24 +637,30 @@
                 $.ajax({
                     url: id ? coaUrl('update', id) : coaRoutes.store,
                     type: 'POST',
-                    data: data
-                }).done(function(response) {
-                    if (!response.status) {
-                        coaNotify('error', response.message || 'Unable to save account.');
-                        return;
-                    }
+                    dataType: 'json',
+                    data: data,
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (!response.status) {
+                            coaNotify('error', response.message || 'Unable to save account.');
+                            return;
+                        }
 
-                    coaModal.hide();
-                    coaNotify('success', response.message);
-                    coaTable.ajax.reload(null, false);
-                }).fail(function(xhr) {
-                    if (xhr.status === 422 && xhr.responseJSON?.errors) {
-                        showCoaErrors(xhr.responseJSON.errors);
-                    } else {
-                        coaNotify('error', xhr.responseJSON?.message || 'Unable to save account.');
+                        coaModal.hide();
+                        coaNotify('success', response.message);
+                        coaTable.ajax.reload(null, false);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        if (xhr.status === 422 && xhr.responseJSON?.errors) {
+                            showCoaErrors(xhr.responseJSON.errors);
+                        } else {
+                            coaNotify('error', xhr.responseJSON?.message || 'Unable to save account.');
+                        }
+                    },
+                    complete: function() {
+                        $btn.prop('disabled', false).text(label);
                     }
-                }).always(function() {
-                    $btn.prop('disabled', false).text(label);
                 });
             });
         });

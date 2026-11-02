@@ -48,9 +48,9 @@ class UnitController extends Controller
 
                 $i++,
 
-                $unit->name,
+                e($unit->name),
 
-                $unit->slug,
+                e($unit->slug),
 
                 $status,
 
@@ -68,8 +68,22 @@ class UnitController extends Controller
     {
         $request->validate([
             'id' => 'nullable|integer',
-            'name' => 'required|string|max:255'
+            'name' => 'required|string|max:255',
+            'status' => 'nullable|in:Active,Inactive',
         ]);
+
+        $duplicate = Unit::where('deleted', 'No')
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($request->name))])
+            ->when($request->id, fn ($q) => $q->where('id', '<>', $request->id))
+            ->exists();
+
+        if ($duplicate) {
+            return response()->json([
+                'status' => false,
+                'message' => 'A unit with this name already exists.',
+                'errors' => ['name' => ['A unit with this name already exists.']],
+            ], 422);
+        }
 
 
         if ($request->id) {
@@ -85,7 +99,7 @@ class UnitController extends Controller
                     'message' => 'Unit not found.'
                 ], 404);
             }
-            $unit->status=$request->status;
+            $unit->status = $request->status ?: $unit->status;
         } else {
 
             $unit = new Unit();
@@ -96,7 +110,7 @@ class UnitController extends Controller
         }
 
 
-        $unit->name = $request->name;
+        $unit->name = trim($request->name);
         $unit->slug = Str::slug($request->name);
 
 
@@ -154,8 +168,17 @@ class UnitController extends Controller
         }
 
 
+        if (\Illuminate\Support\Facades\DB::table('products')->where('unit_id', $unit->id)->where('deleted', 'No')->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Products use this unit, so it cannot be deleted. Change their unit or make it Inactive.'
+            ], 422);
+        }
+
         $unit->deleted = 'Yes';
         $unit->status = 'Inactive';
+        $unit->deleted_by = auth()->id();
+        $unit->deleted_date = now();
         $unit->updated_by = auth()->id();
 
         $unit->save();

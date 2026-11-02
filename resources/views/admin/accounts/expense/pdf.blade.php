@@ -6,40 +6,40 @@
     <style>
         @page { margin: 28px 32px 56px 32px; }
 
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 11px; color: #1e293b; }
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: 11px; color: {{ $pc['ink'] }}; }
         table { width: 100%; border-collapse: collapse; }
 
-        .muted { color: #64748b; }
+        .muted { color: {{ $pc['muted'] }}; }
         .right { text-align: right; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
 
-        .company-name { font-size: 18px; font-weight: bold; color: #0f172a; }
-        .doc-title { font-size: 20px; font-weight: bold; color: #b91c1c; letter-spacing: 1px; }
-        .rule { border-top: 3px solid #1e293b; margin: 10px 0 14px 0; }
+        .company-name { font-size: 18px; font-weight: bold; color: {{ $pc['ink'] }}; }
+        .doc-title { font-size: 20px; font-weight: bold; color: {{ $pc['danger'] }}; letter-spacing: 1px; }
+        .rule { border-top: 3px solid {{ $pc['ink'] }}; margin: 10px 0 14px 0; }
 
-        .box { border: 1px solid #e2e8f0; background: #f8fafc; padding: 9px 11px; }
-        .box-title { font-size: 9px; text-transform: uppercase; color: #64748b; letter-spacing: .6px; margin-bottom: 5px; }
+        .box { border: 1px solid {{ $pc['border'] }}; background: {{ $pc['soft'] }}; padding: 9px 11px; }
+        .box-title { font-size: 9px; text-transform: uppercase; color: {{ $pc['muted'] }}; letter-spacing: .6px; margin-bottom: 5px; }
         .meta td { padding: 2px 0; vertical-align: top; }
-        .meta td.k { width: 38%; color: #64748b; }
+        .meta td.k { width: 38%; color: {{ $pc['muted'] }}; }
 
         .items { margin-top: 16px; }
-        .items th { background: #1e293b; color: #ffffff; padding: 7px 8px; font-size: 9.5px; text-transform: uppercase; text-align: left; }
-        .items td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-        .items tr.alt td { background: #f8fafc; }
+        .items th { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; padding: 7px 8px; font-size: 9.5px; text-transform: uppercase; text-align: left; }
+        .items td { padding: 7px 8px; border-bottom: 1px solid {{ $pc['border'] }}; vertical-align: top; }
+        .items tr.alt td { background: {{ $pc['soft'] }}; }
 
         .total-table { margin-top: 10px; }
         .total-table td { padding: 6px 8px; }
-        .grand { background: #1e293b; color: #ffffff; font-size: 13px; font-weight: bold; }
+        .grand { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; font-size: 13px; font-weight: bold; }
 
-        .words { margin-top: 10px; padding: 8px 10px; border: 1px dashed #cbd5e1; }
+        .words { margin-top: 10px; padding: 8px 10px; border: 1px dashed {{ $pc['border_strong'] }}; }
         .note { margin-top: 12px; }
 
         .sign { margin-top: 56px; }
         .sign td { width: 33%; text-align: center; padding: 0 14px; }
-        .sign .line { border-top: 1px solid #64748b; padding-top: 4px; font-size: 10px; color: #475569; }
+        .sign .line { border-top: 1px solid {{ $pc['muted'] }}; padding-top: 4px; font-size: 10px; color: {{ $pc['secondary'] }}; }
 
-        .footer { position: fixed; bottom: -34px; left: 0; right: 0; text-align: center; font-size: 8.5px; color: #94a3b8; }
+        .footer { position: fixed; bottom: -34px; left: 0; right: 0; text-align: center; font-size: 8.5px; color: {{ $pc['faint'] }}; }
     </style>
 </head>
 <body>

@@ -56,9 +56,9 @@ class CategoryController extends Controller
 
                 $i++,
 
-                $category->name,
+                e($category->name),
 
-                $category->slug,
+                e($category->slug),
 
                 $status,
 
@@ -77,6 +77,19 @@ class CategoryController extends Controller
             'id' => 'nullable|integer',
             'name' => 'required|string|max:255'
         ]);
+
+        $duplicate = Category::where('deleted', 'No')
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($request->name))])
+            ->when($request->id, fn ($q) => $q->where('id', '<>', $request->id))
+            ->exists();
+
+        if ($duplicate) {
+            return response()->json([
+                'status' => false,
+                'message' => 'A category with this name already exists.',
+                'errors' => ['name' => ['A category with this name already exists.']],
+            ], 422);
+        }
 
 
         if ($request->id) {
@@ -103,7 +116,7 @@ class CategoryController extends Controller
         }
 
 
-        $category->name = $request->name;
+        $category->name = trim($request->name);
 
         $category->slug = Str::slug($request->name);
 
@@ -162,6 +175,13 @@ class CategoryController extends Controller
             ], 404);
         }
 
+
+        if (\Illuminate\Support\Facades\DB::table('products')->where('category_id', $category->id)->where('deleted', 'No')->exists()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Products use this category, so it cannot be deleted. Move them to another category or make it Inactive.'
+            ], 422);
+        }
 
         $category->deleted = 'Yes';
         $category->status = 'Inactive';

@@ -199,17 +199,19 @@
         $.ajax({
             url: "{{ url('/admin/parties/list') }}/" + encodeURIComponent(partyType),
             type: 'GET',
+            dataType: 'json',
             data: { page: currentPage, search: $('#searchBox').val() },
-            success: function (res) {
-                lastPage = res.last_page;
+            success: function(response) {
+                // alert(JSON.stringify(response));
+                lastPage = response.last_page;
                 let rows = '';
-                if (!res.data.length) {
+                if (!response.data.length) {
                     rows = '<tr><td colspan="9" class="text-center text-muted">No data found</td></tr>';
                 }
-                $.each(res.data, function (i, p) {
+                $.each(response.data, function (i, p) {
                     const badge = p.status === 'Active' ? 'bg-success' : 'bg-secondary';
                     rows += `<tr>
-                        <td>${res.from + i}</td>
+                        <td>${response.from + i}</td>
                         <td>${esc(p.code)}</td>
                         <td>${esc(p.name)}</td>
                         <td>${esc(p.phone)}</td>
@@ -224,11 +226,14 @@
                     </tr>`;
                 });
                 $('#partyBody').html(rows);
-                $('#pageInfo').text('Page ' + res.current_page + ' of ' + res.last_page + ' (' + res.total + ' records)');
-                $('#btnPrev').prop('disabled', res.current_page <= 1);
-                $('#btnNext').prop('disabled', res.current_page >= res.last_page);
+                $('#pageInfo').text('Page ' + response.current_page + ' of ' + response.last_page + ' (' + response.total + ' records)');
+                $('#btnPrev').prop('disabled', response.current_page <= 1);
+                $('#btnNext').prop('disabled', response.current_page >= response.last_page);
             },
-            error: showError
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
+                showError(xhr);
+            }
         });
     }
 
@@ -258,17 +263,22 @@
         $.ajax({
             url: "{{ url('/admin/parties/show') }}",
             type: 'GET',
+            dataType: 'json',
             data: { id: id },
-            success: function (p) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
                 resetForm();
-                $('#party_id').val(p.id);
-                $('#code').val(p.code);
+                $('#party_id').val(response.id);
+                $('#code').val(response.code);
                 $('#codeWrap').show();
-                $.each(fields, function (i, f) { $('#' + f).val(p[f]); });
+                $.each(fields, function (i, f) { $('#' + f).val(response[f]); });
                 $('#modalTitle').text('Edit ' + partyType);
                 partyModal.show();
             },
-            error: showError
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
+                showError(xhr);
+            }
         });
     });
 
@@ -284,13 +294,18 @@
         $.ajax({
             url: id ? "{{ url('/admin/parties/update') }}" : "{{ url('/admin/parties/store') }}",
             type: 'POST',
+            dataType: 'json',
             data: data,
-            success: function (res) {
+            success: function(response) {
+                // alert(JSON.stringify(response));
                 partyModal.hide();
-                showSuccess(res.message);
+                showSuccess(response.message);
                 loadParties(id ? currentPage : 1);
             },
-            error: showError,
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
+                showError(xhr);
+            },
             complete: function () { $btn.prop('disabled', false); }
         });
     });
@@ -300,12 +315,17 @@
         $.ajax({
             url: "{{ url('/admin/parties/toggle-status') }}",
             type: 'POST',
+            dataType: 'json',
             data: { id: $(this).data('id') },
-            success: function (res) {
-                showSuccess(res.message);
+            success: function(response) {
+                // alert(JSON.stringify(response));
+                showSuccess(response.message);
                 loadParties(currentPage);
             },
-            error: showError
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
+                showError(xhr);
+            }
         });
     });
 
@@ -317,19 +337,24 @@
             title: 'Are you sure?',
             text: 'This ' + partyType + ' will be deleted.',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
+            confirmButtonColor: 'var(--color-danger)',
             confirmButtonText: 'Yes, delete'
         }).then(function (result) {
             if (!result.isConfirmed) return;
             $.ajax({
                 url: "{{ url('/admin/parties/delete') }}",
                 type: 'POST',
+                dataType: 'json',
                 data: { id: id },
-                success: function (res) {
-                    showSuccess(res.message);
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    showSuccess(response.message);
                     loadParties(currentPage);
                 },
-                error: showError
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
+                    showError(xhr);
+                }
             });
         });
     });

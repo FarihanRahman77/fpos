@@ -7,17 +7,17 @@
 
 @push('styles')
     <style>
-        .ledger-block { border: 1px solid var(--admin-border); border-radius: 12px; overflow: hidden; }
+        .ledger-block { border: 1px solid var(--admin-border); border-radius: var(--radius-lg); overflow: hidden; }
         .ledger-head { padding: 10px 14px; background: var(--admin-surface-soft); border-bottom: 1px solid var(--admin-border); }
-        .ledger-table { font-size: .85rem; }
+        .ledger-table { font-size: var(--text-caption); }
         /* beats the global ".table tbody td" (1rem padding, 120px min-width) for a compact ledger */
         .ledger-table tbody td, .ledger-table tfoot td, .ledger-table thead th { min-width: 0; padding: .4rem 12px; }
         .ledger-table td:nth-child(-n+4) { white-space: nowrap; }   /* date, type, reference, party on one line */
-        .ledger-table .badge { font-size: .72rem; font-weight: 600; }
+        .ledger-table .badge { font-size: var(--text-micro); font-weight: var(--font-weight-medium); }
         /* dark text on light badges in both themes (dark mode turns .text-dark light) */
-        .ledger-table .badge.ledger-badge-ink { color: #1f2937 !important; }
+        .ledger-table .badge.ledger-badge-ink { color: var(--color-text) !important; }
         .ledger-opening td { background: var(--admin-surface-soft); }
-        .ledger-total td { font-weight: 700; background: var(--admin-surface-soft); border-top: 2px solid var(--admin-border); }
+        .ledger-total td { font-weight: var(--font-weight-medium); background: var(--admin-surface-soft); border-top: 2px solid var(--admin-border); }
         #reportBody { min-height: 120px; position: relative; }
         #reportBody.loading { opacity: .45; pointer-events: none; }
     </style>
@@ -210,23 +210,26 @@
             $.ajax({
                 url: dataUrl + '?' + filterQuery(),
                 type: 'GET',
+                dataType: 'json',
                 beforeSend: function() {
                     $('#reportBody').addClass('loading');
                     $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Loading...');
                 },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to build the report.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to build the report.');
                         return;
                     }
 
-                    $('#reportBody').html(res.html);
-                    $('#sumItems').text(res.summary.items);
-                    $('#sumIn').text(res.summary.in);
-                    $('#sumOut').text(res.summary.out);
-                    $('#sumClosing').text(res.summary.closing);
+                    $('#reportBody').html(response.html);
+                    $('#sumItems').text(response.summary.items);
+                    $('#sumIn').text(response.summary.in);
+                    $('#sumOut').text(response.summary.out);
+                    $('#sumClosing').text(response.summary.closing);
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     if (xhr.status === 422 && xhr.responseJSON) {
                         $('#filterError').text(xhr.responseJSON.message);
                     } else {

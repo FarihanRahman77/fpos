@@ -1,215 +1,69 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-
     <meta charset="utf-8">
-
-    <title>
-        Sale Return {{ $saleReturn->return_no }}
-    </title>
-
-    <style>
-
-        @page {
-            margin: 25px;
-        }
-
-        body {
-            font-family: DejaVu Sans, sans-serif;
-            font-size: 12px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .company-name {
-            font-size: 22px;
-            font-weight: bold;
-        }
-
-        .title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            border: 1px solid #ddd;
-            padding: 7px;
-        }
-
-        th {
-            background: #f2f2f2;
-        }
-
-        .right {
-            text-align: right;
-        }
-
-        .center {
-            text-align: center;
-        }
-
-        .summary {
-            width: 40%;
-            margin-left: auto;
-            margin-top: 20px;
-        }
-
-    </style>
-
+    <title>Sales Return {{ $saleReturn->return_no }}</title>
+    @include('admin.inventory.partials.invoice-style')
 </head>
-
 <body>
+    @php $m = fn ($v) => number_format((float) $v, 2); @endphp
 
-<div class="header">
+    @include('admin.inventory.partials.invoice-header', ['title' => 'Sales Return', 'number' => $saleReturn->return_no])
 
-    <div class="company-name">
-        {{ $generalSetting->company_name ?? '' }}
-    </div>
-
-    <div>
-        {{ $generalSetting->address ?? '' }}
-    </div>
-
-    <div class="title">
-        SALES RETURN
-    </div>
-
-</div>
-
-
-<table>
-
-    <tr>
-
-        <td>
-            <strong>Return No:</strong>
-            {{ $saleReturn->return_no }}
-        </td>
-
-        <td>
-            <strong>Original Invoice:</strong>
-            {{ $sale->invoice_no ?? '-' }}
-        </td>
-
-    </tr>
-
-    <tr>
-
-        <td>
-            <strong>Customer:</strong>
-            {{ $customer->name ?? 'Walk-In Customer' }}
-        </td>
-
-        <td>
-            <strong>Date:</strong>
-            {{ \Carbon\Carbon::parse($saleReturn->datetime)->format('d-m-Y H:i') }}
-        </td>
-
-    </tr>
-
-</table>
-
-
-<br>
-
-
-<table>
-
-    <thead>
-
-    <tr>
-
-        <th>#</th>
-        <th>Product</th>
-        <th>Variant</th>
-        <th>Qty</th>
-        <th>Price</th>
-        <th>Total</th>
-
-    </tr>
-
-    </thead>
-
-    <tbody>
-
-    @foreach($items as $key => $item)
-
+    <table class="inv-band">
         <tr>
-
-            <td class="center">
-                {{ $key + 1 }}
+            <td class="col" style="width: 50%;">
+                <div class="lbl">Customer</div>
+                <div class="name">{{ $customer->name ?? 'Walk-In Customer' }}</div>
             </td>
-
-            <td>
-                {{ $item->product_name ?? '-' }}
+            <td class="col" style="width: 50%;">
+                <div class="lbl">Details</div>
+                <table class="inv-kv">
+                    <tr><td class="k">Return No</td><td>{{ $saleReturn->return_no }}</td></tr>
+                    <tr><td class="k">Original Invoice</td><td>{{ $sale->invoice_no ?? '-' }}</td></tr>
+                    <tr><td class="k">Date</td><td>{{ \Carbon\Carbon::parse($saleReturn->datetime)->format('d-m-Y H:i') }}</td></tr>
+                </table>
             </td>
-
-            <td>
-                {{ $item->variant_name ?? '-' }}
-            </td>
-
-            <td class="right">
-                {{ number_format($item->qty, 2) }}
-            </td>
-
-            <td class="right">
-                {{ number_format($item->sale_price, 2) }}
-            </td>
-
-            <td class="right">
-                {{ number_format($item->total, 2) }}
-            </td>
-
         </tr>
+    </table>
 
-    @endforeach
+    <table class="inv-items">
+        <thead>
+            <tr>
+                <th style="width: 5%;">#</th>
+                <th>Product</th>
+                <th>Variant</th>
+                <th class="r" style="width: 10%;">Qty</th>
+                <th class="r" style="width: 15%;">Price</th>
+                <th class="r" style="width: 15%;">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($items as $key => $item)
+                <tr>
+                    <td class="muted">{{ $key + 1 }}</td>
+                    <td class="pname">{{ $item->product_name ?? '-' }}</td>
+                    <td>{{ $item->variant_name ?? '-' }}</td>
+                    <td class="r">{{ number_format($item->qty, 2) }}</td>
+                    <td class="r">{{ $m($item->sale_price) }}</td>
+                    <td class="r">{{ $m($item->total) }}</td>
+                </tr>
+            @endforeach
+            <tr class="end"><td colspan="6"></td></tr>
+        </tbody>
+    </table>
 
-    </tbody>
-
-</table>
-
-
-<table class="summary">
-
-    <tr>
-
-        <td>
-            <strong>Subtotal</strong>
-        </td>
-
-        <td class="right">
-            {{ number_format($saleReturn->subtotal, 2) }}
-        </td>
-
-    </tr>
-
-    <tr>
-
-        <td>
-            <strong>Grand Total</strong>
-        </td>
-
-        <td class="right">
-            <strong>
-                {{ number_format($saleReturn->grand_total, 2) }}
-            </strong>
-        </td>
-
-    </tr>
-
-</table>
-
+    <table class="inv-bottom">
+        <tr>
+            <td style="width: 55%; padding-right: 30px;" class="inv-msg">
+            </td>
+            <td style="width: 45%;">
+                <table class="inv-totals">
+                    <tr><td class="k">Subtotal</td><td class="r">{{ $m($saleReturn->subtotal) }}</td></tr>
+                    <tr class="total"><td>Grand Total</td><td class="r">{{ $m($saleReturn->grand_total) }}</td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 </body>
-
 </html>

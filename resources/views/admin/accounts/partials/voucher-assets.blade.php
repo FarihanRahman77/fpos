@@ -1,20 +1,19 @@
 {{-- Shared styles + JS helpers for the Journal, Bill and Amount Transfer pages. --}}
 @push('styles')
     <style>
-        .acc-stat, .acc-card { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(30, 41, 59, .07); }
-        .acc-stat .icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; }
-        .acc-stat .i1 { background: #e0e7ff; color: #4338ca; }
-        .acc-stat .i2 { background: #fee2e2; color: #b91c1c; }
-        .acc-stat .i3 { background: #fef3c7; color: #b45309; }
-        .acc-stat .i4 { background: #dcfce7; color: #15803d; }
-        .acc-table thead th { background: #f8fafc; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: #64748b; white-space: nowrap; }
+        /* Card, stat tile and table chrome come from components.css; only the extras live here. */
+        .acc-stat .icon { width: var(--control-height); height: var(--control-height); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: var(--text-body-lg); }
+        .acc-stat .i1 { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+        .acc-stat .i2 { background: var(--color-danger-soft); color: var(--color-danger); }
+        .acc-stat .i3 { background: var(--color-warning-soft); color: var(--color-warning); }
+        .acc-stat .i4 { background: var(--color-success-soft); color: var(--color-success); }
         .acc-table tbody td { vertical-align: middle; }
-        .coa-code { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; background: #f1f5f9; padding: 1px 6px; border-radius: 6px; }
-        .acc-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
-        .acc-lines thead th { font-size: .75rem; text-transform: uppercase; color: #64748b; }
+        .coa-code { font-family: var(--font-mono); font-size: var(--text-caption); background: var(--color-surface-soft); padding: var(--space-xxs) var(--space-sm); border-radius: var(--radius-xs); }
+        .acc-section { background: var(--color-surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-lg); }
+        .acc-lines thead th { font-size: var(--text-micro); text-transform: uppercase; color: var(--color-text-muted); }
         .acc-lines td { vertical-align: top; }
-        .acc-grand { font-size: 1.05rem; font-weight: 700; }
-        .acc-view dt { color: #64748b; font-weight: 500; }
+        .acc-grand { font-size: var(--text-body-lg); font-weight: var(--font-weight-medium); font-feature-settings: var(--font-feature-numeric); }
+        .acc-view dt { color: var(--color-text-muted); font-weight: var(--font-weight-medium); }
 
         .select2-container { width: 100% !important; }
         .acc-lines .select2-container { min-width: 160px; }
@@ -36,8 +35,9 @@
             cache: {},
 
             /* ---------- formatting ---------- */
+            // Quotes too: callers put the result inside attributes (value="", src="", title="").
             esc: function(text) {
-                return $('<div>').text(text == null ? '' : String(text)).html();
+                return $('<div>').text(text == null ? '' : String(text)).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             },
 
             money: function(value) {
@@ -128,12 +128,15 @@
                 $.ajax({
                     url: Voucher.ledgersUrl,
                     type: 'GET',
+                    dataType: 'json',
                     data: { parent_id: parentId },
-                    success: function(res) {
-                        Voucher.cache[parentId] = res.data || [];
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        Voucher.cache[parentId] = response.data || [];
                         deferred.resolve(Voucher.cache[parentId]);
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         Voucher.ajaxError(xhr, 'Unable to load accounts.');
                         deferred.resolve([]);
                     }
@@ -171,17 +174,20 @@
                 const run = function() {
                     $.ajax({
                         url: url,
-                        type: 'GET',
+                        type: 'POST',
+                        dataType: 'json',
                         data: { id: id },
-                        success: function(res) {
-                            if (res.status) {
-                                toastr.success(res.message);
-                                if (onDone) onDone(res);
+                        success: function(response) {
+                            // alert(JSON.stringify(response));
+                            if (response.status) {
+                                toastr.success(response.message);
+                                if (onDone) onDone(response);
                             } else {
-                                toastr.error(res.message || 'Unable to delete.');
+                                toastr.error(response.message || 'Unable to delete.');
                             }
                         },
                         error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
                             Voucher.ajaxError(xhr, 'Unable to delete.');
                         }
                     });
@@ -193,7 +199,7 @@
                         text: text,
                         icon: 'warning',
                         showCancelButton: true,
-                        confirmButtonColor: '#dc3545',
+                        confirmButtonColor: 'var(--color-danger)',
                         confirmButtonText: 'Yes, delete',
                         reverseButtons: true
                     }).then(function(result) {

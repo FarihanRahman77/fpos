@@ -52,7 +52,7 @@ class JournalController extends Controller
         }
 
         try {
-            $query = DB::table('journals as j')->where('j.deleted', 'No')->select('j.*');
+            $query = BranchController::scope(DB::table('journals as j'), 'j.branch_id')->where('j.deleted', 'No')->select('j.*');
 
             if ($request->filled('from')) {
                 $query->whereDate('j.journal_date', '>=', $request->query('from'));
@@ -119,10 +119,10 @@ class JournalController extends Controller
             $output['summary'] = [
                 'filtered_total' => number_format((float) $journals->sum('total_debit'), 2),
                 'filtered_count' => $journals->count(),
-                'month_total'    => number_format((float) DB::table('journals')->where('deleted', 'No')
+                'month_total'    => number_format((float) BranchController::scope(DB::table('journals'))->where('deleted', 'No')
                     ->whereBetween('journal_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
                     ->sum('total_debit'), 2),
-                'today_total'    => number_format((float) DB::table('journals')->where('deleted', 'No')
+                'today_total'    => number_format((float) BranchController::scope(DB::table('journals'))->where('deleted', 'No')
                     ->whereDate('journal_date', now()->toDateString())->sum('total_debit'), 2),
             ];
 
@@ -141,7 +141,7 @@ class JournalController extends Controller
     public function show(Request $request)
     {
         try {
-            $journal = DB::table('journals')
+            $journal = BranchController::scope(DB::table('journals'))
                 ->where('id', (int) $request->query('id'))->where('deleted', 'No')->first();
 
             if (!$journal) {
@@ -267,10 +267,15 @@ class JournalController extends Controller
             $total = round($lines->sum('debit'), 2);
 
             if ($request->filled('id')) {
-                $journal = Journal::where('id', (int) $request->input('id'))->where('deleted', 'No')->lockForUpdate()->first();
+                $journal = BranchController::scope(Journal::where('id', (int) $request->input('id')))
+                    ->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$journal) {
                     abort(404, 'Journal not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($journal->journal_date)) {
+                    abort(422, $closed);
                 }
 
                 $this->reverseJournal($journal->id);
@@ -342,12 +347,16 @@ class JournalController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $journal = DB::table('journals')
+                $journal = BranchController::scope(DB::table('journals'))
                     ->where('id', (int) $request->input('id'))->where('deleted', 'No')
                     ->lockForUpdate()->first();
 
                 if (!$journal) {
                     abort(404, 'Journal not found.');
+                }
+
+                if ($closed = AccountingReportController::closedDateMessage($journal->journal_date)) {
+                    abort(422, $closed);
                 }
 
                 $this->reverseJournal($journal->id);

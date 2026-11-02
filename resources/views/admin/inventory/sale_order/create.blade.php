@@ -8,7 +8,9 @@
 
 <div class="container-fluid">
 
-    <form id="saleOrderForm">
+    {{-- novalidate: the customer select is hidden by select2, so the browser's own "required" check would block
+         the submit silently; the submit handler below shows the messages instead. --}}
+    <form id="saleOrderForm" novalidate>
 
         <div class="row">
 
@@ -287,7 +289,10 @@ function addOrderProduct(productId) {
 
         type: 'GET',
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (!response.status) {
                 toastr.error(response.message || 'Unable to load product.');
@@ -302,7 +307,8 @@ function addOrderProduct(productId) {
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
             toastr.error(xhr.responseJSON?.message || 'Unable to load product.');
         }
 
@@ -552,10 +558,12 @@ function saveSaleOrder() {
 
         type: 'POST',
 
+        dataType: 'json',
+
         data: $.param(formData) + '&_token={{ csrf_token() }}',
 
-        success: function (response) {
-          //  alert(JSON.stringify(response));
+        success: function(response) {
+            // alert(JSON.stringify(response));
             if (response.status) {
 
                 toastr.success(response.message);
@@ -577,8 +585,8 @@ function saveSaleOrder() {
 
         },
 
-        error: function (xhr) {
-          //  alert(JSON.stringify(xhr));
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
             toastr.error(xhr.responseJSON?.message || 'Unable to save sale order.');
             $('#saveOrderBtn').prop('disabled', false).text('Save Order');
 
@@ -723,6 +731,11 @@ $(document).ready(function () {
             return;
         }
 
+        if (!$('#order_date').val()) {
+            toastr.error('Please select the order date.');
+            return;
+        }
+
         if (orderItems.length === 0) {
             toastr.error('Please add at least one product.');
             return;
@@ -733,7 +746,7 @@ $(document).ready(function () {
         });
 
         if (invalid) {
-            toastr.error('Quantity must be greater than 0 for "' + invalid.product_name + '".');
+            toastr.error('Quantity must be greater than 0 for "' + escapeHtml(invalid.product_name) + '".');   // toastr renders HTML
             return;
         }
 
@@ -770,15 +783,16 @@ $('#payment_method').on('change', function() {
     $.ajax({
         url: "{{ route('admin.getCoaChilds') }}",
         type: 'GET',
+        dataType: 'html',
         data: {
             parent_id: payment_method
         },
         success: function(response) {
-            //alert(JSON.stringify(response));
+            // alert(JSON.stringify(response));
             $('#payment_method_account').html(response);
         },
         error: function(xhr) {
-            //alert(JSON.stringify(xhr));
+            // alert(JSON.stringify(xhr));
         }
     });
 });

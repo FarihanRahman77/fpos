@@ -182,7 +182,7 @@ class AttributeTypeController extends Controller
 
                 'created_date' => now(),
 
-                'created_by' => Session::get('user_id'),
+                'created_by' => auth()->id(),
 
                 'status' => 'Active',
 
@@ -313,7 +313,7 @@ class AttributeTypeController extends Controller
 
                     'slug' => $slug,
 
-                    'updated_by' => Session::get('user_id'),
+                    'updated_by' => auth()->id(),
 
                     'updated_date' => now(),
 
@@ -388,9 +388,9 @@ class AttributeTypeController extends Controller
 
                     'deleted' => 'Yes',
 
-                    'deleted_by' => Session::get('user_id'),
+                    'deleted_by' => auth()->id(),
 
-                    'updated_by' => Session::get('user_id'),
+                    'updated_by' => auth()->id(),
 
                     'updated_date' => now(),
 
@@ -452,7 +452,7 @@ class AttributeTypeController extends Controller
 
                     'status' => $newStatus,
 
-                    'updated_by' => Session::get('user_id'),
+                    'updated_by' => auth()->id(),
 
                     'updated_date' => now(),
 

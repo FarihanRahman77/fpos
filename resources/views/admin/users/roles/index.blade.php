@@ -250,9 +250,12 @@
 
                 type: "POST",
 
+                dataType: 'json',
+
                 data: $(this).serialize(),
 
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -271,6 +274,7 @@
                 },
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     if (xhr.status === 422) {
 
@@ -307,7 +311,10 @@
 
                 type: "GET",
 
+                dataType: 'json',
+
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -334,6 +341,7 @@
                 },
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||
@@ -374,11 +382,14 @@
 
                         type: "POST",
 
+                        dataType: 'json',
+
                         data: {
                             _token: "{{ csrf_token() }}"
                         },
 
                         success: function(response) {
+                            // alert(JSON.stringify(response));
 
                             if (response.status) {
 
@@ -395,6 +406,7 @@
                         },
 
                         error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
 
                             toastr.error(
                                 xhr.responseJSON?.message ||

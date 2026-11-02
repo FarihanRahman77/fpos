@@ -200,6 +200,19 @@
                                         </div>
 
 
+                                        <div class="d-flex justify-content-between mb-2">
+
+                                            <strong>
+                                                VAT
+                                            </strong>
+
+                                            <span id="returnVat">
+                                                0.00
+                                            </span>
+
+                                        </div>
+
+
                                         <hr>
 
 
@@ -298,7 +311,10 @@ $(document).ready(function () {
 
             type: "GET",
 
-            success: function (response) {
+            dataType: 'json',
+
+            success: function(response) {
+                // alert(JSON.stringify(response));
 
                 if (!response.status) {
 
@@ -334,8 +350,8 @@ $(document).ready(function () {
                 |--------------------------------------------------------------------------
                 */
 
-                loadSupplier(
-                    purchase.supplier_id
+                $('#supplier_name').val(
+                    response.data.supplier_name || ''
                 );
 
 
@@ -350,45 +366,13 @@ $(document).ready(function () {
 
             },
 
-            error: function (xhr) {
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
 
                 toastr.error(
                     xhr.responseJSON?.message ||
                     'Something went wrong.'
                 );
-
-            }
-
-        });
-
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Supplier
-    |--------------------------------------------------------------------------
-    */
-
-    function loadSupplier(supplierId) {
-
-        $.ajax({
-
-            url:
-                "{{ url('/admin/suppliers') }}/" +
-                supplierId,
-
-            type: "GET",
-
-            success: function (response) {
-
-                if (response.data) {
-
-                    $('#supplier_name').val(
-                        response.data.name
-                    );
-
-                }
 
             }
 
@@ -439,12 +423,19 @@ $(document).ready(function () {
                     item.purchase_price
                 );
 
+            // The line discount comes back per unit, as the server works it out.
+            let unitDiscount =
+                purchased > 0
+                    ? (parseFloat(item.discount_amount) || 0) / purchased
+                    : 0;
+
 
             html += `
 
                 <tr
                     data-purchase-item-id="${item.purchase_item_id}"
                     data-price="${price}"
+                    data-unit-discount="${unitDiscount}"
                     data-max="${remaining}"
                 >
 
@@ -595,7 +586,7 @@ $(document).ready(function () {
 
 
             let amount =
-                qty * price;
+                lineAmount(row, qty);
 
 
             row.find('.returnAmount')
@@ -616,6 +607,17 @@ $(document).ready(function () {
     |--------------------------------------------------------------------------
     */
 
+    // qty x price less the line's own discount for that qty (never below zero).
+    function lineAmount(row, qty) {
+
+        let price = parseFloat(row.data('price')) || 0;
+        let gross = qty * price;
+        let discount = Math.min(gross, qty * (parseFloat(row.data('unit-discount')) || 0));
+
+        return gross - discount;
+    }
+
+
     function calculateTotal() {
 
         let subtotal = 0;
@@ -629,18 +631,8 @@ $(document).ready(function () {
                 ) || 0;
 
 
-            let row =
-                $(this).closest('tr');
-
-
-            let price =
-                parseFloat(
-                    row.data('price')
-                ) || 0;
-
-
             subtotal +=
-                qty * price;
+                lineAmount($(this).closest('tr'), qty);
 
         });
 
@@ -687,8 +679,19 @@ $(document).ready(function () {
         }
 
 
+        // VAT paid on the purchase comes back at the purchase's rate.
+        let vat =
+            Math.round((subtotal - discount) * (parseFloat(purchase.vat_percent) || 0)) / 100;
+
+
         let grandTotal =
-            subtotal - discount;
+            subtotal - discount + vat;
+
+
+        $('#returnVat')
+            .text(
+                vat.toFixed(2)
+            );
 
 
         $('#returnSubtotal')
@@ -809,6 +812,8 @@ $(document).ready(function () {
 
                 type: "POST",
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -828,7 +833,8 @@ $(document).ready(function () {
 
                 },
 
-                success: function (response) {
+                success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -865,7 +871,8 @@ $(document).ready(function () {
 
                 },
 
-                error: function (xhr) {
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||

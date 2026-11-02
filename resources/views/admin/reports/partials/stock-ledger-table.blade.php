@@ -22,7 +22,7 @@
                     @if ($item['unit']) · Unit: {{ $item['unit'] }} @endif
                 </div>
             </div>
-            <div class="ms-auto d-flex gap-3 small text-nowrap">
+            <div class="ms-auto d-flex flex-wrap column-gap-3 row-gap-1 small" style="white-space: nowrap">
                 <span>Opening <strong>{{ $q($item['opening']) }}</strong></span>
                 <span class="text-success">In <strong>{{ $q($item['in']) }}</strong></span>
                 <span class="text-danger">Out <strong>{{ $q($item['out']) }}</strong></span>

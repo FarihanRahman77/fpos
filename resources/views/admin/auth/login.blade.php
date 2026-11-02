@@ -1,4 +1,4 @@
-<x-guest-layout variant="login" :brand-logo="$setting->logo ?? null">
+<x-guest-layout variant="login" :brand-logo="$setting->logo ?? null" :brand-background="$setting->login_background ?? null" :brand-overlay="$setting->login_overlay ?? 70">
     <div class="loom-form-heading">
         <p class="loom-eyebrow loom-form-eyebrow">YOUR BUSINESS, IN GOOD HANDS</p>
         <h2>Welcome back<span>.</span></h2>
@@ -11,8 +11,39 @@
         </div>
     @endif
 
+    @php
+        $loginBranches = \App\Http\Controllers\Admin\BranchController::loginOptions();
+        $lastBranch = old('branch_id', request()->cookie('fpos_branch'));
+    @endphp
+
     <form method="POST" action="{{ route('login') }}" class="loom-login-form" data-login-form>
         @csrf
+
+        @if ($loginBranches->isNotEmpty())
+            <div class="loom-field-group">
+                <label class="loom-field-label" for="branch_id">{{ __('Branch') }}</label>
+                <div class="loom-input-wrap">
+                    <svg class="loom-input-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M3 17.5V7l7-4 7 4v10.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                        <path d="M7.5 17.5v-5h5v5M2 17.5h16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <select class="loom-input loom-select" id="branch_id" name="branch_id" required
+                        @if ($errors->get('branch_id')) aria-invalid="true" aria-describedby="branch-errors" @endif>
+                        <option value="" disabled @selected($lastBranch === null || $lastBranch === '')>Choose your branch</option>
+                        @foreach ($loginBranches as $b)
+                            <option value="{{ $b->id }}" @selected((string) $lastBranch === (string) $b->id)>{{ $b->name }}{{ $b->code ? ' · ' . $b->code : '' }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @if ($errors->get('branch_id'))
+                    <ul class="loom-field-errors" id="branch-errors" role="alert">
+                        @foreach ($errors->get('branch_id') as $message)
+                            <li>{{ $message }}</li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+        @endif
 
         <div class="loom-field-group">
             <label class="loom-field-label" for="email">{{ __('Email address') }}</label>

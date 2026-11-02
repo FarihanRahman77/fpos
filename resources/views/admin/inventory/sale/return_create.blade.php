@@ -62,7 +62,10 @@ function loadReturnData() {
 
         type: "GET",
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (!response.status) {
 
@@ -76,7 +79,8 @@ function loadReturnData() {
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -168,7 +172,7 @@ function renderReturnData(response) {
                     <th>Returned Qty</th>
                     <th>Remaining</th>
                     <th>Return Qty</th>
-                    <th>Price</th>
+                    <th>Refund / Unit</th>
                     <th>Total</th>
 
                 </tr>
@@ -224,7 +228,7 @@ function renderReturnData(response) {
                 </td>
 
                 <td>
-                    ${parseFloat(item.sale_price || 0).toFixed(2)}
+                    ${parseFloat(item.refund_price ?? item.sale_price ?? 0).toFixed(2)}
                 </td>
 
                 <td class="returnTotal">
@@ -330,7 +334,7 @@ $(document).on('input', '.returnQty', function () {
 
     let total =
         qty *
-        parseFloat(item.sale_price || 0);
+        parseFloat(item.refund_price ?? item.sale_price ?? 0);
 
     $(this)
         .closest('tr')
@@ -350,7 +354,7 @@ function calculateReturnTotal() {
 
         total +=
             parseFloat(item.return_qty || 0) *
-            parseFloat(item.sale_price || 0);
+            parseFloat(item.refund_price ?? item.sale_price ?? 0);
 
     });
 
@@ -432,6 +436,8 @@ $(document).on('click', '#saveReturnBtn', function () {
 
             type: "POST",
 
+            dataType: 'json',
+
             data: {
 
                 _token: "{{ csrf_token() }}",
@@ -446,16 +452,16 @@ $(document).on('click', '#saveReturnBtn', function () {
 
             },
 
-            success: function (response) {
-               // alert(JSON.stringify(response));
+            success: function(response) {
+                // alert(JSON.stringify(response));
                 if (response.status) {
 
                     toastr.success(response.message);
 
-                    if (response.invoice_url) {
+                    if (response.return_url || response.invoice_url) {
 
                         window.open(
-                            response.invoice_url,
+                            response.return_url || response.invoice_url,
                             '_blank'
                         );
 
@@ -480,8 +486,8 @@ $(document).on('click', '#saveReturnBtn', function () {
 
             },
 
-            error: function (xhr) {
-                //alert(JSON.stringify(xhr));
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
                 toastr.error(
                     xhr.responseJSON?.message ||
                     'Unable to save return.'

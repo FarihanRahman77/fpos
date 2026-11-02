@@ -358,6 +358,16 @@
 
                             </tr>
 
+                            @php
+                                $returnVat = round((float) $purchaseReturn->grand_total - ((float) $purchaseReturn->subtotal - (float) $purchaseReturn->discount_amount), 2);
+                            @endphp
+                            @if($returnVat > 0)
+                                <tr>
+                                    <th colspan="7" class="text-end">VAT</th>
+                                    <th class="text-end">{{ number_format($returnVat, 2) }}</th>
+                                </tr>
+                            @endif
+
 
                             <tr>
 
@@ -481,12 +491,12 @@
     }
 
     .table-bordered {
-        border: 1px solid #000 !important;
+        border: 1px solid var(--color-text) !important;
     }
 
     .table-bordered th,
     .table-bordered td {
-        border: 1px solid #000 !important;
+        border: 1px solid var(--color-text) !important;
     }
 
 }

@@ -261,15 +261,18 @@
             $.ajax({
                 url: showUrl,
                 type: 'GET',
+                dataType: 'json',
                 data: { id: id },
-                success: function(res) {
-                    if (!res.status) {
-                        toastr.error(res.message || 'Unable to load transfer.');
+                success: function(response) {
+                    // alert(JSON.stringify(response));
+                    if (!response.status) {
+                        toastr.error(response.message || 'Unable to load transfer.');
                         return;
                     }
-                    done(res.data);
+                    done(response.data);
                 },
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
                     Voucher.ajaxError(xhr, 'Unable to load transfer.');
                 }
             });
@@ -392,20 +395,23 @@
                 $.ajax({
                     url: "{{ route('admin.transfer.store') }}",
                     type: 'POST',
+                    dataType: 'json',
                     data: $form.serialize(),
                     beforeSend: function() {
                         $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
                     },
-                    success: function(res) {
-                        if (res.status) {
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (response.status) {
                             transferModal.hide();
-                            toastr.success(res.message);
+                            toastr.success(response.message);
                             transferTable.ajax.reload(null, false);
                         } else {
-                            toastr.error(res.message || 'Unable to save transfer.');
+                            toastr.error(response.message || 'Unable to save transfer.');
                         }
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
                             Voucher.showErrors($form, xhr.responseJSON.errors);
                         } else {

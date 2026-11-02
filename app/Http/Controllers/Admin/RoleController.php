@@ -44,9 +44,9 @@ class RoleController extends Controller
 
             $data[] = [
                 'id' => $role->id,
-                'name' => $role->name,
-                'slug' => $role->slug,
-                'description' => $role->description ?? '',
+                'name' => e($role->name),
+                'slug' => e($role->slug),
+                'description' => e($role->description ?? ''),
                 'permissions' => $permissionCount,
                 'status' => $status,
                 'actions' => $actions,
@@ -147,6 +147,14 @@ class RoleController extends Controller
                 'status' => false,
                 'message' => 'Role not found.'
             ], 404);
+        }
+
+        $inUse = DB::table('users')->where('role_id', $role->id)->where('deleted', 'No')->count();
+        if ($inUse) {
+            return response()->json([
+                'status' => false,
+                'message' => $inUse . ' user(s) still have this role. Give them another role first.'
+            ], 422);
         }
 
         $role->deleted = 'Yes';

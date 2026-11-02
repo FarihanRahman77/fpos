@@ -51,7 +51,7 @@ class PaymentController extends Controller
     public function list($type)
     {
         try {
-            $payments = DB::table('payments')
+            $payments = BranchController::scope(DB::table('payments'), 'payments.branch_id')
                 ->leftJoin('parties', 'parties.id', '=', 'payments.party_id')
                 ->select(
                     'payments.*',
@@ -150,9 +150,11 @@ class PaymentController extends Controller
         $isDiscount = $type == 'Discount';
 
         $rules = [
-            'type'           => 'required',
+            'type'           => ['required', Rule::in(['Payment', 'Payment Receive', 'Discount'])],
             'payment_date'   => 'required|date',
-            'party_id'       => 'required|exists:parties,id',
+            // Payment = to a supplier, Payment Receive = from a customer, Discount = either.
+            'party_id'       => ['required', Rule::exists('parties', 'id')->where('deleted', 'No')
+                ->whereIn('type', $type === 'Payment' ? ['Supplier'] : ($type === 'Payment Receive' ? ['Customer', 'Walk-In Customer'] : ['Supplier', 'Customer', 'Walk-In Customer']))],
             'amount'         => 'required|numeric|gt:0',
             // A discount moves no money, so it has no payment method / account.
             'payment_method' => $isDiscount ? ['nullable'] : [
@@ -178,8 +180,9 @@ class PaymentController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'status' => false,
-                'errors' => $validator->errors(),
+                'status'  => false,
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
             ], 422);
         }
 
@@ -217,10 +220,12 @@ class PaymentController extends Controller
                         'remarks'        => $request->remarks,
                     ]);
                 } else {
+                    DB::rollBack();
+
                     return response()->json([
                         'status'  => false,
                         'message' => 'Invalid party type for discount.',
-                    ], 400);
+                    ], 422);
                 }
             } else {
                 if ($type === 'Payment Receive') {
@@ -252,7 +257,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'status'  => true,
-                'message' => $type . '  successfull.',
+                'message' => ($type === 'Payment Receive' ? 'Payment received' : ($type === 'Discount' ? 'Discount saved' : 'Payment saved')) . ' successfully.',
             ]);
         } catch (Exception $e) {
             DB::rollBack();
@@ -268,13 +273,27 @@ class PaymentController extends Controller
     {
         $id = $request->id;
         try {
-            $payment = DB::table('payments')->where('id', $id)->where('deleted', 'No')->first();
+            // Only this branch's stand-alone payments / receipts / discounts. Rows written by a sale, purchase,
+            // return, order, expense or bill are removed by deleting that document instead.
+            $payment = BranchController::scope(DB::table('payments'), 'branch_id')
+                ->where('id', $id)->where('deleted', 'No')
+                ->whereIn('payment_type', ['Payment', 'Payment Receive', 'Discount'])
+                ->first();
 
             if (!$payment) {
                 return response()->json([
                     'status'  => false,
                     'message' => 'Record not found.',
                 ], 404);
+            }
+
+            foreach (['sale_id', 'sale_return_id', 'purchase_id', 'purchase_return_id', 'expense_id', 'bill_id', 'order_id'] as $link) {
+                if (!empty($payment->{$link})) {
+                    return response()->json([
+                        'status'  => false,
+                        'message' => 'This entry belongs to another document. Delete or edit that document instead.',
+                    ], 422);
+                }
             }
 
             $this->deletePaymentsBy('id', $id);

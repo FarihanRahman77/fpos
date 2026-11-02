@@ -242,9 +242,12 @@ function saveCategory()
 
         type: "POST",
 
+        dataType: 'json',
+
         data: form.serialize(),
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -258,7 +261,8 @@ function saveCategory()
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             if (xhr.status === 422) {
 
@@ -303,7 +307,10 @@ function editCategory(id)
 
         type: "GET",
 
-        success: function (response) {
+        dataType: 'json',
+
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -327,7 +334,8 @@ function editCategory(id)
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -353,6 +361,8 @@ function deleteCategory(id)
 
         type: "POST",
 
+        dataType: 'json',
+
         data: {
 
             _token: "{{ csrf_token() }}",
@@ -361,7 +371,8 @@ function deleteCategory(id)
 
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -373,7 +384,8 @@ function deleteCategory(id)
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||
@@ -394,6 +406,8 @@ function changeCategoryStatus(id)
 
         type: "POST",
 
+        dataType: 'json',
+
         data: {
 
             _token: "{{ csrf_token() }}",
@@ -402,7 +416,8 @@ function changeCategoryStatus(id)
 
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
 
@@ -414,7 +429,8 @@ function changeCategoryStatus(id)
 
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(
                 xhr.responseJSON?.message ||

@@ -10,49 +10,49 @@
     @endphp
     <style>
         @page { margin: 26px 30px 50px 30px; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5px; color: #1e293b; }
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: 9.5px; color: {{ $pc['ink'] }}; }
         table { width: 100%; border-collapse: collapse; }
-        .muted { color: #64748b; }
+        .muted { color: {{ $pc['muted'] }}; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
 
-        .company-name { font-size: 16px; font-weight: bold; color: #0f172a; }
-        .doc-title { font-size: 17px; font-weight: bold; color: #1e3a8a; letter-spacing: 1px; }
-        .rule { border-top: 3px solid #1e3a8a; margin: 8px 0 12px 0; }
+        .company-name { font-size: 16px; font-weight: bold; color: {{ $pc['ink'] }}; }
+        .doc-title { font-size: 17px; font-weight: bold; color: {{ $pc['accent'] }}; letter-spacing: 1px; }
+        .rule { border-top: 3px solid {{ $pc['accent'] }}; margin: 8px 0 12px 0; }
 
-        .hero { background: #f1f5f9; border: 1px solid #e2e8f0; }
+        .hero { background: {{ $pc['soft'] }}; border: 1px solid {{ $pc['border'] }}; }
         .hero td { vertical-align: top; padding: 10px; }
-        .photo { width: 105px; height: 125px; border: 3px solid #fff; }
-        .photo-empty { width: 105px; height: 125px; background: #cbd5e1; color: #475569; font-size: 40px; font-weight: bold; text-align: center; line-height: 125px; }
-        .hero-name { font-size: 17px; font-weight: bold; color: #0f172a; }
-        .hero-role { font-size: 11px; color: #1d4ed8; font-weight: bold; margin-top: 2px; }
+        .photo { width: 105px; height: 125px; border: 3px solid {{ $pc['on_brand'] }}; }
+        .photo-empty { width: 105px; height: 125px; background: {{ $pc['border_strong'] }}; color: {{ $pc['secondary'] }}; font-size: 40px; font-weight: bold; text-align: center; line-height: 125px; }
+        .hero-name { font-size: 17px; font-weight: bold; color: {{ $pc['ink'] }}; }
+        .hero-role { font-size: 11px; color: {{ $pc['accent'] }}; font-weight: bold; margin-top: 2px; }
         .pill { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 8.5px; font-weight: bold; }
-        .pill-on { background: #dcfce7; color: #166534; }
-        .pill-off { background: #e2e8f0; color: #475569; }
+        .pill-on { background: {{ $pc['success_soft'] }}; color: {{ $pc['success'] }}; }
+        .pill-off { background: {{ $pc['border'] }}; color: {{ $pc['secondary'] }}; }
         .hero-meta td { padding: 2px 10px 2px 0; vertical-align: top; }
 
-        h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: #1e3a8a; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 3px; margin: 14px 0 6px 0; }
+        h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: {{ $pc['accent'] }}; border-bottom: 1.5px solid {{ $pc['border_strong'] }}; padding-bottom: 3px; margin: 14px 0 6px 0; }
 
         .kv td { padding: 3px 6px 3px 0; vertical-align: top; }
-        .kv td.k { width: 22%; color: #64748b; }
+        .kv td.k { width: 22%; color: {{ $pc['muted'] }}; }
         .kv td.v { width: 28%; }
 
-        .grid th { background: #1e293b; color: #fff; padding: 5px 6px; font-size: 8.5px; text-transform: uppercase; text-align: left; }
-        .grid td { padding: 5px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-        .grid tr.alt td { background: #f8fafc; }
-        .expired { color: #dc2626; font-weight: bold; }
+        .grid th { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; padding: 5px 6px; font-size: 8.5px; text-transform: uppercase; text-align: left; }
+        .grid td { padding: 5px 6px; border-bottom: 1px solid {{ $pc['border'] }}; vertical-align: top; }
+        .grid tr.alt td { background: {{ $pc['soft'] }}; }
+        .expired { color: {{ $pc['danger'] }}; font-weight: bold; }
 
-        .scan { border: 1px solid #e2e8f0; padding: 6px; margin-bottom: 10px; page-break-inside: avoid; }
+        .scan { border: 1px solid {{ $pc['border'] }}; padding: 6px; margin-bottom: 10px; page-break-inside: avoid; }
         .scan-title { font-weight: bold; margin-bottom: 4px; }
-        .scan img { max-width: 240px; max-height: 160px; border: 1px solid #cbd5e1; }
+        .scan img { max-width: 240px; max-height: 160px; border: 1px solid {{ $pc['border_strong'] }}; }
         .scan td { vertical-align: top; padding-right: 8px; }
 
         .sign { margin-top: 40px; page-break-inside: avoid; }
         .sign td { width: 33%; text-align: center; padding: 0 12px; vertical-align: bottom; }
         .sign img { max-height: 40px; max-width: 140px; }
-        .sign .line { border-top: 1px solid #64748b; padding-top: 3px; font-size: 9px; color: #475569; }
+        .sign .line { border-top: 1px solid {{ $pc['muted'] }}; padding-top: 3px; font-size: 9px; color: {{ $pc['secondary'] }}; }
 
-        .footer { position: fixed; bottom: -32px; left: 0; right: 0; text-align: center; font-size: 8px; color: #94a3b8; }
+        .footer { position: fixed; bottom: -32px; left: 0; right: 0; text-align: center; font-size: 8px; color: {{ $pc['faint'] }}; }
     </style>
 </head>
 <body>
@@ -103,7 +103,7 @@
                 <div style="margin: 6px 0;">
                     <span class="pill {{ $employee->status === 'Active' ? 'pill-on' : 'pill-off' }}">{{ $employee->status }}</span>
                     @if ($employee->employment_type)<span class="pill pill-off">{{ $employee->employment_type }}</span>@endif
-                    @if ($employee->blood_group)<span class="pill" style="background:#fee2e2;color:#b91c1c;">Blood {{ $employee->blood_group }}</span>@endif
+                    @if ($employee->blood_group)<span class="pill" style="background:{{ $pc['danger_soft'] }};color:{{ $pc['danger'] }};">Blood {{ $employee->blood_group }}</span>@endif
                 </div>
                 <table class="hero-meta">
                     <tr>
@@ -149,9 +149,14 @@
     {{-- Salary --}}
     <h3>Salary &amp; Payment</h3>
     <table class="kv">
-        <tr><td class="k">Basic</td><td class="v">{{ $m($employee->basic_salary) }}</td><td class="k">House Rent</td><td class="v">{{ $m($employee->house_rent) }}</td></tr>
-        <tr><td class="k">Medical</td><td class="v">{{ $m($employee->medical_allowance) }}</td><td class="k">Transport</td><td class="v">{{ $m($employee->transport_allowance) }}</td></tr>
-        <tr><td class="k">Other Allowance</td><td class="v">{{ $m($employee->other_allowance) }}</td><td class="k bold" style="color:#0f172a;">Gross Salary</td><td class="v bold">{{ $m($employee->gross_salary) }}</td></tr>
+        @if ($isScale)
+            <tr><td class="k">Basic</td><td class="v">{{ $m($employee->basic_salary) }}</td><td class="k">House Rent</td><td class="v">{{ $m($employee->house_rent) }}</td></tr>
+            <tr><td class="k">Compensation</td><td class="v">{{ $m($employee->compensation) }}</td><td class="k">Medical</td><td class="v">{{ $m($employee->medical_allowance) }}</td></tr>
+        @else
+            <tr><td class="k">Contract Salary</td><td class="v">{{ $m($employee->contract_salary) }}</td><td class="k"></td><td class="v"></td></tr>
+        @endif
+        <tr><td class="k bold" style="color:{{ $pc['ink'] }};">Gross Salary</td><td class="v bold">{{ $m($employee->gross_salary) }}</td><td class="k">PF Deduction</td><td class="v">{{ $m($employee->pf_amount) }}</td></tr>
+        <tr><td class="k bold" style="color:{{ $pc['ink'] }};">Net Payable</td><td class="v bold">{{ $m($employee->net_salary) }}</td><td class="k">Bonus</td><td class="v">{{ $employee->bonus_eligible === 'Yes' ? $m($employee->bonus_amount) : 'Not eligible' }}</td></tr>
         <tr><td class="k">Payment Mode</td><td class="v">{{ $v($employee->salary_payment_mode) }}</td>
             @if ($employee->salary_payment_mode === 'Mobile Banking')
                 <td class="k">Mobile Banking</td><td class="v">{{ $v(trim($employee->mobile_banking_provider . ' ' . $employee->mobile_banking_no)) }}</td>

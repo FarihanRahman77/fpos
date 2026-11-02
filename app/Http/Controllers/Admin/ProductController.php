@@ -48,7 +48,7 @@ class ProductController extends Controller
         try {
 
             // Current stock (only active variants are counted).
-            $stockSubQuery = DB::table('stocks as s')
+            $stockSubQuery = BranchController::scope(DB::table('stocks as s'), 's.branch_id')
                 ->leftJoin('product_variants as pv', function ($join) {
                     $join->on('pv.id', '=', 's.product_variant_id')
                         ->where('pv.deleted', 'No');
@@ -65,7 +65,7 @@ class ProductController extends Controller
                 ->groupBy('s.product_id');
 
             // Opening stock.
-            $openingStockSubQuery = DB::table('stocks as os')
+            $openingStockSubQuery = BranchController::scope(DB::table('stocks as os'), 'os.branch_id')
                 ->leftJoin('product_variants as opv', function ($join) {
                     $join->on('opv.id', '=', 'os.product_variant_id')
                         ->where('opv.deleted', 'No');
@@ -162,7 +162,7 @@ class ProductController extends Controller
 
 
             // Current stock (only active variants are included).
-            $currentStock = DB::table('stocks as s')
+            $currentStock = BranchController::scope(DB::table('stocks as s'), 's.branch_id')
                 ->leftJoin('product_variants as pv', function ($join) {
                     $join->on('pv.id', '=', 's.product_variant_id')
                         ->where('pv.deleted', 'No');
@@ -320,7 +320,8 @@ class ProductController extends Controller
             $product->old_sale_price = $request->input('old_sale_price') ?? 0;
             $product->discount       = $request->input('discount') ?? 0;
             $product->stock_alert    = $request->input('stock_alert') ?? 0;
-            $product->stock_alert    = $request->input('opening_stock') ?? 0;
+            $product->track_batch    = $request->input('track_batch') === 'Yes' ? 'Yes' : 'No';
+            $product->vat_percent    = $request->filled('vat_percent') ? min(100, max(0, (float) $request->input('vat_percent'))) : null;
 
             $product->sku     = $sku;
             $product->barcode = $productBarcode;
@@ -450,6 +451,8 @@ class ProductController extends Controller
             $product->old_sale_price = $request->input('old_sale_price') ?? 0;
             $product->discount       = $request->input('discount') ?? 0;
             $product->stock_alert    = $request->input('stock_alert') ?? 0;
+            $product->track_batch    = $request->input('track_batch') === 'Yes' ? 'Yes' : 'No';
+            $product->vat_percent    = $request->filled('vat_percent') ? min(100, max(0, (float) $request->input('vat_percent'))) : null;
 
             $product->description = $request->input('description');
 
@@ -556,25 +559,40 @@ class ProductController extends Controller
             }
 
 
-            // Check stock transactions.
+            // Any stock movement other than its own opening stock (purchase, sale, order, return,
+            // transfer, adjustment ... in any branch) means the product is in use.
             $hasTransactions = DB::table('stocks')
                 ->where('product_id', $id)
                 ->where('deleted', 'No')
                 ->where(function ($query) {
-                    $query->whereNotNull('purchase_id')
+                    $query->whereNull('reference_type')
+                        ->orWhere('reference_type', '<>', 'Opening Stock')
+                        ->orWhereNotNull('purchase_id')
                         ->orWhereNotNull('sale_id')
                         ->orWhereNotNull('damage_id')
                         ->orWhereNotNull('purchase_return_id')
-                        ->orWhereNotNull('sale_return_id');
+                        ->orWhereNotNull('sale_return_id')
+                        ->orWhereNotNull('adjustment_id')
+                        ->orWhereNotNull('order_id');
                 })
                 ->exists();
+
+            // Documents that hold the product without moving stock yet (open orders, quotations ...).
+            foreach (['purchase_items', 'sale_items', 'sale_order_items', 'sale_quotation_items'] as $table) {
+                if ($hasTransactions) {
+                    break;
+                }
+                $hasTransactions = DB::table($table)->where('product_id', $id)
+                    ->when(\Illuminate\Support\Facades\Schema::hasColumn($table, 'deleted'), fn ($q) => $q->where('deleted', 'No'))
+                    ->exists();
+            }
 
             if ($hasTransactions) {
                 DB::rollBack();
 
                 return response()->json([
                     'status'  => false,
-                    'message' => 'This product has stock transactions and cannot be deleted.'
+                    'message' => 'This product is used in purchases, sales, orders or stock movements, so it cannot be deleted. Make it Inactive instead.'
                 ], 422);
             }
 
@@ -949,9 +967,26 @@ class ProductController extends Controller
             ->whereNotIn('id', $keptMappingIds)
             ->update($this->softDeleteAudit());
 
-        ProductVariant::where('product_id', $productId)
+        $dropped = ProductVariant::where('product_id', $productId)
             ->where('deleted', 'No')
             ->whereNotIn('id', $keptVariantIds)
+            ->pluck('id');
+
+        // A variant that has been bought, sold or moved keeps its stock and history: it cannot be removed.
+        if ($dropped->isNotEmpty()) {
+            $used = DB::table('stocks')->whereIn('product_variant_id', $dropped)->where('deleted', 'No')
+                ->where(fn ($q) => $q->whereNull('reference_type')->orWhere('reference_type', '<>', 'Opening Stock'))
+                ->value('product_variant_id');
+            if ($used) {
+                $label = DB::table('product_variants as v')->leftJoin('attributes as a', 'a.id', '=', 'v.attribute_id')
+                    ->where('v.id', $used)->value('a.name');
+                throw new \Exception('Variant "' . ($label ?: '#' . $used) . '" has stock movements and cannot be removed. Make the product inactive instead.');
+            }
+        }
+
+        ProductVariant::where('product_id', $productId)
+            ->where('deleted', 'No')
+            ->whereIn('id', $dropped)
             ->update($this->softDeleteAudit());
     }
 
@@ -1389,9 +1424,20 @@ class ProductController extends Controller
 
     private function serverError(\Throwable $e)
     {
+        // Messages thrown on purpose here ('Selected brand is invalid.' ...) are for the user;
+        // database / PHP errors are logged and replaced with a plain message.
+        if (get_class($e) === \Exception::class) {
+            return response()->json([
+                'status'  => false,
+                'message' => $e->getMessage()
+            ], 422);
+        }
+
+        \Illuminate\Support\Facades\Log::error('Product error: ' . $e->getMessage(), ['file' => $e->getFile(), 'line' => $e->getLine()]);
+
         return response()->json([
             'status'  => false,
-            'message' => $e->getMessage()
+            'message' => 'Something went wrong. Please try again.'
         ], 500);
     }
 }

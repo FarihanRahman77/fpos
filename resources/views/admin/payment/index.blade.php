@@ -168,7 +168,8 @@
                         }
                         return json.data;
                     },
-                    error: function() {
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         toastr.error('Failed to load data.');
                     }
                 },
@@ -214,18 +215,19 @@
                 $.ajax({
                     url: "{{ route('admin.payment.due') }}",
                     type: 'GET',
+                    dataType: 'json',
                     data: {
                         type: type,
                         party: partyId
                     },
                     success: function(response) {
-                      //  alert(JSON.stringify(response));
+                        // alert(JSON.stringify(response));
                         if (response.status) {
                             $('#due_amount').val(response.due);
                         }
                     },
                     error: function(xhr) {
-                        //alert(JSON.stringify(xhr));
+                        // alert(JSON.stringify(xhr));
                         toastr.error('Could not load due amount.');
                     }
                 });
@@ -244,13 +246,16 @@
                 $.ajax({
                     url: "{{ route('admin.getCoaChilds') }}",
                     type: 'GET',
+                    dataType: 'html',
                     data: {
                         parent_id: paymentMethod
                     },
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         $account.html(response).trigger('change');
                     },
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         toastr.error('Could not load payment accounts.');
                     }
                 });
@@ -267,9 +272,11 @@
                 $.ajax({
                     url: "{{ route('admin.payment.store') }}",
                     type: 'POST',
+                    dataType: 'json',
                     data: $(this).serialize(),
 
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         if (response.status) {
                             paymentModal.hide();
                             paymentTable.ajax.reload(null, false);
@@ -281,10 +288,18 @@
                     },
 
                     error: function(xhr) {
-                        if (xhr.status === 422) {
+                        // alert(JSON.stringify(xhr));
+                        if (xhr.status === 422 && xhr.responseJSON?.errors) {
+                            let shown = false;
                             $.each(xhr.responseJSON.errors, function(key, value) {
-                                $('.' + key + '_error').text(value[0]);
+                                if ($('.' + key + '_error').length) {
+                                    $('.' + key + '_error').text(value[0]);
+                                    shown = true;
+                                }
                             });
+                            if (!shown) {
+                                toastr.error(xhr.responseJSON.message || 'Please check the form.');
+                            }
                         } else {
                             toastr.error(xhr.responseJSON?.message || 'Something went wrong.');
                         }
@@ -320,8 +335,8 @@
                 text: 'This payment will be deleted.',
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#6c757d',
+                confirmButtonColor: 'var(--color-danger)',
+                cancelButtonColor: 'var(--color-text-muted)',
                 confirmButtonText: 'Yes, delete it!',
                 cancelButtonText: 'Cancel'
             }).then((result) => {
@@ -331,13 +346,16 @@
                 }
 
                 $.ajax({
-                    url: "{{ url('admin/payment/delete') }}",
+                    url: "{{ route('admin.payment.delete') }}",
+                    type: 'POST',
+                    dataType: 'json',
                     data: {
+                        _token: "{{ csrf_token() }}",
                         id: id
                     },
-                    type: 'GET',
 
                     success: function(response) {
+                        // alert(JSON.stringify(response));
                         if (response.status) {
                             paymentTable.ajax.reload(null, false);
 
@@ -354,6 +372,7 @@
                     },
 
                     error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
                         Swal.fire(
                             'Error',
                             xhr.responseJSON?.message || 'Something went wrong.',

@@ -381,6 +381,7 @@
                 $.ajax({
                     url: "{{ url('/admin/sales/customer-due') }}/" + id,
                     type: 'GET',
+                    dataType: 'json',
                     success: function(response) {
                         // alert(JSON.stringify(response));
                         if (response.status) {
@@ -413,6 +414,8 @@
 
                     type: 'GET',
 
+                    dataType: 'json',
+
                     success: function(response) {
                         // alert(JSON.stringify(response));
                         if (response.status && response.customer) {
@@ -430,7 +433,7 @@
 
                     },
                     error: function(xhr) {
-                        //alert(JSON.stringify(xhr));
+                        // alert(JSON.stringify(xhr));
                     }
 
                 });
@@ -510,7 +513,10 @@
 
                 type: 'GET',
 
+                dataType: 'json',
+
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (!response.status) {
 
@@ -574,6 +580,7 @@
                 },
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||
@@ -932,7 +939,7 @@
 
         $(document).on('input change',
             '.itemQty, .itemPrice, .itemDiscountType, .itemDiscountValue',
-            function() {
+            function(e) {
 
                 let index = $(this).data('index');
 
@@ -987,6 +994,21 @@
 
                 }
 
+                // While typing, update only this row and the totals: re-rendering the table on every
+                // keystroke dropped the focus after the first digit (and swallowed a typed decimal point).
+                if (e.type === 'input' && $(this).is('input')) {
+                    let sub = parseFloat(item.qty || 0) * parseFloat(item.sale_price || 0);
+                    let disc = calculateItemDiscount(item, sub);
+                    item.subtotal = sub;
+                    item.discount_amount = disc;
+                    item.total = Math.max(0, sub - disc);
+                    let $cells = $(this).closest('tr').children('td');
+                    $cells.eq(6).text(sub.toFixed(2));
+                    $cells.eq(7).html('<strong>' + item.total.toFixed(2) + '</strong>');
+                    calculateTotals();
+                    return;
+                }
+
                 renderCart();
 
             });
@@ -1013,7 +1035,8 @@
                     parseFloat(item.qty || 0) *
                     parseFloat(item.sale_price || 0);
 
-                subtotal += itemSubtotal;
+                // Line discounts come off first — the same subtotal SaleController::store() saves.
+                subtotal += Math.max(0, itemSubtotal - calculateItemDiscount(item, itemSubtotal));
 
             });
 
@@ -1124,6 +1147,8 @@
 
                 type: 'POST',
 
+                dataType: 'json',
+
                 data: $.param(data) +
                     '&_token={{ csrf_token() }}',
 
@@ -1215,15 +1240,16 @@
             $.ajax({
                 url: "{{ route('admin.getCoaChilds') }}",
                 type: 'GET',
+                dataType: 'html',
                 data: {
                     parent_id: payment_method
                 },
                 success: function(response) {
-                    //alert(JSON.stringify(response));
+                    // alert(JSON.stringify(response));
                     $('#payment_method_account').html(response);
                 },
                 error: function(xhr) {
-                    //alert(JSON.stringify(xhr));
+                    // alert(JSON.stringify(xhr));
                 }
             });
         });

@@ -75,6 +75,8 @@ class ExpenseController extends Controller
             ->whereIn('account_type', [self::EXPENSE_TYPE, self::PAYMENT_TYPE])
             ->where('deleted', 'No')
             ->where('status', 'Active')
+            // cash / bank ledgers of another branch are not offered
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', BranchController::activeId()))
             ->orderBy('account_code')
             ->get(['id', 'account_code', 'account_name']);
 
@@ -99,7 +101,7 @@ class ExpenseController extends Controller
         }
 
         try {
-            $query = DB::table('expenses as e')
+            $query = BranchController::scope(DB::table('expenses as e'), 'e.branch_id')
                 ->leftJoin('employees as emp', 'emp.id', '=', 'e.employee_id')
                 ->leftJoin('chart_of_accounts as pg', 'pg.id', '=', 'e.payment_group_id')
                 ->leftJoin('chart_of_accounts as pa', 'pa.id', '=', 'e.payment_account_id')
@@ -132,6 +134,7 @@ class ExpenseController extends Controller
                     $q->select(DB::raw(1))
                         ->from('expense_details as d')
                         ->whereColumn('d.expense_id', 'e.id')
+                        ->where('d.deleted', 'No')
                         ->where('d.expense_account_id', $accountId);
                 });
             }
@@ -142,6 +145,7 @@ class ExpenseController extends Controller
             $heads = DB::table('expense_details as d')
                 ->join('chart_of_accounts as c', 'c.id', '=', 'd.expense_account_id')
                 ->whereIn('d.expense_id', $expenses->pluck('id'))
+                ->where('d.deleted', 'No')
                 ->orderBy('d.id')
                 ->get(['d.expense_id', 'c.account_name'])
                 ->groupBy('expense_id');
@@ -169,6 +173,7 @@ class ExpenseController extends Controller
                     : '<span class="text-muted">-</span>';
 
                 $button = action_dropdown([
+                    ['label' => 'Edit', 'icon' => 'fas fa-edit', 'onclick' => 'editExpense(' . $id . ')'],
                     ['label' => 'Print PDF', 'icon' => 'fas fa-file-pdf', 'onclick' => 'pdf(' . $id . ')'],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteExpense(' . $id . ')'],
@@ -192,11 +197,11 @@ class ExpenseController extends Controller
             $output['summary'] = [
                 'filtered_total' => number_format((float) $expenses->sum('total_amount'), 2),
                 'filtered_count' => $expenses->count(),
-                'month_total'    => number_format((float) DB::table('expenses')
+                'month_total'    => number_format((float) BranchController::scope(DB::table('expenses'))
                     ->where('deleted', 'No')
                     ->whereBetween('expense_date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
                     ->sum('total_amount'), 2),
-                'today_total'    => number_format((float) DB::table('expenses')
+                'today_total'    => number_format((float) BranchController::scope(DB::table('expenses'))
                     ->where('deleted', 'No')
                     ->whereDate('expense_date', now()->toDateString())
                     ->sum('total_amount'), 2),
@@ -217,7 +222,7 @@ class ExpenseController extends Controller
     public function show(Request $request)
     {
         try {
-            $expense = DB::table('expenses as e')
+            $expense = BranchController::scope(DB::table('expenses as e'), 'e.branch_id')
                 ->leftJoin('employees as emp', 'emp.id', '=', 'e.employee_id')
                 ->leftJoin('chart_of_accounts as pg', 'pg.id', '=', 'e.payment_group_id')
                 ->leftJoin('chart_of_accounts as pa', 'pa.id', '=', 'e.payment_account_id')
@@ -238,6 +243,7 @@ class ExpenseController extends Controller
                 ->leftJoin('chart_of_accounts as g', 'g.id', '=', 'd.expense_group_id')
                 ->leftJoin('chart_of_accounts as c', 'c.id', '=', 'd.expense_account_id')
                 ->where('d.expense_id', $expense->id)
+                ->where('d.deleted', 'No')
                 ->orderBy('d.id')
                 ->get([
                     'd.expense_group_id', 'd.expense_account_id', 'd.description', 'd.amount',
@@ -266,7 +272,7 @@ class ExpenseController extends Controller
                     'payment_account_id'    => $expense->payment_account_id,
                     'payment_account_label' => $expense->pa_code . ' - ' . $expense->pa_name,
                     'reference_no'          => $expense->reference_no,
-                    'note'                  => $expense->note,
+                    'note'                  => $expense->remarks,
                     'details'               => $details,
                 ],
             ]);
@@ -283,114 +289,161 @@ class ExpenseController extends Controller
 
     public function store(Request $request)
     {
-
-
         $validator = Validator::make($request->all(), [
             'id'                 => ['nullable', 'integer'],
             'expense_date'       => ['required', 'date'],
-            'employee_id'        => ['nullable', 'integer'],
-            'payment_group_id'   => ['required', 'integer'],
-            'payment_account_id' => ['required', 'integer'],
+            'employee_id'        => ['nullable', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No')],
+            'payment_group_id'   => ['required', 'integer', $this->coaExists(2, self::PAYMENT_TYPE)],
+            'payment_account_id' => ['required', 'integer', $this->coaExists(3, self::PAYMENT_TYPE, $request->input('payment_group_id'))],
             'reference_no'       => ['nullable', 'string', 'max:100'],
             'note'               => ['nullable', 'string', 'max:1000'],
 
             'details'                      => ['required', 'array', 'min:1', 'max:' . self::MAX_LINES],
-            'details.*.expense_group_id'   => ['required', 'integer'],
-            'details.*.expense_account_id' => ['required', 'integer'],
+            'details.*.expense_group_id'   => ['required', 'integer', $this->coaExists(2, self::EXPENSE_TYPE)],
+            'details.*.expense_account_id' => ['required', 'integer', $this->coaExists(3, self::EXPENSE_TYPE)],
             'details.*.description'        => ['nullable', 'string', 'max:255'],
             'details.*.amount'             => ['required', 'numeric', 'min:0.01', 'max:9999999999999.99'],
         ], [
-            'employee_id.required'          => 'Please select the employee.',
+            'employee_id.exists'            => 'Please select a valid employee.',
             'payment_group_id.required'     => 'Please select the payment group.',
+            'payment_group_id.exists'       => 'Please select a valid payment group (Liquid Asset).',
             'payment_account_id.required'   => 'Please select the payment account.',
+            'payment_account_id.exists'     => 'Please select a valid account of the selected payment group.',
 
             'details.required'              => 'Add at least one expense line.',
             'details.min'                   => 'Add at least one expense line.',
             'details.max'                   => 'You can add at most ' . self::MAX_LINES . ' lines.',
             'details.*.expense_group_id.required'   => 'Select an expense group.',
+            'details.*.expense_group_id.exists'     => 'Select a valid expense group.',
             'details.*.expense_account_id.required' => 'Select an expense account.',
+            'details.*.expense_account_id.exists'   => 'Select a valid expense account.',
             'details.*.amount.required'     => 'Enter the amount.',
             'details.*.amount.min'          => 'Amount must be greater than zero.',
         ]);
 
-        // FIX 1: the validator was never checked, so invalid data was saved.
+        // Each expense account must sit under the group chosen on its line.
+        $validator->after(function ($v) use ($request) {
+            foreach ((array) $request->input('details', []) as $i => $line) {
+                if (!empty($line['expense_account_id']) && !empty($line['expense_group_id'])
+                    && !DB::table('chart_of_accounts')->where('id', (int) $line['expense_account_id'])->where('parent_id', (int) $line['expense_group_id'])->exists()) {
+                    $v->errors()->add("details.$i.expense_account_id", 'This account does not belong to the selected group.');
+                }
+            }
+        });
+
         if ($validator->fails()) {
             return response()->json([
                 'status'  => false,
-                'message' => 'Please correct the validation errors.',
+                'message' => $validator->errors()->first(),
                 'errors'  => $validator->errors(),
             ], 422);
         }
 
+        $lines = collect($request->input('details'))->map(fn ($d) => [
+            'expense_group_id'   => (int) $d['expense_group_id'],
+            'expense_account_id' => (int) $d['expense_account_id'],
+            'description'        => $this->nullIfBlank($d['description'] ?? null),
+            'amount'             => round((float) $d['amount'], 2),
+        ]);
+        $total = round($lines->sum('amount'), 2);
 
         DB::beginTransaction();
+
         try {
-                // FIX 2: $total was never defined.
-                $total = round(collect($request->details)->sum(fn ($d) => round((float) $d['amount'], 2)), 2);
+            if ($request->filled('id')) {
+                $expense = BranchController::scope(Expense::where('id', (int) $request->input('id')))
+                    ->where('deleted', 'No')->lockForUpdate()->first();
 
-                // FIX 3: deleted rows are included (expense_no is unique, so a number must never be reused)
-                // and the read is locked so two simultaneous saves cannot get the same number.
-                $expenseCode=Expense::lockForUpdate()->max('expense_no');
-                $expenseCode++;
-                $expenseCode=str_pad((string) $expenseCode,6,'0',STR_PAD_LEFT);
-
-                $expense=new Expense();
-                $expense->expense_no = $expenseCode;
-                $expense->expense_date = $request->expense_date;
-                $expense->employee_id        = $request->employee_id;
-                $expense->payment_group_id   = (int) $request->input('payment_group_id');
-                $expense->payment_account_id = (int) $request->input('payment_account_id');
-                $expense->reference_no       = $this->nullIfBlank($request->input('reference_no'));
-                $expense->remarks               = $this->nullIfBlank($request->input('note'));
-                $expense->total_amount       = $total;
-                $expense->created_by         = Auth::id();   // FIX 4: was missing
-                $expense->updated_by         = Auth::id();
-                $expense->save();
-
-                foreach($request->details as $detail){
-                    $expenseDetail=new ExpenseDetail();
-                    $expenseDetail->expense_id=$expense->id;
-                    $expenseDetail->expense_group_id=$detail['expense_group_id'];
-                    $expenseDetail->expense_account_id=$detail['expense_account_id'];
-                    $expenseDetail->description=$this->nullIfBlank($detail['description'] ?? null);   // FIX 5: undefined index when missing
-                    $expenseDetail->amount=round((float) $detail['amount'], 2);
-                    $expenseDetail->save();
+                if (!$expense) {
+                    abort(404, 'Expense not found.');
                 }
 
-                if ($total > 0) {
-                    $this->storeCreditPayment([
-                        'party_id'       => $request->employee_id,
-                        'party_type'     => 'Employee',
-                        'payment_type'   => 'Expense',
-                        'datetime'       => $request->expense_date,
-                        'credit'         => $total,
-                        'expense_id'     => $expense->id,
-                        'payment_method' => '',
-                    ]);
+                if ($closed = AccountingReportController::closedDateMessage($expense->expense_date)) {
+                    abort(422, $closed);
                 }
-                // FIX 6: COA balances (payment account credited, expense heads debited).
-                // Remove this call if you do not want balances updated.
-                $this->postBalances(
-                    $this->sumByAccount($request->details),
-                    [(int) $expense->payment_account_id => $total],
-                    1
-                );
 
-            // FIX 7: the transaction was never committed.
+                $this->reverseExpense($expense);
+            } else {
+                // Deleted rows are included (expense_no is unique, so a number is never reused);
+                // the locked read stops two simultaneous saves getting the same number.
+                $expenseCode = (int) Expense::lockForUpdate()->max('expense_no') + 1;
+
+                $expense = new Expense();
+                $expense->expense_no = str_pad((string) $expenseCode, 6, '0', STR_PAD_LEFT);
+                $expense->created_by = Auth::id();
+            }
+
+            $expense->expense_date       = $request->input('expense_date');
+            $expense->employee_id        = $request->input('employee_id') ?: null;
+            $expense->payment_group_id   = (int) $request->input('payment_group_id');
+            $expense->payment_account_id = (int) $request->input('payment_account_id');
+            $expense->reference_no       = $this->nullIfBlank($request->input('reference_no'));
+            $expense->remarks            = $this->nullIfBlank($request->input('note'));
+            $expense->total_amount       = $total;
+            $expense->updated_by         = Auth::id();
+            $expense->save();
+
+            foreach ($lines as $line) {
+                $expenseDetail = new ExpenseDetail();
+                $expenseDetail->expense_id         = $expense->id;
+                $expenseDetail->expense_group_id   = $line['expense_group_id'];
+                $expenseDetail->expense_account_id = $line['expense_account_id'];
+                $expenseDetail->description        = $line['description'];
+                $expenseDetail->amount             = $line['amount'];
+                $expenseDetail->save();
+            }
+
+            $this->storeCreditPayment([
+                'party_id'       => $expense->employee_id,
+                'party_type'     => 'Employee',
+                'payment_type'   => 'Expense',
+                'datetime'       => $expense->expense_date,
+                'credit'         => $total,
+                'expense_id'     => $expense->id,
+                'payment_method' => '',
+            ]);
+
+            // Dr expense heads / Cr the payment account.
+            $this->postBalances($this->sumByAccount($lines), [(int) $expense->payment_account_id => $total], 1);
+
             DB::commit();
 
             return response()->json([
                 'status'  => true,
-                'message' =>'Expense ' . $expense->expense_no . ' created successfully.'],  200);
+                'message' => 'Expense ' . $expense->expense_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
+            ]);
         } catch (HttpExceptionInterface $e) {
-            DB::rollBack();   // FIX 7: roll back on failure
+            DB::rollBack();
+
             return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
         } catch (Throwable $e) {
-            DB::rollBack();   // FIX 7: roll back on failure
+            DB::rollBack();
             Log::error('Expense store error', $this->ctx($e));
 
             return response()->json(['status' => false, 'message' => 'Unable to save the expense. Please try again.'], 500);
         }
+    }
+
+    /** Takes a saved expense back out of the balances and soft-deletes its lines and its ledger row. */
+    private function reverseExpense($expense): void
+    {
+        $lines = DB::table('expense_details')->where('expense_id', $expense->id)->where('deleted', 'No')
+            ->get(['expense_account_id', 'amount']);
+
+        $this->postBalances(
+            $this->sumByAccount($lines),
+            [(int) $expense->payment_account_id => (float) $expense->total_amount],
+            -1
+        );
+
+        DB::table('expense_details')->where('expense_id', $expense->id)->where('deleted', 'No')->update([
+            'deleted'          => 'Yes',
+            'status'           => 'Inactive',
+            'deleted_by'       => Auth::id(),
+            'deleted_datetime' => now(),
+        ]);
+
+        $this->deletePaymentsBy('expense_id', $expense->id);
     }
 
     /* ------------------------------------------------------------------ */
@@ -409,7 +462,7 @@ class ExpenseController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $expense = DB::table('expenses')
+                $expense = BranchController::scope(DB::table('expenses'))
                     ->where('id', (int) $request->input('id'))->where('deleted', 'No')
                     ->lockForUpdate()->first();
 
@@ -417,31 +470,19 @@ class ExpenseController extends Controller
                     abort(404, 'Expense not found.');
                 }
 
-                $lines = DB::table('expense_details')->where('expense_id', $expense->id)
-                    ->get(['expense_account_id', 'amount']);
+                if ($closed = AccountingReportController::closedDateMessage($expense->expense_date)) {
+                    abort(422, $closed);
+                }
 
-                $this->postBalances(
-                    $this->sumByAccount($lines),
-                    [(int) $expense->payment_account_id => (float) $expense->total_amount],
-                    -1
-                );
+                $this->reverseExpense($expense);
 
                 DB::table('expenses')->where('id', $expense->id)->update([
-                    'deleted'      => 'Yes',
-                    'status'      => 'Inactive',
-                    'deleted_by'   => Auth::id(),
-                    'deleted_datetime' => now()
-
+                    'deleted'          => 'Yes',
+                    'status'           => 'Inactive',
+                    'deleted_by'       => Auth::id(),
+                    'deleted_datetime' => now(),
                 ]);
-                DB::table('expense_details')->where('expense_id', $expense->id)->update([
-                    'deleted'      => 'Yes',
-                    'status'      => 'Inactive',
-                    'deleted_by'   => Auth::id(),
-                    'deleted_datetime' => now()
-
-                ]);
-                $this->deletePaymentsBy('expense_id', $expense->id);
-             }, 3);
+            }, 3);
 
             return response()->json(['status' => true, 'message' => 'Expense deleted and balances reversed.']);
         } catch (HttpExceptionInterface $e) {
@@ -536,7 +577,7 @@ class ExpenseController extends Controller
             abort(422, 'A valid expense id is required.');
         }
 
-        $expense = DB::table('expenses as e')
+        $expense = BranchController::scope(DB::table('expenses as e'), 'e.branch_id')
             ->leftJoin('employees as emp', 'emp.id', '=', 'e.employee_id')
             ->leftJoin('chart_of_accounts as pg', 'pg.id', '=', 'e.payment_group_id')
             ->leftJoin('chart_of_accounts as pa', 'pa.id', '=', 'e.payment_account_id')
@@ -557,6 +598,7 @@ class ExpenseController extends Controller
             ->leftJoin('chart_of_accounts as g', 'g.id', '=', 'd.expense_group_id')
             ->leftJoin('chart_of_accounts as c', 'c.id', '=', 'd.expense_account_id')
             ->where('d.expense_id', $expense->id)
+            ->where('d.deleted', 'No')
             ->orderBy('d.id')
             ->get([
                 'd.description', 'd.amount',

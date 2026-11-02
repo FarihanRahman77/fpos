@@ -21,7 +21,7 @@ if (!function_exists('action_dropdown')) {
         $html = '
                 <div class="dropdown">
                     <button type="button"
-                            class="btn btn-sm btn-primary dropdown-toggle"
+                            class="btn btn-sm btn-outline-secondary dropdown-toggle"
                             data-bs-toggle="dropdown"
                             data-bs-popper-config=\'{"strategy":"fixed"}\'
                             aria-expanded="false" title="Actions">

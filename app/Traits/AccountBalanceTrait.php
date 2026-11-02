@@ -95,6 +95,9 @@ trait AccountBalanceTrait
         return \Illuminate\Validation\Rule::exists('chart_of_accounts', 'id')->where(function ($q) use ($layer, $type, $parentId) {
             $q->where('layer_level', $layer)->where('deleted', 'No');
 
+            // A ledger tied to a branch (a branch's own cash/bank) may only be used by that branch.
+            $q->where(fn ($b) => $b->whereNull('branch_id')->orWhere('branch_id', \App\Http\Controllers\Admin\BranchController::activeId()));
+
             if ($type !== null) {
                 $q->where('account_type', $type);
             }

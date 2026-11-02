@@ -158,7 +158,7 @@
 
                             <div class="text-center mt-2">
                                 <img src="" id="imagePreview" width="160" height="160"
-                                    style="display:none; object-fit:contain; border:1px solid #ddd; padding:4px; border-radius:4px;"
+                                    style="display:none; object-fit:contain; border:1px solid var(--color-border); padding:4px; border-radius:4px;"
                                     alt="Product Image">
                             </div>
 
@@ -214,6 +214,26 @@
                                 <label for="stock_alert" class="form-label">Stock Alert</label>
                                 <input type="number" step="0.001" min="0" class="form-control border-dark"
                                     name="stock_alert" id="stock_alert" value="0" placeholder="0">
+                            </div>
+                        </div>
+
+                        <!-- VAT -->
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="vat_percent" class="form-label">VAT %</label>
+                                <input type="number" step="0.01" min="0" max="100" class="form-control border-dark"
+                                    name="vat_percent" id="vat_percent" placeholder="Default rate">
+                            </div>
+                        </div>
+
+                        <!-- BATCH / EXPIRY TRACKING -->
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="track_batch" class="form-label">Track Batches &amp; Expiry</label>
+                                <select class="form-select border-dark" name="track_batch" id="track_batch">
+                                    <option value="No">No</option>
+                                    <option value="Yes">Yes — batch no. &amp; expiry on purchase</option>
+                                </select>
                             </div>
                         </div>
 
@@ -610,92 +630,91 @@ function loadAttributesForRow($row, selectedAttributeIds = null, existingVariant
     const request = $.ajax({
         url: attributeUrl + '/' + attributeTypeId,
         type: 'GET',
-        dataType: 'json'
-    });
+        dataType: 'json',
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
-    $row.data('attributeRequest', request);
-
-    request.done(function (response) {
-
-        if (!response || !response.status) {
-            toastr.error(response?.message || 'Unable to load attributes.');
-            return;
-        }
-
-        const attributes = response.data || [];
-
-        let idsToSelect = [];
-
-        /*
-         * null  => attribute type just changed: select ALL its attributes.
-         * array => edit mode: select only the saved ones.
-         */
-
-        if (selectedAttributeIds === null) {
-
-            idsToSelect = attributes.map(function (item) {
-                return String(item.id);
-            });
-
-        } else {
-
-            if (!Array.isArray(selectedAttributeIds)) {
-                selectedAttributeIds = [selectedAttributeIds];
-            }
-
-            idsToSelect = selectedAttributeIds.map(function (id) {
-                return String(id);
-            });
-        }
-
-        const availableIds = attributes.map(function (attr) {
-            return String(attr.id);
-        });
-
-        idsToSelect = idsToSelect.filter(function (id) {
-            return availableIds.includes(id);
-        });
-
-        $.each(attributes, function (i, attr) {
-
-            if (!attr || attr.id === undefined) {
+            if (!response || !response.status) {
+                toastr.error(response?.message || 'Unable to load attributes.');
                 return;
             }
 
-            const attrId = String(attr.id);
-            const selected = idsToSelect.includes(attrId);
+            const attributes = response.data || [];
 
-            $select.append(`
-                <option value="${escapeHtml(attrId)}" ${selected ? 'selected' : ''}>
-                    ${escapeHtml(attr.name || '')}
-                </option>
-            `);
-        });
+            let idsToSelect = [];
 
-        $select.val(idsToSelect).trigger('change.select2');
+            /*
+             * null  => attribute type just changed: select ALL its attributes.
+             * array => edit mode: select only the saved ones.
+             */
 
-        renderVariants($row, existingVariants);
-    });
+            if (selectedAttributeIds === null) {
 
-    request.fail(function (xhr, status) {
+                idsToSelect = attributes.map(function (item) {
+                    return String(item.id);
+                });
 
-        if (status === 'abort') {
-            return;
+            } else {
+
+                if (!Array.isArray(selectedAttributeIds)) {
+                    selectedAttributeIds = [selectedAttributeIds];
+                }
+
+                idsToSelect = selectedAttributeIds.map(function (id) {
+                    return String(id);
+                });
+            }
+
+            const availableIds = attributes.map(function (attr) {
+                return String(attr.id);
+            });
+
+            idsToSelect = idsToSelect.filter(function (id) {
+                return availableIds.includes(id);
+            });
+
+            $.each(attributes, function (i, attr) {
+
+                if (!attr || attr.id === undefined) {
+                    return;
+                }
+
+                const attrId = String(attr.id);
+                const selected = idsToSelect.includes(attrId);
+
+                $select.append(`
+                    <option value="${escapeHtml(attrId)}" ${selected ? 'selected' : ''}>
+                        ${escapeHtml(attr.name || '')}
+                    </option>
+                `);
+            });
+
+            $select.val(idsToSelect).trigger('change.select2');
+
+            renderVariants($row, existingVariants);
+        },
+        error: function(xhr, status) {
+            // alert(JSON.stringify(xhr));
+
+            if (status === 'abort') {
+                return;
+            }
+
+            toastr.error('Unable to load attributes.');
+        },
+        complete: function () {
+
+            // ignore an old (aborted) request finishing after a newer one started
+            if ($row.data('attributeRequest') !== request) {
+                return;
+            }
+
+            $row.removeAttr('data-loading-attributes');
+            $row.removeData('attributeRequest');
         }
-
-        toastr.error('Unable to load attributes.');
     });
 
-    request.always(function () {
-
-        // ignore an old (aborted) request finishing after a newer one started
-        if ($row.data('attributeRequest') !== request) {
-            return;
-        }
-
-        $row.removeAttr('data-loading-attributes');
-        $row.removeData('attributeRequest');
-    });
+    $row.data('attributeRequest', request);
 }
 
 
@@ -1132,9 +1151,9 @@ $(document).on('click', '.applyBulkVariantBtn', function (e) {
         },
         headers: {
             'X-CSRF-TOKEN': csrfToken()
-        }
-    })
-    .done(function (response) {
+        },
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
         if (
             !response ||
@@ -1154,14 +1173,16 @@ $(document).on('click', '.applyBulkVariantBtn', function (e) {
         collectVariantState($card.closest('.attribute-row'));
 
         toastr.success('Applied values and generated ' + $targets.length + ' unique barcode(s).');
-    })
-    .fail(function (xhr) {
+        },
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
         toastr.error(xhr.responseJSON?.message || 'Unable to generate barcodes.');
-    })
-    .always(function () {
+        },
+        complete: function () {
 
         $btn.prop('disabled', false).html(originalHtml);
+        }
     });
 });
 
@@ -1366,10 +1387,9 @@ $(document).on('click', '.editProductBtn', function (e) {
     editRequest = $.ajax({
         url: "{{ url('products/edit') }}/" + id,
         type: 'GET',
-        dataType: 'json'
-    });
-
-    editRequest.done(function (response) {
+        dataType: 'json',
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
         if (!response || !response.status) {
 
@@ -1414,6 +1434,8 @@ $(document).on('click', '.editProductBtn', function (e) {
         $('#old_sale_price').val(product.old_sale_price ?? 0);
         $('#discount').val(product.discount ?? 0);
         $('#stock_alert').val(product.stock_alert ?? 0);
+        $('#track_batch').val(product.track_batch || 'No');
+        $('#vat_percent').val(product.vat_percent ?? '');
 
         $('#description').val(product.description || '');
 
@@ -1479,9 +1501,9 @@ $(document).on('click', '.editProductBtn', function (e) {
         if (modal) {
             modal.show();
         }
-    });
-
-    editRequest.fail(function (xhr, status) {
+        },
+        error: function(xhr, status) {
+            // alert(JSON.stringify(xhr));
 
         if (status === 'abort') {
             return;
@@ -1491,13 +1513,13 @@ $(document).on('click', '.editProductBtn', function (e) {
         editingProductId = null;
 
         toastr.error(xhr.responseJSON?.message || 'Unable to load product.');
-    });
-
-    editRequest.always(function () {
+        },
+        complete: function () {
 
         editRequest = null;
 
         $button.prop('disabled', false);
+        }
     });
 });
 
@@ -1568,6 +1590,7 @@ $(document).on('submit', '#productForm', function (e) {
 
         url: url,
         type: 'POST',
+        dataType: 'json',
         data: formData,
         processData: false,
         contentType: false,
@@ -1583,7 +1606,8 @@ $(document).on('submit', '#productForm', function (e) {
                 .text(editMode ? 'Updating...' : 'Saving...');
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response && response.status) {
 
@@ -1608,7 +1632,8 @@ $(document).on('submit', '#productForm', function (e) {
             }
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
 
@@ -1682,7 +1707,8 @@ $(document).on('click', '.toggleStatusBtn', function (e) {
         headers: { 'X-CSRF-TOKEN': csrfToken() },
         dataType: 'json',
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response && response.status) {
 
@@ -1698,7 +1724,8 @@ $(document).on('click', '.toggleStatusBtn', function (e) {
             }
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(xhr.responseJSON?.message || 'Unable to update status.');
         },
@@ -1765,7 +1792,8 @@ $(document).on('click', '#confirmDeleteProduct', function (e) {
         headers: { 'X-CSRF-TOKEN': csrfToken() },
         dataType: 'json',
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response && response.status) {
 
@@ -1787,7 +1815,8 @@ $(document).on('click', '#confirmDeleteProduct', function (e) {
             }
         },
 
-        error: function (xhr) {
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
 
             toastr.error(xhr.responseJSON?.message || 'Unable to delete product.');
         },
@@ -2026,6 +2055,7 @@ $('#name,#category_id,#brand_id').on('change', function () {
 
         url: codesUrl,
         type: 'GET',
+        dataType: 'json',
 
         data: {
             name: name,
@@ -2033,12 +2063,17 @@ $('#name,#category_id,#brand_id').on('change', function () {
             brand_id: $('#brand_id').val()
         },
 
-        success: function (response) {
+        success: function(response) {
+            // alert(JSON.stringify(response));
 
             if (response.status) {
                 $('#sku').val(response.sku);
                 $('#barcode').val(response.barcode);
             }
+        },
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
+            toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
         }
     });
 });

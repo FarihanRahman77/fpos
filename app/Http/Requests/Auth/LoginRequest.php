@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Http\Controllers\Admin\BranchController;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -29,6 +30,7 @@ class LoginRequest extends FormRequest
         return [
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
+            'branch_id' => ['nullable', 'integer', 'min:0'],
         ];
     }
 
@@ -49,7 +51,22 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Branch-wise login: the user must be allowed in the branch they chose.
+        $branchId = $this->chosenBranch();
+        if ($problem = BranchController::loginProblem(Auth::user(), $branchId)) {
+            Auth::guard('web')->logout();
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages(['branch_id' => $problem]);
+        }
+
         RateLimiter::clear($this->throttleKey());
+    }
+
+    /** Branch picked on the login form (null = none chosen; refused by loginProblem()). */
+    public function chosenBranch(): ?int
+    {
+        return $this->filled('branch_id') ? (int) $this->input('branch_id') : null;
     }
 
     /**

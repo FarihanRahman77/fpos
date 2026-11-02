@@ -9,16 +9,16 @@
 <style>
 
     .modal-header {
-        border-bottom: 1px solid #dee2e6;
+        border-bottom: 1px solid var(--color-border);
     }
 
     .modal-footer {
-        border-top: 1px solid #dee2e6;
+        border-top: 1px solid var(--color-border);
         justify-content: space-between;
     }
 
     .modal-title {
-        font-weight: 600;
+        font-weight: var(--font-weight-medium);
     }
 
     .required {
@@ -375,8 +375,7 @@ $(document).ready(function() {
                 },
 
                 error: function(xhr) {
-
-                    //alert(JSON.stringify(xhr));
+                    // alert(JSON.stringify(xhr));
 
                 }
 
@@ -582,6 +581,8 @@ $(document).ready(function() {
 
                 type: 'POST',
 
+                dataType: 'json',
+
                 data: formData,
 
                 processData: false,
@@ -590,6 +591,7 @@ $(document).ready(function() {
 
 
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -619,6 +621,7 @@ $(document).ready(function() {
 
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     if (xhr.status === 422) {
 
@@ -694,9 +697,11 @@ $(document).ready(function() {
 
                 type: 'GET',
 
+                dataType: 'json',
+
 
                 success: function(response) {
-                    //alert(JSON.stringify(response));
+                    // alert(JSON.stringify(response));
                     if (!response.status) {
 
                         toastr.error(
@@ -741,7 +746,7 @@ $(document).ready(function() {
 
 
                 error: function(xhr) {
-                    //alert(JSON.stringify(xhr));
+                    // alert(JSON.stringify(xhr));
                     toastr.error(
                         'Unable to load attribute category.'
                     );
@@ -819,6 +824,8 @@ $(document).ready(function() {
 
                 type: 'POST',
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -828,6 +835,7 @@ $(document).ready(function() {
 
 
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -856,6 +864,7 @@ $(document).ready(function() {
 
 
                 error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         xhr.responseJSON?.message ||
@@ -903,6 +912,8 @@ $(document).ready(function() {
 
                 type: 'POST',
 
+                dataType: 'json',
+
                 data: {
 
                     _token:
@@ -912,6 +923,7 @@ $(document).ready(function() {
 
 
                 success: function(response) {
+                    // alert(JSON.stringify(response));
 
                     if (response.status) {
 
@@ -935,7 +947,8 @@ $(document).ready(function() {
                 },
 
 
-                error: function() {
+                error: function(xhr) {
+                    // alert(JSON.stringify(xhr));
 
                     toastr.error(
                         'Unable to change status.'

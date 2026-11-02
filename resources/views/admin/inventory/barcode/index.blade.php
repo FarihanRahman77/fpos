@@ -115,9 +115,8 @@
 @endsection
 
 @push('scripts')
-{{-- Remove these two lines if your layout already loads jQuery / Select2 --}}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.1.0-rc.0/js/select2.min.js"></script>
+{{-- jQuery and Select2 come from the layout (admin.includes.script); loading them again here replaced the global
+     jQuery and dropped its $.ajaxSetup (CSRF header, session-expired handling) and DataTables. --}}
 
 <script>
 (function ($) {
@@ -154,10 +153,12 @@
 
             type: 'GET',
 
+            dataType: 'json',
 
 
-            success: function (response) {
-               // alert(JSON.stringify(response));
+
+            success: function(response) {
+                // alert(JSON.stringify(response));
                 if (response && response.data) {
 
                     addProductToCart(response.data);
@@ -170,8 +171,8 @@
 
             },
 
-            error: function (xhr) {
-               // alert(JSON.stringify(xhr));
+            error: function(xhr) {
+                // alert(JSON.stringify(xhr));
                 toastr.error('Something went wrong.');
 
             }
@@ -185,7 +186,7 @@
         if (product.has_variants && product.variants && product.variants.length) {
             product.variants.forEach(function (v) {
                 const key = 'variant_' + v.id;
-                if (cart[key]) { cart[key].qty += 1; return; }
+                if (cart[key]) { cart[key].qty = Math.min(500, cart[key].qty + 1); return; }
                 cart[key] = {
                     type: 'variant',
                     id: v.id,
@@ -197,7 +198,7 @@
             });
         } else {
             const key = 'product_' + product.id;
-            if (cart[key]) { cart[key].qty += 1; renderCart(); return; }
+            if (cart[key]) { cart[key].qty = Math.min(500, cart[key].qty + 1); renderCart(); return; }
             cart[key] = {
                 type: 'product',
                 id: product.id,
@@ -245,12 +246,13 @@
         }));
         cartBody.querySelectorAll('.qty-plus').forEach(b => b.addEventListener('click', function () {
             const key = this.dataset.key;
-            cart[key].qty++; renderCart();
+            if (cart[key].qty < 500) { cart[key].qty++; renderCart(); }
         }));
         cartBody.querySelectorAll('.qty-input').forEach(inp => inp.addEventListener('change', function () {
             const key = this.dataset.key;
             let val = parseInt(this.value, 10);
             if (isNaN(val) || val < 1) val = 1;
+            if (val > 500) val = 500;   // the print route accepts at most 500 labels per line
             cart[key].qty = val;
             renderCart();
         }));

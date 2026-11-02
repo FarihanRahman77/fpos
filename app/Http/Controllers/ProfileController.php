@@ -48,9 +48,16 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
+        // Users are soft-deleted everywhere (their name stays on the records they made), and the last
+        // active account cannot remove itself or nobody could sign in again.
+        $others = \App\Models\User::where('id', '!=', $user->id)->where('deleted', 'No')->where('status', 'Active')->exists();
+        if (!$others) {
+            return back()->withErrors(['password' => 'You are the last active user, so this account cannot be deleted.'], 'userDeletion');
+        }
+
         Auth::logout();
 
-        $user->delete();
+        $user->forceFill(['deleted' => 'Yes', 'deleted_by' => $user->id, 'deleted_date' => now()])->save();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

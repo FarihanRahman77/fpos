@@ -5,40 +5,40 @@
     <title>{{ $config['title'] }}</title>
     @php
         $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
-        $bal = fn ($v) => \App\Services\Reports\PartyLedgerReport::balanceText($v);
+        $bal = $balance_text;
     @endphp
     <style>
         @page { margin: 24px 26px 46px 26px; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 8px; color: #1e293b; }
+        body { font-family: 'DejaVu Sans', sans-serif; font-size: 8px; color: {{ $pc['ink'] }}; }
         table { width: 100%; border-collapse: collapse; }
-        .muted { color: #64748b; }
+        .muted { color: {{ $pc['muted'] }}; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
         .nowrap { white-space: nowrap; }
 
-        .company-name { font-size: 15px; font-weight: bold; color: #0f172a; }
-        .doc-title { font-size: 16px; font-weight: bold; color: #1e3a8a; letter-spacing: 1px; }
-        .rule { border-top: 2.5px solid #1e3a8a; margin: 6px 0 8px 0; }
+        .company-name { font-size: 15px; font-weight: bold; color: {{ $pc['ink'] }}; }
+        .doc-title { font-size: 16px; font-weight: bold; color: {{ $pc['accent'] }}; letter-spacing: 1px; }
+        .rule { border-top: 2.5px solid {{ $pc['accent'] }}; margin: 6px 0 8px 0; }
 
         .filters td { padding: 1px 10px 1px 0; vertical-align: top; }
-        .filters .k { color: #64748b; width: 70px; }
+        .filters .k { color: {{ $pc['muted'] }}; width: 70px; }
 
         .block { margin-top: 10px; page-break-inside: auto; }
-        .block-head { background: #1e3a8a; color: #fff; padding: 5px 7px; }
-        .block-head .meta { color: #cbd5e1; font-size: 7px; }
-        .grid th { background: #e2e8f0; padding: 4px 4px; font-size: 7px; text-transform: uppercase; text-align: left; border: 1px solid #cbd5e1; }
+        .block-head { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; padding: 5px 7px; }
+        .block-head .meta { color: {{ $pc['border_strong'] }}; font-size: 7px; }
+        .grid th { background: {{ $pc['border'] }}; padding: 4px 4px; font-size: 7px; text-transform: uppercase; text-align: left; border: 1px solid {{ $pc['border_strong'] }}; }
         .grid th.right { text-align: right; }
-        .grid td { padding: 3.5px 4px; border: 1px solid #e2e8f0; vertical-align: top; }
-        .grid tr.opening td { background: #f8fafc; font-style: italic; color: #475569; }
-        .grid tr.total td { background: #f1f5f9; font-weight: bold; border-top: 1.5px solid #94a3b8; }
+        .grid td { padding: 3.5px 4px; border: 1px solid {{ $pc['border'] }}; vertical-align: top; }
+        .grid tr.opening td { background: {{ $pc['soft'] }}; font-style: italic; color: {{ $pc['secondary'] }}; }
+        .grid tr.total td { background: {{ $pc['soft'] }}; font-weight: bold; border-top: 1.5px solid {{ $pc['faint'] }}; }
         thead { display: table-header-group; }
         tr { page-break-inside: avoid; }
 
         .summary { width: 50%; margin-top: 14px; page-break-inside: avoid; }
-        .summary td { padding: 4px 7px; border: 1px solid #cbd5e1; }
-        .summary td.k { background: #f1f5f9; font-weight: bold; width: 58%; }
+        .summary td { padding: 4px 7px; border: 1px solid {{ $pc['border_strong'] }}; }
+        .summary td.k { background: {{ $pc['soft'] }}; font-weight: bold; width: 58%; }
 
-        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7.5px; color: #94a3b8; }
+        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7.5px; color: {{ $pc['faint'] }}; }
     </style>
 </head>
 <body>
@@ -85,7 +85,7 @@
                     @if ($item['code']) &nbsp; {{ $item['code'] }}@endif
                     &nbsp;·&nbsp; {{ $item['type'] }}
                     @if ($item['phone']) &nbsp;·&nbsp; {{ $item['phone'] }}@endif
-                    &nbsp;·&nbsp; {{ $service->balanceLabel($item['closing']) }}
+                    &nbsp;·&nbsp; {{ $balance_label($item['closing']) }}
                 </span>
             </div>
             <table class="grid">

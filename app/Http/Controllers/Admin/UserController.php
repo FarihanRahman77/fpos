@@ -20,7 +20,10 @@ class UserController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('admin.users.index', compact('roles'));
+        $branches = \Illuminate\Support\Facades\DB::table('branches')->where('deleted', 'No')->where('status', 'Active')
+            ->orderByDesc('is_main')->orderBy('name')->get(['id', 'name']);
+
+        return view('admin.users.index', compact('roles', 'branches'));
     }
 
 
@@ -29,6 +32,22 @@ class UserController extends Controller
     | List Users
     |--------------------------------------------------------------------------
     */
+    /** My profile: details, branch access and password change (each user sees only their own). */
+    public function profile($id)
+    {
+        if ((int) $id !== (int) auth()->id()) {
+            return redirect()->route('admin.users.profile', auth()->id());
+        }
+
+        $user = \Illuminate\Support\Facades\DB::table('users as u')->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+            ->leftJoin('branches as b', 'b.id', '=', 'u.branch_id')->where('u.id', auth()->id())
+            ->first(['u.*', 'r.name as role_name', 'b.name as home_branch']);
+        $branches = \Illuminate\Support\Facades\DB::table('branches')
+            ->whereIn('id', BranchController::allowedFor(auth()->user()) ?: [0])->orderByDesc('is_main')->orderBy('name')->pluck('name');
+
+        return view('admin.users.profile', compact('user', 'branches'));
+    }
+
     public function list(Request $request)
     {
         $users = User::query()
@@ -74,6 +93,14 @@ class UserController extends Controller
 
             'status' => 'required|in:Active,Inactive',
 
+            'branch_id' => 'required|integer|exists:branches,id',
+
+            'all_branches' => 'required|in:Yes,No',
+
+            'branches' => 'nullable|array',
+
+            'branches.*' => 'integer|exists:branches,id',
+
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
@@ -84,6 +111,8 @@ class UserController extends Controller
         $user->email = $request->email;
         $user->password = Hash::make($request->password);
         $user->role_id = $request->role_id;
+        $user->branch_id = (int) $request->branch_id;
+        $user->all_branches = $request->all_branches;
         $user->designation = $request->designation;
         $user->status = $request->status;
         $user->deleted = 'No';
@@ -117,6 +146,12 @@ class UserController extends Controller
 
         $user->save();
 
+        // Branches this user may sign in to (home branch always included).
+        \Illuminate\Support\Facades\DB::table('branch_user')->where('user_id', $user->id)->delete();
+        foreach (collect($request->input('branches', []))->push($request->branch_id)->map(fn ($b) => (int) $b)->unique() as $b) {
+            \Illuminate\Support\Facades\DB::table('branch_user')->insert(['user_id' => $user->id, 'branch_id' => $b]);
+        }
+
 
         return response()->json([
             'status' => true,
@@ -146,7 +181,8 @@ class UserController extends Controller
 
         return response()->json([
             'status' => true,
-            'data' => $user
+            'data' => $user,
+            'branches' => \Illuminate\Support\Facades\DB::table('branch_user')->where('user_id', $user->id)->pluck('branch_id'),
         ]);
     }
 
@@ -182,13 +218,32 @@ class UserController extends Controller
 
             'status' => 'required|in:Active,Inactive',
 
+            'branch_id' => 'required|integer|exists:branches,id',
+
+            'all_branches' => 'required|in:Yes,No',
+
+            'branches' => 'nullable|array',
+
+            'branches.*' => 'integer|exists:branches,id',
+
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
 
+        if ($request->status !== 'Active' && (int) $user->id === (int) auth()->id()) {
+            return response()->json(['status' => false, 'message' => 'You cannot make your own account inactive while signed in to it.',
+                'errors' => ['status' => ['You cannot make your own account inactive while signed in to it.']]], 422);
+        }
+        if ($request->status !== 'Active' && $this->isLastActiveUser($user)) {
+            return response()->json(['status' => false, 'message' => 'This is the last active user; it must stay active.',
+                'errors' => ['status' => ['This is the last active user; it must stay active.']]], 422);
+        }
+
         $user->name = $request->name;
         $user->email = $request->email;
         $user->role_id = $request->role_id;
+        $user->branch_id = (int) $request->branch_id;
+        $user->all_branches = $request->all_branches;
         $user->designation = $request->designation;
         $user->status = $request->status;
 
@@ -250,6 +305,12 @@ class UserController extends Controller
 
         $user->save();
 
+        // Branches this user may sign in to (home branch always included).
+        \Illuminate\Support\Facades\DB::table('branch_user')->where('user_id', $user->id)->delete();
+        foreach (collect($request->input('branches', []))->push($request->branch_id)->map(fn ($b) => (int) $b)->unique() as $b) {
+            \Illuminate\Support\Facades\DB::table('branch_user')->insert(['user_id' => $user->id, 'branch_id' => $b]);
+        }
+
 
         return response()->json([
             'status' => true,
@@ -278,6 +339,13 @@ class UserController extends Controller
         }
 
 
+        if ((int) $user->id === (int) auth()->id()) {
+            return response()->json(['status' => false, 'message' => 'You cannot delete your own account while signed in to it.'], 422);
+        }
+        if ($this->isLastActiveUser($user)) {
+            return response()->json(['status' => false, 'message' => 'This is the last active user. Add another active user before deleting it.'], 422);
+        }
+
         $user->deleted = 'Yes';
         $user->deleted_by =  Auth::id();
         $user->deleted_date = now();
@@ -289,5 +357,11 @@ class UserController extends Controller
             'status' => true,
             'message' => 'User deleted successfully.'
         ]);
+    }
+
+    /** True when no other active, undeleted user would be left to sign in. */
+    private function isLastActiveUser(User $user): bool
+    {
+        return !User::where('id', '!=', $user->id)->where('deleted', 'No')->where('status', 'Active')->exists();
     }
 }

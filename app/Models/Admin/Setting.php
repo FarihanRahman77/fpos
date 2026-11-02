@@ -9,4 +9,6 @@ class Setting extends Model
 {
     use HasFactory;
     protected $table = 'settings';
+
+    protected $casts = ['theme_colors' => 'array'];
 }
