@@ -29,16 +29,17 @@ class PasswordResetLinkController extends Controller
             'email' => ['required', 'email'],
         ]);
 
-        // We will send the password reset link to this user. Once we have attempted
-        // to send the link, we will examine the response then see the message we
-        // need to show to the user. Finally, we'll send out a proper response.
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+        // Same answer whether or not the address belongs to an account (and whether it was throttled), so this form
+        // cannot be used to find out which e-mail addresses have accounts. Inactive / deleted accounts get no link.
+        $user = \App\Models\User::where('email', $request->input('email'))->first();
+        if ($user && \App\Http\Controllers\Admin\BranchController::accountActive($user)) {
+            try {
+                Password::sendResetLink($request->only('email'));
+            } catch (\Throwable $e) {
+                report($e); // a mail failure must not reveal that the account exists
+            }
+        }
 
-        return $status == Password::RESET_LINK_SENT
-                    ? back()->with('status', __($status))
-                    : back()->withInput($request->only('email'))
-                            ->withErrors(['email' => __($status)]);
+        return back()->with('status', 'If an account uses that e-mail address, a password reset link has been sent to it.');
     }
 }

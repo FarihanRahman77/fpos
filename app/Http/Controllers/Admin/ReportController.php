@@ -19,7 +19,6 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Throwable;
-use PDF;
 
 class ReportController extends Controller
 {
@@ -80,13 +79,9 @@ class ReportController extends Controller
 
         $report = $this->buildStockLedger($validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.stock-ledger-pdf', $report + [
-            'company'   => $this->company(),
+        $pdf = SettingController::pdf('admin.reports.stock-ledger-pdf', $report + [
             'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'landscape')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        ], 'landscape');
 
         $fileName = 'Stock-Ledger-' . now()->format('Y-m-d') . '.pdf';
 
@@ -280,13 +275,9 @@ class ReportController extends Controller
 
         $report  = $this->buildPartyLedger($ledger, $validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.party-ledger-pdf', $report + [
-            'company'   => $this->company(),
+        $pdf = SettingController::pdf('admin.reports.party-ledger-pdf', $report + [
             'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'portrait')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        ], 'portrait');
 
         $fileName = str_replace(' ', '-', $report['config']['title']) . '-' . now()->format('Y-m-d') . '.pdf';
 
@@ -484,13 +475,9 @@ class ReportController extends Controller
 
         $report = $this->buildTransactionLedger($validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.transaction-ledger-pdf', $report + [
-            'company'   => $this->company(),
-            'printedAt' => now()->format('d-m-Y h:i A'),
-        ])->setPaper('a4', 'portrait')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        $pdf = SettingController::pdf('admin.reports.transaction-ledger-pdf', $report + [
+            'printedAt' => now()->format('d M Y, h:i A'),
+        ], 'portrait');
 
         $fileName = 'Transactions-Ledger-' . $report['from']->format('Y-m-d') . '.pdf';
 
@@ -695,19 +682,23 @@ class ReportController extends Controller
     /*  Salary sheet (columns follow the Scale / Contractual setting)     */
     /* ------------------------------------------------------------------ */
 
-    public function salarySheet()
+    public function salarySheet(Request $request)
     {
-        // Ledgers offered by Process / Pay Salary (3rd layer accounts of each type).
-        $ledgers = fn ($type) => DB::table('chart_of_accounts')->where('layer_level', 3)->where('account_type', $type)
-            ->where('deleted', 'No')->where('status', 'Active')->orderBy('account_code')->get(['id', 'account_name']);
+        // ?month=Y-m opens that month (links from the dashboard's unpaid-salary list); ?pay=1 opens Pay Salary.
+        $m = (string) $request->query('month', '');
+        $month = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $m) ? $m : now()->format('Y-m');
 
+        // Ledgers offered by Process / Pay Salary: those usable in the logged-in branch, defaults from Payroll Settings or by name.
         return view('admin.reports.salary-sheet', [
-            'departments'     => DB::table('departments')->where('deleted', 'No')->orderBy('name')->get(['id', 'name']),
-            'payroll'         => PayrollSetupController::salarySettings(),
-            'paymentAccounts' => $ledgers('Liquid Asset'),
-            'expenseAccounts' => $ledgers('Expense'),
-            'liabilityAccounts' => $ledgers('Liability'),
-            'assetAccounts'   => $ledgers('Asset'),
+            'departments'       => DB::table('departments')->where('deleted', 'No')->orderBy('name')->get(['id', 'name']),
+            'payroll'           => PayrollSetupController::salarySettings(),
+            'paymentAccounts'   => PayrollSetupController::payrollLedgers('Liquid Asset'),
+            'expenseAccounts'   => PayrollSetupController::payrollLedgers('Expense'),
+            'liabilityAccounts' => PayrollSetupController::payrollLedgers('Liability'),
+            'assetAccounts'     => PayrollSetupController::loanLedgers(),
+            'ledgerDefaults'    => PayrollSetupController::payrollLedgerDefaults(),
+            'initialMonth'      => $month,
+            'openPay'           => $request->boolean('pay'),
         ]);
     }
 
@@ -750,13 +741,9 @@ class ReportController extends Controller
 
         $report = self::buildSalarySheet($validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.salary-sheet-pdf', $report + [
-            'company'   => $this->company(),
+        $pdf = SettingController::pdf('admin.reports.salary-sheet-pdf', $report + [
             'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'landscape')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        ], 'landscape');
 
         $fileName = 'Salary-Sheet-' . $report['month']->format('Y-m') . '.pdf';
 
@@ -947,13 +934,9 @@ class ReportController extends Controller
 
         $report = $this->buildLiquidAsset($validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.liquid-asset-pdf', $report + [
-            'company'   => $this->company(),
+        $pdf = SettingController::pdf('admin.reports.liquid-asset-pdf', $report + [
             'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'landscape')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        ], 'landscape');
 
         $fileName = 'Cash-Bank-Book-' . $report['from']->format('Y-m-d') . '.pdf';
 
@@ -1125,7 +1108,7 @@ class ReportController extends Controller
     {
         // ?employee_id= preselects (link from the employee list).
         $selected = $request->filled('employee_id')
-            ? DB::table('employees')->where('id', (int) $request->query('employee_id'))->where('deleted', 'No')->first(['id', 'name', 'employee_code'])
+            ? BranchController::scope(DB::table('employees'), 'branch_id')->where('id', (int) $request->query('employee_id'))->where('deleted', 'No')->first(['id', 'name', 'employee_code'])
             : null;
 
         return view('admin.reports.pf-ledger', ['selected' => $selected, 'payroll' => PayrollSetupController::salarySettings()]);
@@ -1149,6 +1132,7 @@ class ReportController extends Controller
                 'summary' => [
                     'opening'    => $m($report['opening']),
                     'total'      => $m($report['total']),
+                    'projected'  => $m($report['projected_total']),
                     'closing'    => $m($report['closing']),
                     'increments' => $report['increments'],
                 ],
@@ -1167,13 +1151,9 @@ class ReportController extends Controller
 
         $report = $this->buildPfLedger($validator->validated());
 
-        $pdf = PDF::loadView('admin.reports.pf-ledger-pdf', $report + [
-            'company'   => $this->company(),
+        $pdf = SettingController::pdf('admin.reports.pf-ledger-pdf', $report + [
             'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'portrait')
-            ->setOption('isFontSubsettingEnabled', true);
-
-        $this->addPageNumbers($pdf);
+        ], 'portrait');
 
         $fileName = 'PF-Ledger-' . $report['employee']->employee_code . '.pdf';
 
@@ -1193,18 +1173,18 @@ class ReportController extends Controller
         $book->getProperties()->setCreator($company['name'])->setTitle('PF Ledger');
         $book->getDefaultStyle()->getFont()->setName('Calibri')->setSize(10);
 
-        foreach (['A' => 26, 'B' => 16, 'C' => 16, 'D' => 14, 'E' => 16] as $col => $w) {
+        foreach (['A' => 26, 'B' => 14, 'C' => 14, 'D' => 14, 'E' => 14, 'F' => 16] as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
         }
 
-        $sheet->setCellValue('A1', $company['name'])->mergeCells('A1:E1');
+        $sheet->setCellValue('A1', $company['name'])->mergeCells('A1:F1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(15);
-        $sheet->setCellValue('A2', 'Provident Fund Ledger')->mergeCells('A2:E2');
+        $sheet->setCellValue('A2', 'Provident Fund Ledger')->mergeCells('A2:F2');
         $sheet->getStyle('A2')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB(self::xl('accent'));
 
         $row = 3;
         foreach ($report['filters_text'] as $label => $value) {
-            $sheet->setCellValue("A{$row}", $label . ':')->setCellValue("B{$row}", $value)->mergeCells("B{$row}:E{$row}");
+            $sheet->setCellValue("A{$row}", $label . ':')->setCellValue("B{$row}", $value)->mergeCells("B{$row}:F{$row}");
             $sheet->getStyle("A{$row}")->getFont()->setBold(true);
             $row++;
         }
@@ -1214,25 +1194,25 @@ class ReportController extends Controller
         $thin = ['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => self::xl('border_strong')]]]];
         $first = $row;
 
-        foreach (['Month', 'Basic', 'Gross', 'PF', 'Balance'] as $n => $label) {
+        foreach (['Month', 'Basic', 'Gross', 'Deducted PF', 'Projected PF', 'Balance'] as $n => $label) {
             $sheet->setCellValue(Coordinate::stringFromColumnIndex($n + 1) . $row, $label);
         }
-        $sheet->getStyle("A{$row}:E{$row}")->applyFromArray([
+        $sheet->getStyle("A{$row}:F{$row}")->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => self::xl('on_brand')]],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => self::xl('brand')]],
         ]);
-        $sheet->getStyle("B{$row}:E{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("B{$row}:F{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd($row, $row);
         $row++;
 
-        $sheet->setCellValue("A{$row}", 'Opening balance')->mergeCells("A{$row}:D{$row}");
-        $sheet->setCellValue("E{$row}", $report['opening']);
-        $sheet->getStyle("A{$row}:E{$row}")->getFont()->setItalic(true);
+        $sheet->setCellValue("A{$row}", 'Opening balance (deducted PF)')->mergeCells("A{$row}:E{$row}");
+        $sheet->setCellValue("F{$row}", $report['opening']);
+        $sheet->getStyle("A{$row}:F{$row}")->getFont()->setItalic(true);
         $row++;
 
         foreach ($report['periods'] as $n => $period) {
             $e = $period['entry'];
-            $sheet->setCellValue("A{$row}", $this->pfPeriodTitle($n, $e))->mergeCells("A{$row}:E{$row}");
+            $sheet->setCellValue("A{$row}", $this->pfPeriodTitle($n, $e))->mergeCells("A{$row}:F{$row}");
             $sheet->getStyle("A{$row}")->applyFromArray([
                 'font' => ['bold' => true, 'color' => ['rgb' => self::xl('accent')]],
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => self::xl('border')]],
@@ -1240,33 +1220,36 @@ class ReportController extends Controller
             $row++;
 
             foreach ($period['rows'] as $r) {
-                $sheet->setCellValue("A{$row}", $r['month']->format('M Y') . ($r['source'] ? ' · ' . $r['source'] : ' · expected'));
+                $sheet->setCellValue("A{$row}", $r['month']->format('M Y') . ($r['source'] ? ' · ' . $r['source'] : ' · projected'));
                 $sheet->setCellValue("B{$row}", $r['basic']);
                 $sheet->setCellValue("C{$row}", $r['gross']);
-                $sheet->setCellValue("D{$row}", $r['pf']);
-                $sheet->setCellValue("E{$row}", $r['balance']);
+                $sheet->setCellValue("D{$row}", $r['deducted']);
+                $sheet->setCellValue("E{$row}", $r['projected']);
+                $sheet->setCellValue("F{$row}", $r['balance']);
                 $row++;
             }
 
             $sheet->setCellValue("A{$row}", 'Period total (' . count($period['rows']) . ' months)')->mergeCells("A{$row}:C{$row}");
-            $sheet->setCellValue("D{$row}", $period['total']);
-            $sheet->getStyle("A{$row}:E{$row}")->applyFromArray([
+            $sheet->setCellValue("D{$row}", $period['deducted']);
+            $sheet->setCellValue("E{$row}", $period['projected']);
+            $sheet->getStyle("A{$row}:F{$row}")->applyFromArray([
                 'font' => ['bold' => true],
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => self::xl('soft')]],
             ]);
             $row++;
         }
 
-        $sheet->setCellValue("A{$row}", 'Total PF / Closing balance')->mergeCells("A{$row}:C{$row}");
-        $sheet->setCellValue("D{$row}", $report['total']);
-        $sheet->setCellValue("E{$row}", $report['closing']);
-        $sheet->getStyle("A{$row}:E{$row}")->applyFromArray([
+        $sheet->setCellValue("A{$row}", 'Total / Closing balance (deducted only)')->mergeCells("A{$row}:C{$row}");
+        $sheet->setCellValue("D{$row}", $report['deducted_total']);
+        $sheet->setCellValue("E{$row}", $report['projected_total']);
+        $sheet->setCellValue("F{$row}", $report['closing']);
+        $sheet->getStyle("A{$row}:F{$row}")->applyFromArray([
             'font' => ['bold' => true],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => self::xl('border_strong')]],
         ]);
 
-        $sheet->getStyle("A{$first}:E{$row}")->applyFromArray($thin);
-        $sheet->getStyle("B{$first}:E{$row}")->getNumberFormat()->setFormatCode($moneyFormat);
+        $sheet->getStyle("A{$first}:F{$row}")->applyFromArray($thin);
+        $sheet->getStyle("B{$first}:F{$row}")->getNumberFormat()->setFormatCode($moneyFormat);
         $sheet->getPageSetup()->setFitToWidth(1)->setFitToHeight(0);
 
         $fileName = 'PF-Ledger-' . $report['employee']->employee_code . '.xlsx';
@@ -1288,7 +1271,7 @@ class ReportController extends Controller
     private function pfLedgerValidator(Request $request)
     {
         return Validator::make($request->query(), [
-            'employee_id' => ['required', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No')],
+            'employee_id' => ['required', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No')->whereIn('branch_id', BranchController::visibleIds())],
             'from'        => ['nullable', 'date_format:Y-m'],
             'to'          => ['nullable', 'date_format:Y-m'],
         ], [
@@ -1312,19 +1295,6 @@ class ReportController extends Controller
     private static function xl(string $key): string
     {
         return strtoupper(ltrim(SettingController::pdfColors()[$key], '#'));
-    }
-
-    /** "Page X of Y" in the footer, drawn on the canvas (no inline PHP in the template). */
-    private function addPageNumbers($pdf): void
-    {
-        $pdf->render();   // wrapper's render() marks it rendered, so stream()/download() won't render again
-        $dompdf = $pdf->getDomPDF();
-        $canvas = $dompdf->getCanvas();
-        $canvas->page_text(
-            $canvas->get_width() - 95, $canvas->get_height() - 28,
-            'Page {PAGE_NUM} of {PAGE_COUNT}',
-            $dompdf->getFontMetrics()->getFont('DejaVu Sans'), 7, [0.58, 0.64, 0.72]
-        );
     }
 
     private function stockLedgerValidator(Request $request)
@@ -1804,7 +1774,11 @@ class ReportController extends Controller
             ->leftJoin('purchases as pu', 'pu.id', '=', 'p.purchase_id')
             ->leftJoin('purchase_returns as pr', 'pr.id', '=', 'p.purchase_return_id')
             ->leftJoin('bills as b', 'b.id', '=', 'p.bill_id')
-            ->orderBy('p.datetime')->orderBy('p.id')
+            // Day by day, and within a day by the time of the entry (rows saved with a bare date use the time
+            // they were entered), so a receipt never shows before the sale it paid.
+            ->orderByRaw('DATE(p.datetime)')
+            ->orderByRaw("CASE WHEN TIME(p.datetime) = '00:00:00' THEN TIME(COALESCE(p.created_datetime, p.datetime)) ELSE TIME(p.datetime) END")
+            ->orderBy('p.id')
             ->get([
                 'p.id', 'p.party_id', 'p.code', 'p.payment_type', 'p.datetime', 'p.payment_method', 'p.remarks',
                 'p.purchase_return_id',
@@ -1950,11 +1924,14 @@ class ReportController extends Controller
         ];
     }
 
+    private ?bool $isMainMemo = null;
+
     /** Party setup opening balance, signed Dr - Cr, and its date. */
     private function partyLedgerPartyOpening(object $ctx, object $party): array
     {
-        // The opening balance belongs to the main branch.
-        $amount = BranchController::isMainBranch() ? (float) $party->opening_balance : 0.0;
+        // The opening balance belongs to the main branch (looked up once per request, not per party).
+        $this->isMainMemo ??= BranchController::mainVisible();
+        $amount = $this->isMainMemo ? (float) $party->opening_balance : 0.0;
         $isDue  = $party->opening_balance_type !== 'Advance';
 
         // Customer due = receivable (Dr); supplier due = payable (Cr). Advance is the reverse.
@@ -2023,6 +2000,7 @@ class ReportController extends Controller
  *  - expenses (other employee expenses, and salary entered as an expense): out of the expense's payment account.
  *  - journal lines on a liquid account: debit in, credit out.
  *  - amount transfers: out of the sending account, into the receiving one.
+ *  - suspense entries: advances paid / withdrawn and capital withdrawals out, returns, employee deposits and investments in.
  *
  * Old payment rows that carry only a method name (e.g. "Cash") and no account are shown
  * under "<method> — no account" so their money is not lost from the totals.
@@ -2133,18 +2111,35 @@ class ReportController extends Controller
 
     }
 
+    /**
+     * Branches the Cash & Bank engine reads: $ctx->branches when set (the daily cash closing passes the working
+     * branch only), otherwise the branches the user sees.
+     */
+    public static function ctxBranches(object $ctx): array
+    {
+        return !empty($ctx->branches) ? array_map('intval', (array) $ctx->branches) : BranchController::visibleIds();
+    }
+
+    /** Limit an engine query to ctxBranches(). */
+    private static function ctxScope(object $ctx, $query, string $column)
+    {
+        return empty($ctx->branches) ? BranchController::scope($query, $column) : $query->whereIn($column, self::ctxBranches($ctx));
+    }
+
     /** 3rd layer Liquid Asset accounts keyed "a:<id>", with their payment method (2nd layer). */
     public function liquidAssetAccounts(object $ctx): array
     {
+        $branches = self::ctxBranches($ctx);
         $rows = DB::table('chart_of_accounts as a')
             ->join('chart_of_accounts as m', 'm.id', '=', 'a.parent_id')
             ->where('a.account_type', 'Liquid Asset')->where('a.layer_level', 3)->where('a.deleted', 'No')
-            // A branch sees its own cash / bank ledgers and the shared ones.
-            ->when(BranchController::current(), fn ($q, $b) => $q->where(fn ($w) => $w->whereNull('a.branch_id')->orWhere('a.branch_id', $b)))
+            // The shared cash / bank ledgers and the branch-owned ledgers of the branches read.
+            ->where(fn ($w) => $w->whereNull('a.branch_id')->orWhereIn('a.branch_id', $branches))
             ->orderBy('m.account_code')->orderBy('a.account_code')
             ->get(['a.id', 'a.account_code', 'a.account_name', 'a.opening_balance', 'a.branch_id', 'm.id as method_id', 'm.account_name as method']);
 
-        $isMain = BranchController::isMainBranch() || BranchController::current() === null;
+        // A shared ledger's opening balance belongs to the main branch: counted when the main branch is read.
+        $isMain = in_array((int) BranchController::mainId(), $branches, true) || BranchController::current() === null;
         $out = [];
         foreach ($rows as $r) {
             $out['a:' . $r->id] = [
@@ -2156,6 +2151,69 @@ class ReportController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Cash on hand in one Cash ledger for the WORKING branch, the way the Cash & Bank Book reads it: the ledger's
+     * opening balance (a shared ledger's belongs to the main branch) + the working branch's movements on it up to
+     * the end of today. Null when the account is not a Cash-method ledger (bank / mobile banking may be overdrawn).
+     */
+    public static function cashAvailable(int $accountId): ?float
+    {
+        $method = DB::table('chart_of_accounts as a')->join('chart_of_accounts as m', 'm.id', '=', 'a.parent_id')
+            ->where('a.id', $accountId)->where('a.account_type', 'Liquid Asset')->value('m.account_name');
+        if ($method === null || stripos($method, 'cash') === false) {
+            return null;
+        }
+
+        $rc = new self();
+        $ctx = (object) ['filters' => [], 'branches' => [(int) BranchController::activeId()], 'account_id' => $accountId];
+        $balance = (float) ($rc->liquidAssetAccounts($ctx)['a:' . $accountId]['opening_balance'] ?? 0);
+        foreach ($rc->liquidAssetMovements($ctx, null, Carbon::now()->endOfDay()) as $m) {
+            $balance += $m->in - $m->out;
+        }
+
+        return round($balance, 2);
+    }
+
+    /**
+     * Refuses (422) money going out of a Cash ledger beyond what the working branch has in it. Call it inside the
+     * save's DB transaction: it locks the ledger row first, so two saves on the same drawer run one after the other.
+     * $previous = what this document already took from the same ledger (an edit may re-use it); an edit that does
+     * not take more than before is always allowed.
+     */
+    public static function ensureCash($accountId, $needed, $previous = 0.0): void
+    {
+        $accountId = (int) $accountId;
+        $needed = round((float) $needed, 2);
+        $previous = round((float) $previous, 2);
+        if (!$accountId || $needed <= 0 || $needed <= $previous) {
+            return;
+        }
+        $name = DB::table('chart_of_accounts')->where('id', $accountId)->lockForUpdate()->value('account_name');
+        $available = self::cashAvailable($accountId);
+        if ($available === null) {
+            return;
+        }
+        $available = round($available + $previous, 2);
+        if ($needed > $available + 0.004) {
+            abort(422, self::cashShortMessage($name, $available, $needed));
+        }
+    }
+
+    /** Several ledgers in one document: [account_id => amount out], [account_id => what it already took]. */
+    public static function ensureCashLines(array $needed, array $previous = []): void
+    {
+        ksort($needed);   // lock ledgers in one order, so two documents never wait on each other crosswise
+        foreach ($needed as $accountId => $amount) {
+            self::ensureCash($accountId, $amount, $previous[$accountId] ?? 0);
+        }
+    }
+
+    public static function cashShortMessage(?string $account, float $available, float $needed): string
+    {
+        return 'Not enough cash in ' . ($account ?: 'this cash account') . ': available ৳' . number_format($available, 2)
+            . ', needed ৳' . number_format($needed, 2) . '.';
     }
 
     private function liquidAssetUnassigned(object $ctx, string $key): array
@@ -2204,9 +2262,11 @@ class ReportController extends Controller
     public function liquidAssetMovements(object $ctx, ?Carbon $from, Carbon $to): Collection
     {
         $range = fn ($q, string $col) => $from ? $q->whereBetween($col, [$from, $to]) : $q->where($col, '<=', $to);
+        // $ctx->account_id: one ledger only (cashAvailable()).
+        $only = !empty($ctx->account_id) ? (int) $ctx->account_id : null;
 
         // Payments that move money: receipts in, payments out, supplier refunds in.
-        $payments = BranchController::scope(DB::table('payments as p'), 'p.branch_id')
+        $payments = self::ctxScope($ctx, DB::table('payments as p'), 'p.branch_id')
             ->leftJoin('parties as pa', function ($j) use ($ctx) {
                 $j->on('pa.id', '=', 'p.party_id')->where(fn ($w) => $w->whereNull('p.party_type')->orWhere('p.party_type', '<>', 'Employee'));
             })
@@ -2217,8 +2277,9 @@ class ReportController extends Controller
             ->leftJoin('bills as b', 'b.id', '=', 'p.bill_id')
             ->where('p.deleted', 'No')->where('p.status', 'Active')
             ->whereIn('p.payment_type', [...self::LIQUID_RECEIVE_TYPES, ...self::LIQUID_PAY_TYPES])
+            ->when($only, fn ($q) => $q->where('p.payment_method_account_id', $only))
             ->where(fn ($q) => $range($q, 'p.datetime'))
-            ->get(['p.id', 'p.datetime', 'p.code', 'p.payment_type', 'p.debit', 'p.credit', 'p.remarks', 'p.purchase_return_id',
+            ->get(['p.id', 'p.branch_id', 'p.datetime', 'p.code', 'p.payment_type', 'p.debit', 'p.credit', 'p.remarks', 'p.purchase_return_id',
                 'p.payment_method', 'p.payment_method_account_id', 'pa.name as party',
                 DB::raw('COALESCE(pr.return_no, so.order_no, pu.invoice_no, sa.invoice_no, b.bill_no) as reference')])
             ->map(function ($p) use ($ctx) {
@@ -2248,17 +2309,18 @@ class ReportController extends Controller
 
                 return (object) [
                     'key'      => $p->payment_method_account_id ? 'a:' . $p->payment_method_account_id : 'm:' . trim((string) $p->payment_method),
-                    'datetime' => $p->datetime, 'type' => $type, 'voucher' => $p->code, 'party' => $p->party,
+                    'datetime' => $p->datetime, 'type' => $type, 'voucher' => $p->code, 'party' => $p->party, 'branch_id' => $p->branch_id,
                     'reference' => $p->reference, 'remarks' => $p->remarks, 'in' => round($in, 2), 'out' => round($out, 2),
                 ];
             })->filter();
 
         // Expenses (salary is entered as an expense to the employee).
-        $expenses = BranchController::scope(DB::table('expenses as e'), 'e.branch_id')
+        $expenses = self::ctxScope($ctx, DB::table('expenses as e'), 'e.branch_id')
             ->leftJoin('employees as em', 'em.id', '=', 'e.employee_id')
             ->where('e.deleted', 'No')->whereNotNull('e.payment_account_id')
+            ->when($only, fn ($q) => $q->where('e.payment_account_id', $only))
             ->where(fn ($q) => $range($q, 'e.expense_date'))
-            ->get(['e.id', 'e.expense_no', 'e.expense_date', 'e.created_date', 'e.payment_account_id', 'e.total_amount', 'e.reference_no', 'e.remarks', 'em.name as employee']);
+            ->get(['e.id', 'e.branch_id', 'e.expense_no', 'e.expense_date', 'e.created_date', 'e.payment_account_id', 'e.total_amount', 'e.reference_no', 'e.remarks', 'em.name as employee']);
         $heads = DB::table('expense_details as d')->join('chart_of_accounts as a', 'a.id', '=', 'd.expense_account_id')
             ->whereIn('d.expense_id', $expenses->pluck('id')->all() ?: [0])->where('d.deleted', 'No')
             ->get(['d.expense_id', 'a.account_name'])->groupBy('expense_id');
@@ -2269,7 +2331,7 @@ class ReportController extends Controller
             return (object) [
                 'key' => 'a:' . $e->payment_account_id,
                 'datetime' => substr($e->expense_date, 0, 10) . ' ' . ($e->created_date ? substr($e->created_date, 11, 8) : '00:00:00'),
-                'type' => $salary ? 'Salary' : 'Expense', 'voucher' => $e->expense_no, 'party' => $e->employee,
+                'type' => $salary ? 'Salary' : 'Expense', 'voucher' => $e->expense_no, 'party' => $e->employee, 'branch_id' => $e->branch_id,
                 'reference' => $e->reference_no, 'remarks' => trim($names->implode(', ') . ($e->remarks ? ' · ' . $e->remarks : ''), ' ·'),
                 'in' => 0.0, 'out' => round((float) $e->total_amount, 2),
             ];
@@ -2277,71 +2339,104 @@ class ReportController extends Controller
 
         // Journal lines on liquid accounts.
         $when = "TIMESTAMP(j.journal_date, TIME(COALESCE(j.created_date, '00:00:00')))";
-        $journals = BranchController::scope(DB::table('journal_details as jd'), 'j.branch_id')
+        $journals = self::ctxScope($ctx, DB::table('journal_details as jd'), 'j.branch_id')
             ->join('journals as j', 'j.id', '=', 'jd.journal_id')
             ->join('chart_of_accounts as a', 'a.id', '=', 'jd.account_id')
             ->where('a.account_type', 'Liquid Asset')
+            ->when($only, fn ($q) => $q->where('jd.account_id', $only))
             ->where('j.deleted', 'No')->where('j.status', 'Active')->where('jd.deleted', 'No')->where('jd.status', 'Active')
             ->when($from, fn ($q) => $q->whereRaw("$when BETWEEN ? AND ?", [$from, $to]), fn ($q) => $q->whereRaw("$when <= ?", [$to]))
-            ->get(['jd.account_id', DB::raw("$when as datetime"), 'j.journal_no', 'j.reference_no', 'jd.debit', 'jd.credit',
+            ->get(['jd.account_id', 'j.branch_id', DB::raw("$when as datetime"), 'j.journal_no', 'j.reference_no', 'jd.debit', 'jd.credit',
                 DB::raw("COALESCE(NULLIF(jd.description, ''), j.remarks) as remarks")])
             ->map(fn ($j) => (object) [
-                'key' => 'a:' . $j->account_id, 'datetime' => $j->datetime, 'type' => 'Journal', 'voucher' => $j->journal_no,
+                'key' => 'a:' . $j->account_id, 'datetime' => $j->datetime, 'type' => 'Journal', 'voucher' => $j->journal_no, 'branch_id' => $j->branch_id,
                 'party' => null, 'reference' => $j->reference_no, 'remarks' => $j->remarks,
                 'in' => round((float) $j->debit, 2), 'out' => round((float) $j->credit, 2),
             ]);
 
         // Amount transfers: two lines.
         $when = "TIMESTAMP(t.transfer_date, TIME(COALESCE(t.created_date, '00:00:00')))";
-        $transfers = BranchController::scope(DB::table('internal_amount_transfers as t'), 't.branch_id')
+        $transfers = self::ctxScope($ctx, DB::table('internal_amount_transfers as t'), 't.branch_id')
             ->leftJoin('chart_of_accounts as fa', 'fa.id', '=', 't.from_account_id')
             ->leftJoin('chart_of_accounts as ta', 'ta.id', '=', 't.to_account_id')
             ->where('t.deleted', 'No')->where('t.status', 'Active')
+            ->when($only, fn ($q) => $q->where(fn ($w) => $w->where('t.from_account_id', $only)->orWhere('t.to_account_id', $only)))
             ->when($from, fn ($q) => $q->whereRaw("$when BETWEEN ? AND ?", [$from, $to]), fn ($q) => $q->whereRaw("$when <= ?", [$to]))
-            ->get(['t.from_account_id', 't.to_account_id', DB::raw("$when as datetime"), 't.transfer_no', 't.amount', 't.reference_no', 't.remarks',
+            ->get(['t.from_account_id', 't.to_account_id', 't.branch_id', DB::raw("$when as datetime"), 't.transfer_no', 't.amount', 't.reference_no', 't.remarks',
                 'fa.account_name as from_account', 'ta.account_name as to_account'])
             ->flatMap(fn ($t) => [
-                (object) ['key' => 'a:' . $t->from_account_id, 'datetime' => $t->datetime, 'type' => 'Amount Transfer', 'voucher' => $t->transfer_no,
+                (object) ['key' => 'a:' . $t->from_account_id, 'datetime' => $t->datetime, 'type' => 'Amount Transfer', 'voucher' => $t->transfer_no, 'branch_id' => $t->branch_id,
                     'party' => null, 'reference' => $t->reference_no, 'remarks' => trim('To ' . $t->to_account . ($t->remarks ? ' · ' . $t->remarks : '')),
                     'in' => 0.0, 'out' => round((float) $t->amount, 2)],
-                (object) ['key' => 'a:' . $t->to_account_id, 'datetime' => $t->datetime, 'type' => 'Amount Transfer', 'voucher' => $t->transfer_no,
+                (object) ['key' => 'a:' . $t->to_account_id, 'datetime' => $t->datetime, 'type' => 'Amount Transfer', 'voucher' => $t->transfer_no, 'branch_id' => $t->branch_id,
                     'party' => null, 'reference' => $t->reference_no, 'remarks' => trim('From ' . $t->from_account . ($t->remarks ? ' · ' . $t->remarks : '')),
                     'in' => round((float) $t->amount, 2), 'out' => 0.0],
             ]);
 
         // Salary paid from the salary sheet (cancelled payments are reversed, so left out).
-        $salaries = BranchController::scope(DB::table('salary_payments as s'), 's.branch_id')
+        $salaries = self::ctxScope($ctx, DB::table('salary_payments as s'), 's.branch_id')
             ->where('s.payment_status', 'Posted')
+            ->when($only, fn ($q) => $q->where('s.payment_account_id', $only))
             ->where(fn ($q) => $range($q, 's.payment_date'))
-            ->get(['s.payment_account_id', 's.payment_date', 's.created_date', 's.payment_no', 's.month', 's.employee_count', 's.total_paid', 's.remarks'])
+            ->get(['s.payment_account_id', 's.branch_id', 's.payment_date', 's.created_date', 's.payment_no', 's.month', 's.employee_count', 's.total_paid', 's.remarks'])
             ->map(fn ($s) => (object) [
                 'key' => 'a:' . $s->payment_account_id,
                 'datetime' => substr($s->payment_date, 0, 10) . ' ' . ($s->created_date ? substr($s->created_date, 11, 8) : '00:00:00'),
-                'type' => 'Salary', 'voucher' => $s->payment_no, 'party' => $s->employee_count . ' employee(s)',
+                'type' => 'Salary', 'voucher' => $s->payment_no, 'party' => $s->employee_count . ' employee(s)', 'branch_id' => $s->branch_id,
                 'reference' => Carbon::parse($s->month)->format('M Y'), 'remarks' => $s->remarks,
                 'in' => 0.0, 'out' => round((float) $s->total_paid, 2),
             ]);
 
         // Employee loans / advance salary: payout out, cash repayment in (cancelled payouts are reversed, so left out).
-        $loans = BranchController::scope(DB::table('employee_loan_transactions as t'), 'l.branch_id')
+        $loans = self::ctxScope($ctx, DB::table('employee_loan_transactions as t'), 'l.branch_id')
             ->join('employee_loans as l', 'l.id', '=', 't.employee_loan_id')
             ->join('employees as em', 'em.id', '=', 'l.employee_id')
             ->whereIn('t.txn_type', ['Disbursement', 'Cash Repayment'])->where('t.txn_status', 'Posted')
             ->whereNotNull('t.payment_account_id')
+            ->when($only, fn ($q) => $q->where('t.payment_account_id', $only))
             ->where(fn ($q) => $range($q, 't.txn_date'))
-            ->get(['t.payment_account_id', 't.txn_date', 't.created_date', 't.txn_type', 't.amount', 't.voucher_no', 't.remarks', 'l.loan_no', 'l.loan_type', 'em.name'])
+            ->get(['t.payment_account_id', 'l.branch_id', 't.txn_date', 't.created_date', 't.txn_type', 't.amount', 't.voucher_no', 't.remarks', 'l.loan_no', 'l.loan_type', 'em.name'])
             ->map(fn ($t) => (object) [
                 'key' => 'a:' . $t->payment_account_id,
                 'datetime' => substr($t->txn_date, 0, 10) . ' ' . ($t->created_date ? substr($t->created_date, 11, 8) : '00:00:00'),
-                'type' => $t->txn_type === 'Disbursement' ? 'Loan / Advance Paid' : 'Loan Repayment', 'voucher' => $t->voucher_no ?: $t->loan_no,
+                'type' => $t->txn_type === 'Disbursement' ? 'Loan / Advance Paid' : 'Loan Repayment', 'voucher' => $t->voucher_no ?: $t->loan_no, 'branch_id' => $t->branch_id,
                 'party' => $t->name, 'reference' => $t->loan_no, 'remarks' => trim($t->loan_type . ($t->remarks ? ' · ' . $t->remarks : '')),
                 'in' => $t->txn_type === 'Disbursement' ? 0.0 : round((float) $t->amount, 2),
                 'out' => $t->txn_type === 'Disbursement' ? round((float) $t->amount, 2) : 0.0,
             ]);
 
-        return $payments->concat($expenses)->concat($salaries)->concat($loans)->concat($journals)->concat($transfers)
-            ->map(function ($m) use ($ctx) {
+        // Suspense module: advances paid / returned, employee deposits, investor capital in / out (adjustments move no money).
+        $suspense = self::ctxScope($ctx, DB::table('suspense_transactions as su'), 'su.branch_id')
+            ->leftJoin('parties as spa', 'spa.id', '=', 'su.party_id')
+            ->leftJoin('employees as sem', 'sem.id', '=', 'su.employee_id')
+            ->where('su.deleted', 'No')->whereNotNull('su.account_id')->whereIn('su.txn_type', array_keys(SuspenseController::CASH_BOOK_TYPES))
+            ->when($only, fn ($q) => $q->where('su.account_id', $only))
+            ->where(fn ($q) => $range($q, 'su.txn_date'))
+            ->get(['su.account_id', 'su.branch_id', 'su.txn_date', 'su.created_date', 'su.txn_type', 'su.person_type', 'su.amount', 'su.voucher_no',
+                'su.reference', 'su.purpose', DB::raw("CASE WHEN su.person_type = 'Investor' THEN spa.name ELSE sem.name END AS person")])
+            ->map(function ($t) {
+                $out = SuspenseController::TYPES[$t->txn_type][3] === 'out';
+
+                return (object) [
+                    'key' => 'a:' . $t->account_id,
+                    'datetime' => substr($t->txn_date, 0, 10) . ' ' . ($t->created_date ? substr($t->created_date, 11, 8) : '00:00:00'),
+                    'type' => SuspenseController::CASH_BOOK_TYPES[$t->txn_type], 'voucher' => $t->voucher_no, 'branch_id' => $t->branch_id,
+                    'party' => $t->person, 'reference' => $t->reference,
+                    'remarks' => trim($t->person_type . ' ' . strtolower($t->txn_type) . ($t->purpose ? ' · ' . $t->purpose : '')),
+                    'in' => $out ? 0.0 : round((float) $t->amount, 2), 'out' => $out ? round((float) $t->amount, 2) : 0.0,
+                ];
+            });
+
+        $tagBranch = empty($ctx->branches) && BranchController::multiBranch();
+
+        return $payments->concat($expenses)->concat($salaries)->concat($loans)->concat($suspense)->concat($journals)->concat($transfers)
+            ->when($only, fn ($c) => $c->filter(fn ($m) => $m->key === 'a:' . $only))
+            ->map(function ($m) use ($ctx, $tagBranch) {
                 $m->datetime = (string) $m->datetime;
+                $m->branch = $tagBranch ? BranchController::label($m->branch_id ?? null) : '';
+                if ($m->branch !== '') {
+                    $m->party = trim(($m->party ? $m->party . ' · ' : '') . $m->branch);
+                }
                 if ($m->key === 'm:') {
                     $m->key = 'm:Unspecified';
                 }
@@ -2384,7 +2479,9 @@ class ReportController extends Controller
         $ctx->filters = $filters;
 
 
-        $employee = DB::table('employees')->where('id', (int) $ctx->filters['employee_id'])->first();
+        // only an employee of a branch the user sees (the id comes from the request)
+        $employee = BranchController::scope(DB::table('employees'), 'branch_id')->where('id', (int) $ctx->filters['employee_id'])->first();
+        abort_unless($employee, 404, 'Employee not found.');
 
         $history = DB::table('employee_salary_histories')
             ->where('employee_id', $employee->id)
@@ -2400,6 +2497,8 @@ class ReportController extends Controller
             'months'       => 0,
             'paid_total'     => 0.0,
             'expected_total' => 0.0,
+            'deducted_total' => 0.0,
+            'projected_total' => 0.0,
             'increments'   => 0,
             'filters_text' => [],
         ];
@@ -2426,42 +2525,68 @@ class ReportController extends Controller
             ->get(['p.month', 'p.run_no as payment_no', 'd.basic_salary', 'd.gross_salary', 'd.pf_amount'])
             ->keyBy(fn ($r) => substr($r->month, 0, 7));
 
-        $balance = 0.0;
+        // Deducted = PF frozen in a processed payroll run (the only PF that is really in the fund);
+        // Projected = months not processed yet, at the salary history's PF, pro-rated for the joining /
+        // leaving month exactly like PayrollRunController::monthLines(). The balance counts deducted PF only.
+        $joined = $employee->joining_date ? Carbon::parse($employee->joining_date)->startOfDay() : null;
+        $left   = $employee->resign_date ? Carbon::parse($employee->resign_date)->startOfDay() : null;
+        $projectedPf = function (Carbon $month, float $pf) use ($joined, $left): float {
+            $days  = $month->daysInMonth;
+            $start = $joined && $joined->gt($month) ? $joined : $month->copy()->startOfDay();
+            $end   = $left && $left->lt($month->copy()->endOfMonth()->startOfDay()) ? $left : $month->copy()->endOfMonth()->startOfDay();
+            $employed = max(0, (int) $start->diffInDays($end, false) + 1);
+
+            return $employed < $days ? round($pf * $employed / $days, 2) : $pf;
+        };
+
+        $balance = 0.0;      // deducted PF only
+        $before  = 0.0;      // deducted PF before the shown range (opening balance)
         $periods = [];
 
         for ($month = $first->copy(); $month->lte($to); $month->addMonth()) {
             $monthEnd = $month->copy()->endOfMonth()->toDateString();
             $entry = $history->filter(fn ($h) => $h->effective_date <= $monthEnd)->last();
             $p = $paid[$month->format('Y-m')] ?? null;
-            $pf = $p ? (float) $p->pf_amount : (float) $entry->pf_amount;
+            $pf = $p ? (float) $p->pf_amount : $projectedPf($month, (float) $entry->pf_amount);
 
             if ($month->lt($from)) {
-                $balance += $pf;   // before the shown range: goes into the opening balance
+                if ($p) {
+                    $before += $pf;   // before the shown range: deducted PF goes into the opening balance
+                }
                 continue;
             }
 
             if (!isset($periods[$entry->id])) {
-                $periods[$entry->id] = ['entry' => $entry, 'rows' => [], 'total' => 0.0];
+                $periods[$entry->id] = ['entry' => $entry, 'rows' => [], 'total' => 0.0, 'deducted' => 0.0, 'projected' => 0.0];
             }
 
-            $balance += $pf;
+            if ($p) {
+                $balance += $pf;
+            }
             $periods[$entry->id]['rows'][] = [
-                'month'   => $month->copy(),
-                'basic'   => $p ? (float) $p->basic_salary : (float) $entry->basic_salary,
-                'gross'   => $p ? (float) $p->gross_salary : (float) $entry->gross_salary,
-                'pf'      => $pf,
-                'balance' => round($balance, 2),
-                'source'  => $p ? $p->payment_no : null,   // null = not paid yet (expected PF)
+                'month'     => $month->copy(),
+                'basic'     => $p ? (float) $p->basic_salary : (float) $entry->basic_salary,
+                'gross'     => $p ? (float) $p->gross_salary : (float) $entry->gross_salary,
+                'pf'        => $pf,
+                'deducted'  => $p ? $pf : 0.0,
+                'projected' => $p ? 0.0 : $pf,
+                'balance'   => round($before + $balance, 2),
+                'source'    => $p ? $p->payment_no : null,   // run no.; null = not processed yet (projected PF)
             ];
-            $periods[$entry->id]['total'] += $pf;
-            $result['total'] += $pf;
+            $periods[$entry->id][$p ? 'deducted' : 'projected'] += $pf;
+            $periods[$entry->id]['total'] += $p ? $pf : 0.0;
             $result[$p ? 'paid_total' : 'expected_total'] += $pf;
             $result['months']++;
         }
 
-        $result['periods']    = array_values($periods);
-        $result['opening']    = round($balance - $result['total'], 2);
-        $result['closing']    = round($balance, 2);
+        $result['periods']        = array_values($periods);
+        $result['paid_total']     = round($result['paid_total'], 2);
+        $result['expected_total'] = round($result['expected_total'], 2);
+        $result['deducted_total'] = $result['paid_total'];
+        $result['projected_total'] = $result['expected_total'];
+        $result['total']          = $result['paid_total'];          // total PF in the fund for the period (deducted only)
+        $result['opening']        = round($before, 2);
+        $result['closing']        = round($before + $balance, 2);
         $result['increments'] = $history->where('reason', 'Annual increment')->count();
         $result['filters_text'] = [
             'Employee' => $employee->name . ' (' . $employee->employee_code . ')',
@@ -2549,6 +2674,28 @@ class ReportController extends Controller
             $rows[] = $l + ['item_id' => null, 'run_no' => null, 'paid_by' => [], 'paid_amount' => 0.0, 'due' => $l['net_payable'], 'state' => 'Not processed'];
         }
 
+        // Joined / left during the month: monthLines() deducts the days outside employment ("Not employed (n days)").
+        // The sheet shows that as a pro-rated gross next to the full gross instead of hiding it inside Deductions.
+        foreach ($rows as &$row) {
+            $off = 0.0;
+            $note = [];
+            $kept = [];
+            foreach ($row['deductions_detail'] as $d) {
+                if (empty($d['id']) && str_starts_with((string) ($d['name'] ?? ''), 'Not employed')) {
+                    $off += (float) $d['amount'];
+                    $note[] = trim($d['name'] . ' ' . ($d['remarks'] ?? ''));
+                } else {
+                    $kept[] = $d;
+                }
+            }
+            $row['prorate_off']       = round($off, 2);
+            $row['earned_gross']      = round($row['gross_salary'] - $off, 2);
+            $row['earned_note']       = implode('; ', $note);
+            $row['deductions']        = round($row['deductions'] - $off, 2);
+            $row['deductions_detail'] = $kept;
+        }
+        unset($row);
+
         // Department, then employee code.
         usort($rows, fn ($a, $b) => [$employees[$a['employee_id']]->department === null, $employees[$a['employee_id']]->department, $a['employee_code']]
             <=> [$employees[$b['employee_id']]->department === null, $employees[$b['employee_id']]->department, $b['employee_code']]);
@@ -2568,6 +2715,9 @@ class ReportController extends Controller
             ];
         } else {
             $columns['gross_salary'] = ['Contract Salary', true];
+        }
+        if ($any('prorate_off')) {
+            $columns['earned_gross'] = ['Pro-rated Gross', true];
         }
         foreach (['bonus_amount' => 'Bonus', 'additions' => 'Additions', 'deductions' => 'Deductions'] as $k => $label) {
             if ($any($k)) {
@@ -2622,6 +2772,9 @@ class ReportController extends Controller
                 . ($isScale ? ' (HR ' . (float) $settings->house_rent_percent . '%, Compensation ' . (float) $settings->compensation_percent . '%, Medical ' . (float) $settings->medical_percent . '% of basic)' : ''),
             'PF'        => $settings->pf_enabled === 'Yes' ? (float) $settings->pf_percent . '% of ' . ($isScale ? 'basic' : 'salary') : 'Not deducted',
         ];
+        if (isset($columns['earned_gross'])) {
+            $filtersText['Pro-rated'] = 'Joined / left during the month: gross for the days employed only (gross / ' . $month->daysInMonth . ' per day)';
+        }
         if (isset($columns['lwp_days'])) {
             $filtersText['Unpaid leave'] = 'Deducted at gross / ' . $month->daysInMonth . ' days per approved unpaid leave day';
         }
@@ -2643,7 +2796,7 @@ class ReportController extends Controller
             // For "Process Salary": employees not processed yet.
             'to_process'   => [
                 'count' => $unprocessed->count(),
-                'gross' => round($unprocessed->sum('gross_salary'), 2),
+                'gross' => round($unprocessed->sum('earned_gross'), 2),
                 'bonus' => round($unprocessed->sum('bonus_amount'), 2),
                 'additions' => round($unprocessed->sum('additions'), 2),
                 'deductions' => round($unprocessed->sum('deductions') + $unprocessed->sum('lwp_deduction'), 2),

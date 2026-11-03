@@ -74,12 +74,20 @@
                             <input type="date" id="as_at" name="as_at" class="form-control" value="{{ now()->toDateString() }}" max="{{ now()->toDateString() }}">
                         </div>
                         <div class="col-md-3">
+                            <label class="form-label" for="branch_id">Branch</label>
+                            <select id="branch_id" name="branch_id" class="form-select">
+                                <option value="">All branches</option>
+                                @foreach ($branches as $b)
+                                    <option value="{{ $b->id }}">{{ $b->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <div class="form-check form-switch mb-2">
                                 <input class="form-check-input" type="checkbox" id="hide_zero" checked>
                                 <label class="form-check-label" for="hide_zero">Hide zero balances</label>
                             </div>
                         </div>
-                        <div class="col-md-3"></div>
                     @endif
                     <div class="col-md-3 d-flex gap-2">
                         <button type="submit" class="btn btn-primary flex-fill" id="generateBtn">
@@ -139,6 +147,7 @@
                     p.compare = $('#compare').is(':checked') ? 1 : 0;
                 } else {
                     if ($('#as_at').val()) p.as_at = $('#as_at').val();
+                    if ($('#branch_id').val()) p.branch_id = $('#branch_id').val();
                     p.hide_zero = $('#hide_zero').is(':checked') ? 1 : 0;
                 }
                 return $.param(p);
@@ -214,7 +223,7 @@
 
         $(document).ready(function() {
             $('#filterForm').on('submit', function(e) { e.preventDefault(); Statement.load(); });
-            $('#compare, #hide_zero').on('change', function() { Statement.load(); });
+            $('#compare, #hide_zero, #branch_id').on('change', function() { Statement.load(); });
             $('.quick-range').on('click', function() { Statement.setRange($(this).data('range')); });
 
             $('#resetBtn').on('click', function() {
@@ -223,6 +232,7 @@
                     Statement.setRange('month');
                 } else {
                     $('#as_at').val(Voucher.todayLocal());
+                    $('#branch_id').val('');
                     $('#hide_zero').prop('checked', true);
                     Statement.load();
                 }

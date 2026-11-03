@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\AccountBalanceTrait;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
@@ -26,7 +27,7 @@ use Throwable;
  */
 class PayrollRunController extends Controller
 {
-    use AccountBalanceTrait, VoucherHelperTrait;
+    use AccountBalanceTrait, VoucherHelperTrait, SafeJsonErrors;
 
     /** Bonus scopes, most specific first: when one bonus type reaches an employee twice the more specific one wins. */
     public const SCOPES = ['Employee', 'Step', 'Grade', 'Department', 'All'];
@@ -35,12 +36,15 @@ class PayrollRunController extends Controller
      * Live salary lines of a month for every employee employed in it, keyed by employee id
      * (processed or not: callers drop the ones in processedIds()).
      */
-    public static function monthLines(Carbon $month, ?int $departmentId = null, bool $includeDefaultBonus = false, ?array $employeeIds = null): array
+    public static function monthLines(Carbon $month, ?int $departmentId = null, bool $includeDefaultBonus = false, ?array $employeeIds = null, bool $ownBranch = false): array
     {
         $month = $month->copy()->startOfMonth();
         $settings = PayrollSetupController::salarySettings();
 
-        $employees = BranchController::scope(DB::table('employees as e'), 'e.branch_id')
+        // Sheets read the branches the user sees; processing ($ownBranch) takes the working branch's employees only.
+        $employees = DB::table('employees as e');
+        $ownBranch ? BranchController::scopeOwn($employees, 'e.branch_id') : BranchController::scope($employees, 'e.branch_id');
+        $employees = $employees
             ->leftJoin('pay_steps as ps', 'ps.id', '=', 'e.step_id')
             ->leftJoin('pay_grades as pg', 'pg.id', '=', 'ps.pay_grade_id')
             ->where('e.deleted', 'No')->where('e.status', 'Active')
@@ -178,6 +182,26 @@ class PayrollRunController extends Controller
             ->pluck('i.employee_id')->all();
     }
 
+    /**
+     * Processed months of the logged-in branch that still have unpaid salary, oldest first:
+     * [month (Y-m), label, employees, due, url (salary sheet of that month with Pay Salary opened)].
+     */
+    public static function unpaidMonths(): array
+    {
+        return BranchController::scope(DB::table('payroll_run_items as i')->join('payroll_runs as r', 'r.id', '=', 'i.payroll_run_id'), 'r.branch_id')
+            ->where('r.run_status', 'Posted')->whereRaw('i.net_payable - i.paid_amount > 0.004')
+            ->groupBy('r.month')->orderBy('r.month')
+            ->selectRaw('r.month, COUNT(*) AS n, SUM(i.net_payable - i.paid_amount) AS due')
+            ->get()
+            ->map(fn ($r) => [
+                'month'     => substr($r->month, 0, 7),
+                'label'     => Carbon::parse($r->month)->format('F Y'),
+                'employees' => (int) $r->n,
+                'due'       => round((float) $r->due, 2),
+                'url'       => route('admin.reports.salary-sheet', ['month' => substr($r->month, 0, 7), 'pay' => 1]),
+            ])->all();
+    }
+
     /** Process (freeze and post) the month for every not-yet-processed employee of the sheet. */
     public function store(Request $request)
     {
@@ -201,8 +225,7 @@ class PayrollRunController extends Controller
         }
 
         try {
-            abort_if(BranchController::current() === null && count(BranchController::allowedIds()) > 1, 422,
-                'Choose one branch in the top bar before processing salary (each branch is processed on its own).');
+            abort_if(BranchController::current() === null, 422, 'Sign in to a branch before processing salary (each branch is processed on its own).');
 
             $run = DB::transaction(function () use ($request) {
                 $month = Carbon::createFromFormat('!Y-m', $request->input('month'));
@@ -212,7 +235,7 @@ class PayrollRunController extends Controller
                 DB::table('payroll_runs')->where('month', $month->toDateString())->lockForUpdate()->get(['id']);
 
                 $done = self::processedIds($month);
-                $lines = collect(self::monthLines($month, $deptId, $request->boolean('include_bonus')))
+                $lines = collect(self::monthLines($month, $deptId, $request->boolean('include_bonus'), null, true))
                     ->reject(fn ($l) => in_array($l['employee_id'], $done))
                     ->filter(fn ($l) => $l['gross_salary'] > 0 || $l['bonus_amount'] > 0 || $l['additions'] > 0)
                     ->values();
@@ -229,6 +252,8 @@ class PayrollRunController extends Controller
                 $pfAccount   = $request->input('pf_account_id') ? (int) $request->input('pf_account_id') : null;
                 $loanAccount = $request->input('loan_account_id') ? (int) $request->input('loan_account_id') : null;
                 abort_if($totals['pf'] > 0 && !$pfAccount, 422, 'Select the PF payable ledger: ' . number_format($totals['pf'], 2) . ' PF is deducted.');
+                abort_if($totals['pf'] > 0 && $pfAccount === (int) $request->input('payable_account_id'), 422,
+                    'Salary payable and PF payable cannot be the same ledger: select a separate PF payable ledger (e.g. "Provident Fund Payable").');
                 abort_if($totals['loan'] > 0 && !$loanAccount, 422, 'Select the employee loan ledger: ' . number_format($totals['loan'], 2) . ' is recovered from loans.');
 
                 $last = DB::table('payroll_runs')->lockForUpdate()->max('run_no');
@@ -306,7 +331,7 @@ class PayrollRunController extends Controller
                 ]);
 
                 return $run;
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json([
                 'status'  => true,
@@ -335,7 +360,8 @@ class PayrollRunController extends Controller
 
         try {
             $run = DB::transaction(function () use ($request, $id) {
-                $run = BranchController::scope(DB::table('payroll_runs'), 'branch_id')->where('id', $id)->lockForUpdate()->first();
+                BranchController::guardOwn('payroll_runs', $id);
+                $run = BranchController::scopeOwn(DB::table('payroll_runs'), 'branch_id')->where('id', $id)->lockForUpdate()->first();
                 abort_unless($run, 404, 'Processed salary not found.');
                 abort_unless($run->run_status === 'Posted', 422, 'This run is already reversed.');
                 abort_if(DB::table('salary_payments')->where('payroll_run_id', $id)->where('payment_status', 'Posted')->exists(), 422,
@@ -353,7 +379,7 @@ class PayrollRunController extends Controller
                 ]);
 
                 return $run;
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => $run->run_no . ' reversed. Those employees can be processed again.']);
         } catch (HttpExceptionInterface $e) {
@@ -373,7 +399,14 @@ class PayrollRunController extends Controller
 
         $runs = BranchController::scope(DB::table('payroll_runs as r'), 'r.branch_id')->leftJoin('departments as d', 'd.id', '=', 'r.department_id')
             ->where('r.month', $month->toDateString())->orderBy('r.id')
-            ->get(['r.id', 'r.run_no', 'r.run_date', 'r.employee_count', 'r.total_net', 'r.total_paid', 'r.run_status', 'd.name as department']);
+            ->get(['r.id', 'r.run_no', 'r.run_date', 'r.employee_count', 'r.total_net', 'r.total_paid', 'r.run_status', 'r.branch_id', 'd.name as department'])
+            ->map(function ($r) {
+                $r->branch = BranchController::label($r->branch_id);
+                // another branch's run is reversed only when signed in to that branch
+                $r->locked_tip = BranchController::owns($r->branch_id) ? null : 'Sign in to ' . BranchController::name((int) $r->branch_id) . ' to change this';
+
+                return $r;
+            });
 
         return response()->json(['status' => true, 'data' => $runs]);
     }

@@ -122,7 +122,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage(),
+                'message' => self::safeError($e),
                 'data' => []
             ], 500);
         }
@@ -159,7 +159,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Attribute category already exists.'
+                    'message' => 'Attribute type already exists.'
                 ]);
             }
 
@@ -199,7 +199,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => true,
-                'message' => 'Attribute category saved successfully.'
+                'message' => 'Attribute type saved successfully.'
             ]);
 
 
@@ -207,7 +207,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -233,7 +233,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Attribute category not found.'
+                    'message' => 'Attribute type not found.'
                 ]);
             }
 
@@ -248,7 +248,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -279,7 +279,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Attribute category not found.'
+                    'message' => 'Attribute type not found.'
                 ]);
             }
 
@@ -300,7 +300,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Another attribute category already has this name.'
+                    'message' => 'Another attribute type already has this name.'
                 ]);
             }
 
@@ -324,7 +324,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => true,
-                'message' => 'Attribute category updated successfully.'
+                'message' => 'Attribute type updated successfully.'
             ]);
 
 
@@ -332,7 +332,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -358,7 +358,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Attribute category not found.'
+                    'message' => 'Attribute type not found.'
                 ]);
             }
 
@@ -377,7 +377,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'This attribute category cannot be deleted because attributes are assigned to it.'
+                    'message' => 'This attribute type cannot be deleted because attributes are assigned to it.'
                 ]);
             }
 
@@ -401,7 +401,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => true,
-                'message' => 'Attribute category deleted successfully.'
+                'message' => 'Attribute type deleted successfully.'
             ]);
 
 
@@ -409,7 +409,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -435,7 +435,7 @@ class AttributeTypeController extends Controller
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Attribute category not found.'
+                    'message' => 'Attribute type not found.'
                 ]);
             }
 
@@ -471,7 +471,7 @@ class AttributeTypeController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }

@@ -194,7 +194,7 @@
                     '<input type="text" name="items[' + i + '][description]" class="form-control form-control-sm mt-1" maxlength="500" placeholder="Description (optional)" value="' + Voucher.esc(d.description || '') + '">' +
                     '<div class="text-danger small field-error"></div>' +
                 '</div></div></td>' +
-                '<td><input type="number" step="any" min="0" name="items[' + i + '][qty]" class="form-control form-control-sm text-end q-qty" value="' + (d.qty || 1) + '"><div class="text-danger small field-error"></div></td>' +
+                '<td><input type="number" step="any" min="0.001" name="items[' + i + '][qty]" class="form-control form-control-sm text-end q-qty" value="' + (d.qty || 1) + '"><div class="text-danger small field-error"></div></td>' +
                 '<td><input type="number" step="0.01" min="0" name="items[' + i + '][unit_price]" class="form-control form-control-sm text-end q-price" value="' + (d.unit_price || 0) + '">' +
                     (d.was !== undefined ? '<div class="q-was text-end" data-was="' + d.was + '"></div>' : '') + '<div class="text-danger small field-error"></div></td>' +
                 '<td><input type="number" step="0.01" min="0" name="items[' + i + '][discount]" class="form-control form-control-sm text-end q-disc" value="' + (parseFloat(d.discount) > 0 ? d.discount : '') + '" placeholder="0.00"><div class="text-danger small field-error"></div></td>' +
@@ -290,7 +290,9 @@
                     if (!item.product) return item.text;
                     return $('<div class="d-flex align-items-center gap-2">' + thumb(item.product.image) +
                         '<div><div>' + Voucher.esc(item.product.name) + '</div><div class="small text-muted">' + money(item.product.sale_price) +
-                        ' · stock ' + (parseFloat(item.product.current_stock) || 0) + '</div></div></div>');
+                        ' · stock ' + (parseFloat(item.product.current_stock) || 0) +
+                        (item.product.in_stock === false ? ' <span class="badge bg-danger-subtle text-danger-emphasis">Out of stock</span>' : '') +
+                        '</div></div></div>');
                 }
             }).on('select2:select', function(e) {
                 const p = e.params.data.product;
@@ -322,6 +324,20 @@
                 $('#form_error, #lines_error').text('');
                 if (!$('#lines .q-line').length) {
                     $('#lines_error').text('Add at least one product.');
+                    return;
+                }
+                // Quantity must be more than zero on every line (the server refuses it too).
+                let badQty = 0;
+                $('#lines .q-line').each(function() {
+                    const $q = $(this).find('.q-qty');
+                    const qty = parseFloat($q.val());
+                    const bad = !(qty > 0);
+                    $q.toggleClass('is-invalid', bad).next('.field-error').text(bad ? 'Quantity must be more than zero.' : '');
+                    if (bad) badQty++;
+                });
+                if (badQty) {
+                    $('#lines_error').text(badQty + (badQty === 1 ? ' line has' : ' lines have') + ' a quantity of zero or less. Enter a quantity more than zero.');
+                    $('#lines .q-qty.is-invalid').first().trigger('focus');
                     return;
                 }
                 const $btn = $('#saveBtn').prop('disabled', true);

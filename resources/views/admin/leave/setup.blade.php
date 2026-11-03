@@ -182,14 +182,21 @@
                         }
                         let html = '<table class="table table-bordered rules-table mb-0"><thead><tr><th>Group</th>' +
                             response.types.map(function(t) {
-                                return '<th class="text-center">' + Voucher.esc(t.name) + (t.is_paid === 'No' ? '<div class="small text-danger fw-normal">unpaid</div>' : '') + '</th>';
-                            }).join('') + '<th class="text-center">Total</th></tr></thead><tbody>';
+                                return '<th class="text-center">' + Voucher.esc(t.name) + (t.is_paid === 'No' ? '<div class="small text-danger fw-normal">unpaid · no quota needed</div>'
+                                    : (LeaveSetup.special(t) ? '<div class="small text-muted fw-normal">not in total</div>' : '')) + '</th>';
+                            }).join('') + '<th class="text-center" title="Paid leave days a year, without maternity / paternity and unpaid leave">Total</th></tr></thead><tbody>';
 
                         response.groups.forEach(function(g) {
                             html += '<tr data-group="' + g.id + '"><td class="fw-semibold">' + Voucher.esc(g.name) + '</td>';
                             response.types.forEach(function(t) {
                                 const v = response.values[g.id + '_' + t.id];
-                                html += '<td><input type="number" step="0.5" min="0" max="366" class="form-control form-control-sm text-end rule-day"' +
+                                if (t.is_paid === 'No') {
+                                    // Unpaid leave has no yearly quota: any number of days can be applied for and is deducted from salary.
+                                    html += '<td class="text-center text-muted small">No limit</td>';
+                                    return;
+                                }
+                                html += '<td><input type="number" step="0.5" min="0" max="366" class="form-control form-control-sm text-end rule-day' +
+                                    (LeaveSetup.special(t) ? ' rule-special' : '') + '"' +
                                     ' name="days[' + g.id + '][' + t.id + ']" value="' + (v === undefined ? '' : v) + '"></td>';
                             });
                             html += '<td class="text-end fw-bold row-total">0</td></tr>';
@@ -204,10 +211,13 @@
                 });
             },
 
+            // Maternity / paternity leave is a one-off entitlement, not part of the yearly leave total.
+            special: function(t) { return /maternity|paternity/i.test(t.name || ''); },
+
             totals: function() {
                 $('#rulesBody tr[data-group]').each(function() {
                     let sum = 0;
-                    $(this).find('.rule-day').each(function() { sum += parseFloat(this.value) || 0; });
+                    $(this).find('.rule-day').not('.rule-special').each(function() { sum += parseFloat(this.value) || 0; });
                     $(this).find('.row-total').text(sum);
                 });
             },

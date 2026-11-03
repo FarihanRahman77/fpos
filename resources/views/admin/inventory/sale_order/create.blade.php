@@ -196,9 +196,10 @@
                                 </tr>
 
                                 <tr>
-                                    <td colspan="5" class="text-end fw-bold">Due Amount</td>
+                                    <td colspan="5" class="text-end fw-bold">Left to pay on delivery</td>
                                     <td colspan="3">
                                         <input type="text" id="orderDueAmount" class="form-control" value="0.00" placeholder="0.00" readonly>
+                                        <div class="form-text">Saving the order charges the customer nothing. Each delivery becomes a sale invoice for what is delivered (plus VAT when VAT is on), and the advance is applied to those invoices.</div>
                                     </td>
                                 </tr>
 
@@ -257,8 +258,9 @@ function toNum(value) {
 }
 
 function escapeHtml(value) {
-    return $('<div>').text(value ?? '').html();
-}
+        // Escapes quotes too: the output also goes into attribute values.
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
 
 // Calculates subtotal / discount / total for one cart item
 function computeItem(item) {
@@ -745,8 +747,10 @@ $(document).ready(function () {
             return toNum(item.qty) <= 0;
         });
 
+        $('.orderQty').removeClass('is-invalid');
         if (invalid) {
             toastr.error('Quantity must be greater than 0 for "' + escapeHtml(invalid.product_name) + '".');   // toastr renders HTML
+            $('.orderQty[data-index="' + orderItems.indexOf(invalid) + '"]').addClass('is-invalid').trigger('focus');
             return;
         }
 

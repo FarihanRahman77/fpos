@@ -141,6 +141,7 @@
                                 <th>Normal Balance</th>
                                 <th class="text-end">Opening Balance</th>
                                 <th>Opening Date</th>
+                                <th class="text-end" title="Debit − credit from the posted transactions, as the Trial Balance shows it (today, branches you see)">Balance (from transactions)</th>
                                 <th>Status</th>
                                 <th data-orderable="false" data-searchable="false" width="12%">Action</th>
                             </tr>
@@ -219,6 +220,18 @@
                                     <option value="Inactive">Inactive</option>
                                 </select>
                                 <div class="text-danger small" id="status_error"></div>
+                            </div>
+
+                            <div class="col-md-6" id="branchGroup" style="display: none;">
+                                <label class="form-label" for="coa_branch_id">Branch</label>
+                                <select id="coa_branch_id" name="branch_id" class="form-select">
+                                    <option value="">All branches (shared)</option>
+                                    @foreach ($branches as $b)
+                                        <option value="{{ $b->id }}">{{ $b->name }}</option>
+                                    @endforeach
+                                </select>
+                                <div class="form-text">For a branch's own cash drawer or bank account — only that branch can use it.</div>
+                                <div class="text-danger small" id="branch_id_error"></div>
                             </div>
 
                             <div class="col-md-6">
@@ -365,7 +378,13 @@
             });
         }
 
+        // Only a 3rd layer cash / bank / mobile-banking ledger can belong to one branch.
+        function toggleBranch(type, layer) {
+            $('#branchGroup').toggle(type === 'Liquid Asset' && Number(layer) === 3);
+        }
+
         function resetPreview() {
+            toggleBranch('', 0);
             $('#account_code, #account_type, #normal_balance').val('');
             $('#coaHint').text('Select a parent account. The code, type and normal balance are generated automatically.');
         }
@@ -417,12 +436,14 @@
                     $('#account_status').val(a.status).prop('disabled', Number(a.layer_level) === 1);
                     $('#opening_balance').val(a.opening_balance);
                     $('#opening_balance_entry_datetime').val(a.opening_balance_entry_datetime);
+                    $('#coa_branch_id').val(a.branch_id || '');
+                    toggleBranch(a.account_type, a.layer_level);
 
                     $('#parentSelectGroup').hide();
                     $('#parentNameGroup').show();
 
                     $('#coaHint').text(
-                        a.layer_label + ' account.' +
+                        a.layer_label + ' account. Balance (from transactions): ' + a.balance_text + '.' +
                         (Number(a.layer_level) === 1 ? ' 1st layer accounts cannot be deactivated or deleted.' : '')
                     );
 
@@ -524,14 +545,14 @@
                 processing: true,
             });
 
-            /* ----- filters (column indexes: 3 layer, 4 type, 8 status) ----- */
+            /* ----- filters (column indexes: 3 layer, 4 type, 9 status) ----- */
             function columnFilter(col, value) {
                 coaTable.column(col).search(value ? '^' + $.fn.dataTable.util.escapeRegex(value) + '$' : '', true, false).draw();
             }
 
             $('#coaLayerFilter').on('change', function() { columnFilter(3, this.value); });
             $('#coaTypeFilter').on('change', function() { columnFilter(4, this.value); });
-            $('#coaStatusFilter').on('change', function() { columnFilter(8, this.value); });
+            $('#coaStatusFilter').on('change', function() { columnFilter(9, this.value); });
 
             $('#resetCoaFilters').on('click', function() {
                 $('#coaLayerFilter, #coaTypeFilter, #coaStatusFilter').val('');
@@ -581,6 +602,7 @@
                         $('#account_code').val(d.account_code);
                         $('#account_type').val(d.account_type);
                         $('#normal_balance').val(d.normal_balance);
+                        toggleBranch(d.account_type, d.layer_level);
                         $('#coaHint').text('This will create a ' + d.layer_label + ' account.');
                         $('#parent_id_error').text('');
                     },
@@ -613,6 +635,10 @@
 
                 if (!$('#account_status').prop('disabled')) {
                     data.status = $('#account_status').val();
+                }
+
+                if ($('#branchGroup').is(':visible')) {
+                    data.branch_id = $('#coa_branch_id').val();
                 }
 
                 if (!data.account_name) {

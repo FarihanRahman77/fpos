@@ -44,10 +44,40 @@
             <div class="card-body">
                 <div class="table-responsive">
                     <table class="table table-bordered exp-table mb-0">
-                        <thead><tr><th>Product</th><th>Batch</th><th>Branch</th><th>Mfg.</th><th>Expiry</th><th class="text-end">Qty</th><th class="text-end">Value</th></tr></thead>
-                        <tbody id="rows"><tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+                        <thead><tr><th>Product</th><th>Batch</th><th>Branch</th><th>Mfg.</th><th>Expiry</th><th class="text-end">Qty</th><th class="text-end">Value</th><th style="width: 60px;">Action</th></tr></thead>
+                        <tbody id="rows"><tr><td colspan="8" class="text-center text-muted py-4">Loading…</td></tr></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="expiryModal" tabindex="-1" aria-labelledby="expiryTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="expiryForm" autocomplete="off" novalidate>
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="expiryTitle">Edit batch dates</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="exp_id">
+                        <p class="text-muted small mb-3" id="expInfo"></p>
+                        <div class="mb-3">
+                            <label class="form-label" for="exp_expiry">Expiry date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="exp_expiry" name="expiry_date" required>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label" for="exp_mfg">Manufacture date</label>
+                            <input type="date" class="form-control" id="exp_mfg" name="manufacture_date">
+                        </div>
+                        <div class="text-danger small mt-2" id="exp_error"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary me-auto" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary" id="expSave">Save</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -56,6 +86,18 @@
 @push('scripts')
     <script>
         const esc = Voucher.esc, money = Voucher.money;
+        let batchRows = [];
+
+        function editExpiry(i) {
+            const b = batchRows[i];
+            if (!b) return;
+            $('#exp_id').val(b.id);
+            $('#exp_expiry').val(b.expiry_date || '');
+            $('#exp_mfg').val(b.manufacture_date || '');
+            $('#exp_error').text('');
+            $('#expInfo').text(b.product + (b.variant ? ' (' + b.variant + ')' : '') + ' · batch ' + b.batch_no);
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('expiryModal')).show();
+        }
 
         function load() {
             const days = $('#days').val() || 30;
@@ -70,7 +112,8 @@
                     $('#sumExpired').text(response.summary.expired);
                     $('#sumSoon').text(response.summary.soon);
                     $('#sumValue').text(money(response.summary.value));
-                    $('#rows').html(response.data.length ? response.data.map(function(b) {
+                    batchRows = response.data;
+                    $('#rows').html(response.data.length ? response.data.map(function(b, i) {
                         let pill;
                         if (b.days_left === null) pill = '<span class="exp-pill none">No expiry</span>';
                         else if (b.days_left < 0) pill = '<span class="exp-pill bad">Expired ' + (-b.days_left) + ' d ago</span>';
@@ -78,8 +121,9 @@
                         else pill = '<span class="exp-pill ok">' + b.days_left + ' d left</span>';
                         return '<tr><td>' + esc(b.product) + (b.variant ? ' (' + esc(b.variant) + ')' : '') + '</td><td class="fw-semibold">' + esc(b.batch_no) + '</td>' +
                             '<td>' + esc(b.branch) + '</td><td>' + esc(b.manufacture_date || '-') + '</td><td>' + esc(b.expiry_date || '-') + ' ' + pill + '</td>' +
-                            '<td class="text-end">' + parseFloat(parseFloat(b.qty).toFixed(3)) + '</td><td class="text-end">' + money(b.value) + '</td></tr>';
-                    }).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">No batches to show.</td></tr>');
+                            '<td class="text-end">' + parseFloat(parseFloat(b.qty).toFixed(3)) + '</td><td class="text-end">' + money(b.value) + '</td>' +
+                            '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="editExpiry(' + i + ')" title="Edit expiry" aria-label="Edit expiry of batch ' + esc(b.batch_no) + '"><i class="bi bi-calendar-event"></i></button></td></tr>';
+                    }).join('') : '<tr><td colspan="8" class="text-center text-muted py-4">No batches to show.</td></tr>');
                 },
                 error: function(xhr) {
                     // alert(JSON.stringify(xhr));
@@ -90,6 +134,29 @@
 
         $(document).ready(function() {
             $('#state, #days').on('change', load);
+            $('#expiryForm').on('submit', function(e) {
+                e.preventDefault();
+                $('#exp_error').text('');
+                if (!$('#exp_expiry').val()) { $('#exp_error').text('Enter the expiry date.'); return; }
+                $('#expSave').prop('disabled', true);
+                $.ajax({
+                    url: "{{ url('admin/stock/batches') }}/" + $('#exp_id').val() + '/expiry',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { _token: "{{ csrf_token() }}", expiry_date: $('#exp_expiry').val(), manufacture_date: $('#exp_mfg').val() },
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        toastr.success(response.message);
+                        bootstrap.Modal.getOrCreateInstance(document.getElementById('expiryModal')).hide();
+                        load();
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        $('#exp_error').text((xhr.responseJSON && xhr.responseJSON.message) || 'Unable to save.');
+                    },
+                    complete: function() { $('#expSave').prop('disabled', false); }
+                });
+            });
             load();
         });
     </script>

@@ -48,7 +48,9 @@ class BarcodeController extends Controller
             ->limit(30)
             ->get(['id', 'name', 'slug', 'sku', 'barcode', 'sale_price', 'image']);
 
-        $result = $products->map(fn($product) => $this->formatProduct($product));
+        // All variants of the found products in one query instead of one per product.
+        $variants = $this->variantRows($products->pluck('id')->all())->groupBy('product_id');
+        $result = $products->map(fn($product) => $this->formatProduct($product, $variants[$product->id] ?? collect()));
 
         return response()->json(['data' => $result]);
     }
@@ -65,16 +67,13 @@ class BarcodeController extends Controller
         return response()->json(['data' => $this->formatProduct($product)]);
     }
 
-    private function formatProduct(Product $product)
+    /** Active variants of the given products with their attribute labels. */
+    private function variantRows(array $productIds)
     {
-
-        $variantsTable  = (new ProductVariant())->getTable();
-        $attributeTable = (new ProductAttribute())->getTable();
-
-        $variants = DB::table("product_variants as pv")
+        return DB::table("product_variants as pv")
             ->leftJoin("attributes as pa", 'pv.attribute_id', '=', 'pa.id')
             ->leftJoin("attribute_types as patype", 'pv.attribute_type_id', '=', 'patype.id')
-            ->where('pv.product_id', $product->id)
+            ->whereIn('pv.product_id', $productIds ?: [0])
             ->where('pv.deleted', 'No')
             ->where('pv.status', 'Active')
             ->select([
@@ -85,7 +84,14 @@ class BarcodeController extends Controller
                 'patype.name as attribute_type_name', // TODO: confirm product_attributes' name column
                 'pa.name as attribute_name',
             ])
+            // Grouped by attribute type, then in the order the attributes were set up (S, M, L ... not L, M, S).
+            ->orderByRaw("COALESCE(patype.name, ''), COALESCE(pa.id, 0), pv.id")
             ->get();
+    }
+
+    private function formatProduct(Product $product, $variants = null)
+    {
+        $variants ??= $this->variantRows([$product->id]);
 
         return [
             'id'           => $product->id,

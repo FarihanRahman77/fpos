@@ -13,10 +13,12 @@
                 Roles
             </h4>
 
+        @perm('roles.create')
             <button type="button" class="btn btn-primary" id="addRoleBtn">
                 <i class="fa fa-plus"></i>
                 Add Role
             </button>
+        @endperm
 
         </div>
 

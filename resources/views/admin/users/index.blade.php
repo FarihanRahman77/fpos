@@ -15,6 +15,7 @@
             </p>
         </div>
 
+        @perm('users.create')
         <button type="button"
                 class="btn btn-primary"
                 id="addUserBtn">
@@ -23,6 +24,7 @@
             Add User
 
         </button>
+        @endperm
 
     </div>
 

@@ -118,6 +118,7 @@
                                     @foreach ($types as $t)<option value="{{ $t->id }}">{{ $t->name }}{{ $t->is_paid === 'No' ? ' (unpaid)' : '' }}</option>@endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
+                                <small class="text-muted" id="typeHint"></small>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label" for="from_date">From <span class="text-danger">*</span></label>
@@ -199,6 +200,8 @@
                 Voucher.refresh($('#leave_type_id').val(''));
                 $('#daysBox').text('0');
                 $('#balanceBox').empty();
+                $('#leave_type_id option').prop('disabled', false);
+                $('#typeHint').text('');
                 $('#leaveTitle').text(title);
             },
 
@@ -259,6 +262,26 @@
                 });
             },
 
+            // One preview request per edit: changes within 300 ms are combined, an older request is aborted.
+            previewTimer: null, previewXhr: null, previewSeq: 0,
+            schedulePreview: function() {
+                clearTimeout(Leave.previewTimer);
+                Leave.previewTimer = setTimeout(Leave.preview, 300);
+            },
+
+            // Leave types the employee may take (group rules, unpaid, gender); others are disabled in the list.
+            applyAllowed: function(allowed) {
+                const ok = (allowed || []).map(String);
+                const $sel = $('#leave_type_id');
+                $sel.find('option').each(function() {
+                    if (!this.value) return;
+                    $(this).prop('disabled', ok.indexOf(this.value) === -1);
+                });
+                if ($sel.val() && ok.indexOf(String($sel.val())) === -1) $sel.val('');
+                Voucher.refresh($sel);
+                $('#typeHint').text(ok.length ? '' : 'This employee has no leave type available — check the leave group on the Employees page.');
+            },
+
             // Days of the chosen period + the employee's balance for every leave type.
             preview: function() {
                 const employeeId = $('#employee_id').val();
@@ -266,7 +289,9 @@
                 $('#half_day').prop('disabled', !from || from !== $('#to_date').val());
                 if (!employeeId) return;
 
-                $.ajax({
+                if (Leave.previewXhr) Leave.previewXhr.abort();
+                const seq = ++Leave.previewSeq;
+                Leave.previewXhr = $.ajax({
                     url: "{{ route('admin.leave.preview') }}",
                     type: 'GET',
                     dataType: 'json',
@@ -276,6 +301,8 @@
                     },
                     success: function(response) {
                         // alert(JSON.stringify(response));
+                        if (seq !== Leave.previewSeq) return;
+                        if (response.allowed) Leave.applyAllowed(response.allowed);
                         $('#daysBox').text(response.days);
                         const typeId = String($('#leave_type_id').val());
                         const rows = response.balances.map(function(b) {
@@ -293,6 +320,7 @@
                     },
                     error: function(xhr) {
                         // alert(JSON.stringify(xhr));
+                        if (seq !== Leave.previewSeq || xhr.statusText === 'abort') return;
                         toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Something went wrong. Please try again.');
                     }
                 });
@@ -301,9 +329,11 @@
             decide: function(id, action) {
                 const titles = { approve: 'Approve this leave?', reject: 'Reject this leave?', cancel: 'Cancel this leave?' };
                 Swal.fire({
-                    title: titles[action], input: 'text', inputPlaceholder: 'Note (optional)', showCancelButton: true,
+                    title: titles[action], input: 'text',
+                    inputPlaceholder: action === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)', showCancelButton: true,
                     confirmButtonText: action.charAt(0).toUpperCase() + action.slice(1), reverseButtons: true,
-                    confirmButtonColor: action === 'approve' ? 'var(--color-success)' : 'var(--color-danger)'
+                    confirmButtonColor: action === 'approve' ? 'var(--color-success)' : 'var(--color-danger)',
+                    inputValidator: function(v) { return action === 'reject' && !$.trim(v || '') ? 'Write why the leave is rejected.' : null; }
                 }).then(function(r) {
                     if (!r.isConfirmed) return;
                     $.ajax({
@@ -370,7 +400,7 @@
             $('#from_date').on('change', function() {
                 if (!$('#to_date').val() || $('#to_date').val() < this.value) $('#to_date').val(this.value);
             });
-            $('#employee_id, #leave_type_id, #from_date, #to_date, #half_day').on('change', Leave.preview);
+            $('#employee_id, #leave_type_id, #from_date, #to_date, #half_day').on('change', Leave.schedulePreview);
 
             $('#leaveForm').on('submit', function(e) {
                 e.preventDefault();

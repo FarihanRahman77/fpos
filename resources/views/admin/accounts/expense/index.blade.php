@@ -181,7 +181,7 @@
                                 </div>
 
                                 <div class="col-md-5">
-                                    <label class="form-label" for="employee_id">Employee (expense made by)</label>
+                                    <label class="form-label" for="employee_id">Employee (expense made by) <span class="text-muted small">optional</span></label>
                                     <select name="employee_id" id="employee_id" class="form-select">
                                         <option value="">Select employee</option>
                                         @foreach ($employees as $employee)
@@ -231,10 +231,10 @@
                                     <thead>
                                         <tr>
                                             <th width="4%">#</th>
-                                            <th width="26%">Expense Group</th>
-                                            <th width="26%">Expense Account</th>
+                                            <th width="26%">Expense Group <span class="text-danger">*</span></th>
+                                            <th width="26%">Expense Account <span class="text-danger">*</span></th>
                                             <th>Description</th>
-                                            <th width="15%" class="text-end">Amount</th>
+                                            <th width="15%" class="text-end">Amount <span class="text-danger">*</span></th>
                                             <th width="4%"></th>
                                         </tr>
                                     </thead>

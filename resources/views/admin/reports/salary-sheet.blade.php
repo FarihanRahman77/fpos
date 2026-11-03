@@ -84,7 +84,7 @@
                 <form id="filterForm" class="row g-3 align-items-end" novalidate>
                     <div class="col-6 col-md-2">
                         <label class="form-label" for="month">Month <span class="text-danger">*</span></label>
-                        <input type="month" id="month" name="month" class="form-control" value="{{ now()->format('Y-m') }}">
+                        <input type="month" id="month" name="month" class="form-control" value="{{ $initialMonth }}">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label" for="department_id">Department</label>
@@ -169,7 +169,7 @@
                         <table class="table table-sm mb-3">
                             <tbody>
                                 <tr><td>Employees</td><td class="text-end" id="prCount">0</td></tr>
-                                <tr><td>Gross salary</td><td class="text-end" id="prGross">0.00</td></tr>
+                                <tr><td>Gross salary <span class="text-muted small">(pro-rated for joiners / leavers)</span></td><td class="text-end" id="prGross">0.00</td></tr>
                                 <tr><td>Bonus</td><td class="text-end" id="prBonus">0.00</td></tr>
                                 <tr><td>Additions</td><td class="text-end" id="prAdd">0.00</td></tr>
                                 <tr><td>Deductions &amp; unpaid leave</td><td class="text-end text-danger" id="prDed">0.00</td></tr>
@@ -189,7 +189,7 @@
                                 <select name="expense_account_id" id="expense_account_id" class="form-select">
                                     <option value="">Select expense ledger</option>
                                     @foreach ($expenseAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected($payroll->salary_expense_account_id == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['expense'] == $a->id)>{{ $a->account_name }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
@@ -199,7 +199,7 @@
                                 <select name="payable_account_id" id="payable_account_id" class="form-select">
                                     <option value="">Select liability ledger</option>
                                     @foreach ($liabilityAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected(($payroll->salary_payable_account_id ?? null) == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['payable'] == $a->id)>{{ $a->account_name }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
@@ -209,17 +209,18 @@
                                 <select name="pf_account_id" id="pf_account_id" class="form-select">
                                     <option value="">Select liability ledger</option>
                                     @foreach ($liabilityAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected($payroll->pf_account_id == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['pf'] == $a->id)>{{ $a->account_name }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
+                                <div class="text-warning small d-none" id="pfSameWarn">PF payable must be a different ledger from salary payable.</div>
                             </div>
                             <div class="col-md-6 pr-loan">
                                 <label class="form-label" for="loan_account_id">Employee Loan Ledger <span class="text-danger">*</span></label>
                                 <select name="loan_account_id" id="loan_account_id" class="form-select">
                                     <option value="">Select asset ledger</option>
                                     @foreach ($assetAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected(($payroll->loan_account_id ?? null) == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['loan'] == $a->id)>{{ $a->account_name }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
@@ -265,7 +266,7 @@
                                 <select name="payment_account_id" id="payment_account_id" class="form-select">
                                     <option value="">Select cash / bank / mobile banking</option>
                                     @foreach ($paymentAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected($payroll->salary_payment_account_id == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['payment'] == $a->id)>{{ $a->account_name }}{{ $a->group_name ? ' · ' . $a->group_name : '' }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
@@ -323,6 +324,7 @@
         const runsUrl = "{{ route('admin.payroll-runs.index') }}";
         const reverseUrl = "{{ route('admin.payroll-runs.reverse', '__ID__') }}";
         let toProcess = null, toPay = [];
+        let openPayOnLoad = @json((bool) $openPay);
 
         function filterQuery() {
             const params = {
@@ -356,9 +358,9 @@
                     $('#runsCard').toggleClass('d-none', runs.length === 0);
                     $('#runList').html(runs.map(function(r) {
                         const reversed = r.run_status !== 'Posted';
-                        const canReverse = !reversed && parseFloat(r.total_paid) === 0;
-                        return '<span class="run-chip ' + (reversed ? 'reversed' : '') + '" title="' + (reversed ? 'Reversed' : 'Posted ' + r.run_date) + '">' +
-                            '<b>' + Voucher.esc(r.run_no) + '</b> ' + Voucher.esc(r.department || 'All departments') + ' · ' + r.employee_count +
+                        const canReverse = !reversed && parseFloat(r.total_paid) === 0 && !r.locked_tip;
+                        return '<span class="run-chip ' + (reversed ? 'reversed' : '') + '" title="' + Voucher.esc(r.locked_tip || (reversed ? 'Reversed' : 'Posted ' + r.run_date)) + '">' +
+                            '<b>' + Voucher.esc(r.run_no) + '</b> ' + (r.branch ? Voucher.esc(r.branch) + ' · ' : '') + Voucher.esc(r.department || 'All departments') + ' · ' + r.employee_count +
                             ' emp · ' + Voucher.money(r.total_net) + (parseFloat(r.total_paid) > 0 ? ' · paid ' + Voucher.money(r.total_paid) : '') +
                             (canReverse ? ' <button type="button" class="btn btn-outline-danger run-reverse" data-id="' + r.id + '" data-no="' + Voucher.esc(r.run_no) + '">Reverse</button>' : '') +
                             '</span>';
@@ -401,6 +403,10 @@
                         .attr('title', toProcess && toProcess.count ? 'Process ' + toProcess.count + ' employee(s)' : 'Everyone is processed');
                     $('#payBtn').prop('disabled', toPay.length === 0)
                         .attr('title', toPay.length ? toPay.length + ' employee(s) have salary due' : 'Nothing due — process salary first');
+                    if (openPayOnLoad) {
+                        openPayOnLoad = false;
+                        if (toPay.length) $('#payBtn').trigger('click');
+                    }
                 },
                 error: function(xhr) {
                     // alert(JSON.stringify(xhr));
@@ -453,17 +459,46 @@
                 $('.pr-loan').toggleClass('d-none', !(toProcess.loan > 0));
                 Voucher.clearErrors($('#processForm'));
                 $('#process_error').text('');
+                pfSameLedger();
                 processModal.show();
             });
 
+            function pfSameLedger() {
+                const same = !$('.pr-pf').hasClass('d-none') && $('#pf_account_id').val() !== '' && $('#pf_account_id').val() === $('#payable_account_id').val();
+                $('#pfSameWarn').toggleClass('d-none', !same);
+                return same;
+            }
+            $('#pf_account_id, #payable_account_id').on('change', pfSameLedger);
+
             $('#processForm').on('submit', function(e) {
                 e.preventDefault();
+                if (pfSameLedger()) {
+                    $('#process_error').text('Salary payable and PF payable cannot be the same ledger.');
+                    return;
+                }
+                const form = this;
+                Swal.fire({
+                    title: 'Process ' + monthLabel() + ' salary?',
+                    html: '<div>' + toProcess.count + ' employee(s)' +
+                        ($('#department_id').val() ? ' of ' + Voucher.esc($('#department_id option:selected').text()) : '') + '</div>' +
+                        '<div class="fs-5 fw-semibold mt-1">Net payable ' + Voucher.money(toProcess.net) + '</div>' +
+                        '<div class="text-muted small mt-2">The month is frozen and posted to the ledgers. It can be reversed until a payment is made.</div>',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Process salary',
+                    cancelButtonText: 'Back'
+                }).then(function(r) {
+                    if (r.isConfirmed) submitProcess(form);
+                });
+            });
+
+            function submitProcess(form) {
                 const $btn = $('#processSubmit').prop('disabled', true).text('Processing...');
                 $.ajax({
                     url: "{{ route('admin.payroll-runs.store') }}",
                     type: 'POST',
                     dataType: 'json',
-                    data: $(this).serialize() + '&' + filterQuery(),
+                    data: $(form).serialize() + '&' + filterQuery(),
                     success: function(response) {
                         // alert(JSON.stringify(response));
                         toastr.success(response.message);
@@ -482,7 +517,7 @@
                     },
                     complete: function() { $btn.prop('disabled', false).text('Process'); }
                 });
-            });
+            }
 
             $(document).on('click', '.run-reverse', function() {
                 const id = $(this).data('id'), no = $(this).data('no');

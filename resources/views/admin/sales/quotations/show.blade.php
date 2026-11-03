@@ -56,6 +56,7 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
             <div>
                 <h4 class="mb-0">{{ $quotation->quotation_no }} {!! \App\Http\Controllers\Admin\SaleQuotationController::statusBadge($quotation->quotation_status) !!}</h4>
+                {!! $convertedLink !!}
                 <small class="text-muted">
                     Revision {{ $quotation->revision_no }} · for
                     <a href="{{ route('admin.quotations.customer', $quotation->customer_id) }}">{{ $quotation->customer_name }}</a>
@@ -63,6 +64,10 @@
                 </small>
             </div>
             <div class="ms-auto d-flex flex-wrap gap-2">
+                @if ($quotation->quotation_status === 'Accepted')
+                    <button type="button" class="btn btn-success" onclick="QuoteConvert.open('sale')"><i class="fas fa-receipt"></i> Convert to Sale</button>
+                    <button type="button" class="btn btn-outline-success" onclick="QuoteConvert.open('order')"><i class="fas fa-truck"></i> Convert to Sale Order</button>
+                @endif
                 <a href="{{ route('admin.quotations.edit', $quotation->id) }}" class="btn btn-outline-primary"><i class="fas fa-tags"></i> Re-price</a>
                 <a href="{{ route('admin.quotations.pdf', $quotation->id) }}" target="_blank" class="btn btn-outline-secondary"><i class="fas fa-file-pdf"></i> PDF</a>
                 <button type="button" class="btn btn-outline-success" onclick="Quote.share({{ $quotation->id }})"><i class="fab fa-whatsapp"></i> WhatsApp</button>
@@ -71,7 +76,7 @@
                     <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
                     <ul class="dropdown-menu dropdown-menu-end">
                         @foreach (['Accepted' => 'fa-check text-success', 'Rejected' => 'fa-times text-danger', 'Sent' => 'fa-paper-plane', 'Draft' => 'fa-pen', 'Expired' => 'fa-hourglass-end'] as $s => $icon)
-                            @if ($s !== $quotation->quotation_status)
+                            @if ($s !== $quotation->quotation_status && $quotation->quotation_status !== 'Converted')
                                 <li><a class="dropdown-item" href="javascript:void(0)" onclick="Quote.setStatus({{ $quotation->id }}, '{{ $s }}')"><i class="fas {{ $icon }} me-2"></i>Mark {{ $s }}</a></li>
                             @endif
                         @endforeach
@@ -250,4 +255,138 @@
     </div>
 
     @include('admin.sales.quotations.partials.send-modal')
+
+    {{-- Convert an accepted quotation to a sale (now) or a sale order (delivered later). --}}
+    <div class="modal fade" id="convertModal" tabindex="-1" aria-labelledby="convertTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="convertForm" autocomplete="off">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="convertTitle">Convert {{ $quotation->quotation_no }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="kind" id="convert_kind" value="sale">
+                        <p class="text-muted small mb-3" id="convert_help"></p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="convert_date"><span class="convert-date-label">Sale date</span> <span class="text-danger">*</span></label>
+                                <input type="date" name="date" id="convert_date" class="form-control" value="{{ date('Y-m-d') }}">
+                            </div>
+                            <div class="col-md-6 convert-order-only">
+                                <label class="form-label" for="convert_delivery">Delivery date</label>
+                                <input type="date" name="delivery_date" id="convert_delivery" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="convert_total">Total (as quoted)</label>
+                                <input type="text" id="convert_total" class="form-control" value="{{ number_format((float) $quotation->grand_total, 2, '.', '') }}" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="convert_paid"><span class="convert-paid-label">Paid now</span></label>
+                                <input type="number" step="0.01" min="0" max="{{ (float) $quotation->grand_total }}" name="paid_amount" id="convert_paid" class="form-control" value="0">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="convert_method">Payment method</label>
+                                <select name="payment_method" id="convert_method" class="form-select">
+                                    <option value="">Select method</option>
+                                    @foreach ($payMethods as $pm)
+                                        <option value="{{ $pm->id }}">{{ $pm->account_name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="convert_account">Payment account</label>
+                                <select name="payment_method_account" id="convert_account" class="form-select">
+                                    <option value="">Select method first</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="convert_remarks">Remarks</label>
+                                <input type="text" name="remarks" id="convert_remarks" class="form-control" maxlength="500">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-success" id="convertSubmit">Convert</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 @endsection
+
+@push('scripts')
+    <script>
+        const QuoteConvert = {
+            open: function(kind) {
+                const isOrder = kind === 'order';
+                $('#convert_kind').val(kind);
+                $('#convertTitle').text(isOrder ? 'Convert {{ $quotation->quotation_no }} to a Sale Order' : 'Convert {{ $quotation->quotation_no }} to a Sale');
+                $('#convert_help').text(isOrder
+                    ? 'Creates a sale order with the quoted lines, prices, discounts and VAT. Each delivery later becomes a sale invoice; an advance taken now is applied to those invoices.'
+                    : 'Creates a wholesale sale now with the quoted lines, prices, discounts and VAT, and takes the goods out of stock. Anything not paid now is the customer due.');
+                $('.convert-date-label').text(isOrder ? 'Order date' : 'Sale date');
+                $('.convert-paid-label').text(isOrder ? 'Advance received' : 'Paid now');
+                $('.convert-order-only').toggle(isOrder);
+                $('#convertSubmit').text(isOrder ? 'Create Sale Order' : 'Create Sale');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('convertModal')).show();
+            }
+        };
+
+        $(document).ready(function() {
+            $('#convert_method').on('change', function() {
+                const $account = $('#convert_account');
+                if (!$(this).val()) {
+                    $account.html('<option value="">Select method first</option>');
+                    return;
+                }
+                $.ajax({
+                    url: "{{ route('admin.getCoaChilds') }}",
+                    type: 'GET',
+                    dataType: 'html',
+                    data: { parent_id: $(this).val() },
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        $account.html(response);
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error('Could not load payment accounts.');
+                    }
+                });
+            });
+
+            $('#convertForm').on('submit', function(e) {
+                e.preventDefault();
+                const $btn = $('#convertSubmit').prop('disabled', true);
+                $.ajax({
+                    url: "{{ route('admin.quotations.convert', $quotation->id) }}",
+                    type: 'POST',
+                    dataType: 'json',
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        if (response.status) {
+                            toastr.success(response.message);
+                            if (response.pdf_url) window.open(response.pdf_url, '_blank');
+                            window.location.href = response.redirect;
+                        } else {
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Unable to convert the quotation.');
+                    },
+                    complete: function() { $btn.prop('disabled', false); }
+                });
+            });
+
+            @if ($quotation->quotation_status === 'Accepted' && in_array(request('convert'), ['sale', 'order'], true))
+                QuoteConvert.open(@json(request('convert')));
+            @endif
+        });
+    </script>
+@endpush
+

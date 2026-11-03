@@ -75,7 +75,9 @@ class SaleController extends Controller
             ->get();
         $coa=ChartOfAccount::where('slug','liquid-asset')->where('deleted','No')->first();
         $childCoas=ChartOfAccount::where('deleted','No')->where('parent_id',$coa->id)->get();
-        return view('admin.inventory.sale.create', compact('sale_type', 'party_type', 'customers', 'products','childCoas'));
+        $programs = self::salePrograms();
+
+        return view('admin.inventory.sale.create', compact('sale_type', 'party_type', 'customers', 'products', 'childCoas', 'programs'));
     }
 
     /*
@@ -122,6 +124,7 @@ class SaleController extends Controller
             )
             ->where('p.deleted', 'No')
             ->where('p.status', 'Active')
+            ->orderByRaw('COALESCE(stock_data.current_stock, 0) > 0 DESC')   // in stock first, out of stock at the bottom
             ->orderBy('p.name')
             ->get()
             ->map(function ($product) {
@@ -157,13 +160,7 @@ class SaleController extends Controller
             ? ChartOfAccount::where('deleted', 'No')->where('parent_id', $coa->id)->get()
             : collect();
 
-        $programs = [
-            'vat_enabled'   => CustomerProgramController::on('vat_enabled'),
-            'vat_rate'      => (float) CustomerProgramController::setting('vat_rate'),
-            'vat_inclusive' => CustomerProgramController::on('vat_inclusive'),
-            'loyalty'       => CustomerProgramController::on('loyalty_enabled'),
-            'credit_mode'   => CustomerProgramController::setting('credit_mode'),
-        ];
+        $programs = self::salePrograms();
 
         return view('admin.inventory.sale.pos', compact('products', 'categories', 'brands', 'variantBarcodes', 'childCoas', 'programs'));
     }
@@ -181,8 +178,12 @@ class SaleController extends Controller
             $query = BranchController::scope(DB::table('sales'), 'sales.branch_id')
                 ->leftJoin('parties', 'parties.id', '=', 'sales.customer_id')
                 ->leftJoin('chart_of_accounts', 'chart_of_accounts.id', '=', 'sales.payment_method_account')
+                ->leftJoin('sale_orders', 'sale_orders.id', '=', 'sales.sale_order_id')
+                ->leftJoin('sale_quotations', 'sale_quotations.id', '=', 'sales.sale_quotation_id')
                 ->select(
                     'sales.*',
+                    'sale_orders.order_no',
+                    'sale_quotations.quotation_no',
                     'parties.name as customer_name',
                     'parties.phone as customer_phone',
                     'chart_of_accounts.account_name'
@@ -211,7 +212,9 @@ class SaleController extends Controller
                 $html .= '
                 <tr>
                     <td>' . ($index + 1) . '</td>
-                    <td><strong class="text-primary">' . e($row->invoice_no) . '</strong></td>
+                    <td><strong class="text-primary">' . e($row->invoice_no) . '</strong>'
+                        . ($row->order_no ? '<br><small class="text-muted">Order ' . e($row->order_no) . '</small>' : '')
+                        . ($row->quotation_no ? '<br><small class="text-muted">Quote ' . e($row->quotation_no) . '</small>' : '') . branch_tag($row->branch_id) . '</td>
                     <td>' . e($row->sale_date ?? '') . '</td>
                     <td>
                         <strong>' . e($row->customer_name ?? 'Walk-In Customer') . '</strong>' .
@@ -228,7 +231,7 @@ class SaleController extends Controller
                         ['label' => 'Sale Return', 'icon' => 'fas fa-undo', 'href' => $returnUrl],
                         ['divider' => true],
                         ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteSaleBtn', 'attrs' => ['data-id' => $row->id]],
-                    ]) . '</td>
+                    ], $row->branch_id) . '</td>
                 </tr>';
             }
 
@@ -239,7 +242,7 @@ class SaleController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'status'  => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -276,7 +279,7 @@ class SaleController extends Controller
                 'message' => 'New Customer'
             ]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -298,10 +301,11 @@ class SaleController extends Controller
             return response()->json([
                 'status'   => true,
                 'customer' => $customer,
-                'due'      => number_format((float) $due, 2, '.', '')
+                'due'      => number_format((float) $due, 2, '.', ''),
+                'programs' => CustomerProgramController::customerInfo((int) $customer->id),
             ]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -314,29 +318,37 @@ class SaleController extends Controller
     {
         try {
             $search = trim((string) $request->input('search', ''));
+            $like = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $search);
 
-            $products = Product::where('deleted', 'No')
-                ->where('status', 'Active')
-                ->when($search != '', function ($query) use ($search) {
-                    $query->where(function ($q) use ($search) {
-                        $q->where('name', 'like', '%' . $search . '%')
-                            ->orWhere('sku', 'like', '%' . $search . '%')
-                            ->orWhere('barcode', 'like', '%' . $search . '%');
+            // This branch's on-hand per product (all variants together).
+            $stock = DB::table('stocks')->where('branch_id', BranchController::activeId())->where('deleted', 'No')
+                ->groupBy('product_id')->selectRaw('product_id, SUM(in_qty) - SUM(out_qty) AS qty');
+
+            // Best matches first: exact SKU / barcode, name starts with the text, a word starts with it, then
+            // anywhere; within each, products in stock before those out of stock.
+            $products = Product::where('products.deleted', 'No')
+                ->where('products.status', 'Active')
+                ->leftJoinSub($stock, 'st', 'st.product_id', '=', 'products.id')
+                ->when($search != '', function ($query) use ($like) {
+                    $query->where(function ($q) use ($like) {
+                        $q->where('products.name', 'like', '%' . $like . '%')
+                            ->orWhere('products.sku', 'like', '%' . $like . '%')
+                            ->orWhere('products.barcode', 'like', '%' . $like . '%');
                     });
                 })
-                ->orderBy('name')
+                ->when($search != '', fn ($q) => $q->orderByRaw(
+                    'CASE WHEN products.sku = ? OR products.barcode = ? THEN 0 WHEN products.name LIKE ? THEN 1 WHEN products.name LIKE ? THEN 2 ELSE 3 END',
+                    [$search, $search, $like . '%', '% ' . $like . '%']
+                ))
+                ->orderByRaw('CASE WHEN COALESCE(st.qty, 0) > 0 THEN 0 ELSE 1 END')
+                ->orderBy('products.name')
                 ->limit(30)
-                ->get();
+                ->get(['products.*', DB::raw('COALESCE(st.qty, 0) AS stock_qty')]);
 
-            // Attach current stock
             foreach ($products as $product) {
-                $stock = DB::table('stocks')->where('branch_id', BranchController::activeId())
-                    ->where('product_id', $product->id)
-                    ->where('deleted', 'No')
-                    ->selectRaw('COALESCE(SUM(in_qty) - SUM(out_qty), 0) as current_stock')
-                    ->value('current_stock');
-
-                $product->current_stock = (float) ($stock ?? 0);
+                $product->current_stock = round((float) $product->stock_qty, 4);
+                $product->in_stock = $product->current_stock > 0;
+                unset($product->stock_qty);
             }
 
             return response()->json([
@@ -344,7 +356,7 @@ class SaleController extends Controller
                 'products' => $products
             ]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -407,7 +419,7 @@ class SaleController extends Controller
                 'variants' => $variants
             ]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -478,8 +490,11 @@ class SaleController extends Controller
             'payment_method_account' => [
                 'nullable',
                 'integer',
-                'exists:chart_of_accounts,id'
+                'exists:chart_of_accounts,id',
+                BranchController::ownLedgerRule(),
             ],
+
+            'sale_quotation_id' => ['nullable', 'integer'],
 
             'items' => 'required|array|min:1',
 
@@ -565,251 +580,296 @@ class SaleController extends Controller
 
         $items = $request->input('items', []);
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request, $sale_type, $items) {
+            DB::beginTransaction();
 
-        try {
-            // Customer Resolution
-            $customerId = null;
-            if ($sale_type === 'Wholesale') {
-                $customerId = $request->customer_id;
-            } else {
-                // Walk-In: check if exists by phone, or create new WIC
-                $phone = trim($request->customer_phone);
-                $existingParty = $this->customerByPhoneNumber($phone);
+            try {
+                // No overselling: every line must fit the logged-in branch's on-hand stock. The product rows are locked
+                // first (in id order, so two tills never deadlock), which makes a second cashier selling the same
+                // product wait until this sale has committed its stock rows and then see the reduced stock.
+                // The lock must be the transaction's first query: under REPEATABLE READ the snapshot the stock sums
+                // read is taken at the first plain read, which therefore has to come after the wait.
+                $lockedProducts = Product::whereIn('id', array_unique(array_map('intval', array_column($items, 'product_id'))))
+                    ->orderBy('id')->lockForUpdate()->get(['id', 'name'])->keyBy('id');
+                $branchId = (int) BranchController::activeId();
+                $wantedQty = [];
+                foreach ($items as $item) {
+                    $variantId = !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : 0;
+                    $key = (int) $item['product_id'] . ':' . $variantId;
+                    $wantedQty[$key] = ($wantedQty[$key] ?? 0) + (float) $item['qty'];
+                }
+                foreach ($wantedQty as $key => $qtyWanted) {
+                    [$productId, $variantId] = array_map('intval', explode(':', $key));
+                    $available = StockController::onHand($productId, $variantId ?: null, $branchId);
+                    if ($qtyWanted > $available + 0.0005) {
+                        $name = $lockedProducts[$productId]->name ?? ('Product #' . $productId);
+                        if ($variantId) {
+                            $variantName = DB::table('product_variants')->leftJoin('attributes', 'attributes.id', '=', 'product_variants.attribute_id')
+                                ->where('product_variants.id', $variantId)->value('attributes.name');
+                            $name .= $variantName ? ' (' . $variantName . ')' : '';
+                        }
+                        DB::rollBack();
 
-                if ($existingParty) {
-                    $customerId = $existingParty->id;
-                    // Update name/address if previously blank
-                    if (!empty($request->customer_name) && $existingParty->name === 'Walk-In Customer') {
-                        $existingParty->name = $request->customer_name;
-                        $existingParty->save();
+                        return response()->json([
+                            'status'  => false,
+                            'message' => 'Not enough stock for "' . $name . '". Available: ' . round(max(0, $available), 3) . ', required: ' . round($qtyWanted, 3) . '.',
+                        ], 422);
                     }
+                }
+
+                // Customer Resolution
+                $customerId = null;
+                if ($sale_type === 'Wholesale') {
+                    $customerId = $request->customer_id;
                 } else {
-                    $newParty = new Party();
-                    $newParty->code         = $this->generatePartyCode('Walk-In Customer');
-                    $newParty->type         = 'Walk-In Customer';
-                    $newParty->name         = $request->customer_name ?: 'Walk-In Customer';
-                    $newParty->phone        = $phone;
-                    $newParty->address      = $request->customer_address ?: 'Walk-In';
-                    $newParty->status       = 'Active';
-                    $newParty->deleted      = 'No';
-                    $newParty->created_by   = auth()->id();
-                    $newParty->created_date = now();
-                    $newParty->save();
-                    $customerId = $newParty->id;
+                    // Walk-In: check if exists by phone, or create new WIC
+                    $phone = trim($request->customer_phone);
+                    $existingParty = $this->customerByPhoneNumber($phone);
+
+                    if ($existingParty) {
+                        $customerId = $existingParty->id;
+                        // Update name/address if previously blank
+                        if (!empty($request->customer_name) && $existingParty->name === 'Walk-In Customer') {
+                            $existingParty->name = $request->customer_name;
+                            $existingParty->save();
+                        }
+                    } else {
+                        $newParty = new Party();
+                        $newParty->code         = $this->generatePartyCode('Walk-In Customer');
+                        $newParty->type         = 'Walk-In Customer';
+                        $newParty->name         = $request->customer_name ?: 'Walk-In Customer';
+                        $newParty->phone        = $phone;
+                        $newParty->address      = $request->customer_address ?: 'Walk-In';
+                        $newParty->status       = 'Active';
+                        $newParty->deleted      = 'No';
+                        $newParty->created_by   = auth()->id();
+                        $newParty->created_date = now();
+                        $newParty->save();
+                        $customerId = $newParty->id;
+                    }
                 }
-            }
 
-            $items = $request->input('items', []);
-            $subtotal = 0;
+                $items = $request->input('items', []);
+                $subtotal = 0;
 
-            // Calculate Item Totals
-            foreach ($items as $item) {
-                $qty = (float) $item['qty'];
-                $price = (float) $item['sale_price'];
-                $itemSub = $qty * $price;
+                // Calculate Item Totals
+                foreach ($items as $item) {
+                    $qty = (float) $item['qty'];
+                    $price = (float) $item['sale_price'];
+                    $itemSub = $qty * $price;
 
-                $dType = $item['discount_type'] ?? 'Amount';
-                $dVal  = (float) ($item['discount_value'] ?? 0);
-                $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
-                if ($itemDisc > $itemSub) $itemDisc = $itemSub;
+                    $dType = $item['discount_type'] ?? 'Amount';
+                    $dVal  = (float) ($item['discount_value'] ?? 0);
+                    $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
+                    if ($itemDisc > $itemSub) $itemDisc = $itemSub;
 
-                $subtotal += ($itemSub - $itemDisc);
-            }
-
-            // Header Discount
-            $discountType  = $request->discount_type ?? 'Amount';
-            $discountValue = (float) ($request->discount_value ?? 0);
-            $discountAmount = ($discountType === 'Percentage') ? ($subtotal * $discountValue) / 100 : $discountValue;
-            if ($discountAmount > $subtotal) $discountAmount = $subtotal;
-
-            $grandTotal = $subtotal - $discountAmount;
-
-            // VAT on the lines after the sale discount: added on top, or already inside the prices.
-            $vatLines = [];
-            foreach ($items as $i => $item) {
-                $lineSub = (float) $item['qty'] * (float) $item['sale_price'];
-                $lineDisc = ($item['discount_type'] ?? 'Amount') === 'Percentage' ? $lineSub * (float) ($item['discount_value'] ?? 0) / 100 : (float) ($item['discount_value'] ?? 0);
-                $vatLines[$i] = ['product_id' => $item['product_id'], 'total' => $lineSub - min($lineDisc, $lineSub)];
-            }
-            $vat = CustomerProgramController::vat($vatLines, $discountAmount);
-            if (!$vat['inclusive']) {
-                $grandTotal += $vat['amount'];
-            }
-
-            // Loyalty points redeemed as money off.
-            [$pointsUsed, $loyaltyDiscount] = $request->filled('redeem_points')
-                ? CustomerProgramController::redeemValue((int) $customerId, (float) $request->input('redeem_points'), $grandTotal)
-                : [0.0, 0.0];
-            $grandTotal -= $loyaltyDiscount;
-
-            $paidAmount = (float) ($request->paid_amount ?? 0);
-            if ($paidAmount > $grandTotal) $paidAmount = $grandTotal;
-            $dueAmount = $grandTotal - $paidAmount;
-
-            // Credit limit: block (or only warn, per Customer Programs settings).
-            if ($creditProblem = CustomerProgramController::creditCheck((int) $customerId, $dueAmount)) {
-                if (CustomerProgramController::setting('credit_mode') === 'block') {
-                    DB::rollBack();
-
-                    return response()->json(['status' => false, 'message' => $creditProblem . ' Collect more payment or raise the limit.'], 422);
+                    $subtotal += ($itemSub - $itemDisc);
                 }
-            }
 
-            // Generate Invoice No: INV-XXXXXX
-            $invoiceNo = $this->nextSequentialCode(Sale::class, 'invoice_no', 'INV');
+                // Header Discount
+                $discountType  = $request->discount_type ?? 'Amount';
+                $discountValue = (float) ($request->discount_value ?? 0);
+                $discountAmount = ($discountType === 'Percentage') ? ($subtotal * $discountValue) / 100 : $discountValue;
+                if ($discountAmount > $subtotal) $discountAmount = $subtotal;
 
-            // Create Sale
-            $sale = new Sale();
-            $sale->invoice_no       = $invoiceNo;
-            $sale->sale_type        = $sale_type;
-            $sale->customer_id      = $customerId;
-            $sale->sale_date        = $request->sale_date;
-            $sale->subtotal         = round($subtotal, 2);
-            $sale->discount_type    = $discountType;
-            $sale->discount_value   = round($discountValue, 2);
-            $sale->discount_amount  = round($discountAmount, 2);
-            $sale->vat_amount       = $vat['amount'];
-            $sale->vat_inclusive    = $vat['inclusive'] ? 'Yes' : 'No';
-            $sale->loyalty_points_redeemed = $pointsUsed;
-            $sale->loyalty_discount = $loyaltyDiscount;
-            $sale->grand_total      = round($grandTotal, 2);
-            $sale->paid_amount      = round($paidAmount, 2);
-            $sale->due_amount       = round($dueAmount, 2);
-            $sale->payment_method   = $request->payment_method ?: null;
-            $sale->payment_method_account   = $request->payment_method_account ?: null;
-            $sale->remarks          = $request->remarks;
-            $sale->deleted          = 'No';
-            $sale->status           = 'Active';
-            $sale->created_by       = auth()->id();
-            $sale->created_date     = now();
-            $sale->save();
+                $grandTotal = $subtotal - $discountAmount;
 
-            // Save Sale Items & Deduct Stock
-            $purchasePrices = Product::whereIn('id', array_column($items, 'product_id'))->pluck('purchase_price', 'id');
-
-            foreach ($items as $lineIndex => $item) {
-                $qty = (float) $item['qty'];
-                $price = (float) $item['sale_price'];
-                $itemSub = $qty * $price;
-
-                $dType = $item['discount_type'] ?? 'Amount';
-                $dVal  = (float) ($item['discount_value'] ?? 0);
-                $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
-                if ($itemDisc > $itemSub) $itemDisc = $itemSub;
-                $itemTotal = $itemSub - $itemDisc;
-
-                $saleItem = new SaleItem();
-                $saleItem->sale_id            = $sale->id;
-                $saleItem->product_id         = $item['product_id'];
-                $saleItem->product_variant_id = !empty($item['product_variant_id']) ? $item['product_variant_id'] : null;
-                $saleItem->qty                = $qty;
-                $saleItem->sale_price         = $price;
-                $saleItem->purchase_price     = (float) ($purchasePrices[$item['product_id']] ?? 0);
-                $saleItem->discount_type      = $dType;
-                $saleItem->discount_value     = $dVal;
-                $saleItem->discount_amount    = $itemDisc;
-                $saleItem->subtotal           = $itemSub;
-                $saleItem->total              = $itemTotal;
-                $saleItem->vat_percent        = $vat['lines'][$lineIndex]['rate'] ?? 0;
-                $saleItem->vat_amount         = $vat['lines'][$lineIndex]['vat'] ?? 0;
-                $saleItem->deleted            = 'No';
-                $saleItem->status             = 'Active';
-                $saleItem->created_by         = auth()->id();
-                $saleItem->created_date       = now();
-                $saleItem->save();
-
-                // Stock Reduction (out_qty) — batch-tracked products leave earliest expiry first
-                foreach (StockController::allocate((int) $item['product_id'], $saleItem->product_variant_id ? (int) $saleItem->product_variant_id : null,
-                    (int) BranchController::activeId(), (float) $qty) as [$batchId, $part]) {
-                    $stock = new Stock();
-                    $stock->product_id         = $item['product_id'];
-                    $stock->product_variant_id = $saleItem->product_variant_id;
-                    $stock->batch_id           = $batchId;
-                    $stock->in_qty             = 0;
-                    $stock->out_qty            = $part;
-                    $stock->sale_id            = $sale->id;
-                    $stock->date               = $request->sale_date;
-                    $stock->reference_type     = 'Sale';
-                    $stock->reference_id       = $sale->id;
-                    $stock->remarks            = 'Sale: ' . $invoiceNo;
-                    $stock->deleted            = 'No';
-                    $stock->status             = 'Active';
-                    $stock->created_by         = auth()->id();
-                    $stock->created_date       = now();
-                    $stock->save();
+                // VAT on the lines after the sale discount: added on top, or already inside the prices.
+                $vatLines = [];
+                foreach ($items as $i => $item) {
+                    $lineSub = (float) $item['qty'] * (float) $item['sale_price'];
+                    $lineDisc = ($item['discount_type'] ?? 'Amount') === 'Percentage' ? $lineSub * (float) ($item['discount_value'] ?? 0) / 100 : (float) ($item['discount_value'] ?? 0);
+                    $vatLines[$i] = ['product_id' => $item['product_id'], 'total' => $lineSub - min($lineDisc, $lineSub)];
                 }
-            }
+                // A converted quotation keeps the quotation's own VAT rate, so the sale total is the quoted total.
+                $quotation = $request->filled('sale_quotation_id') ? SaleQuotationController::convertible((int) $request->sale_quotation_id, (int) $customerId) : null;
+                $vat = $quotation
+                    ? self::fixedRateVat($vatLines, $discountAmount, (float) $quotation->tax_percent)
+                    : CustomerProgramController::vat($vatLines, $discountAmount);
+                if (!$vat['inclusive']) {
+                    $grandTotal += $vat['amount'];
+                }
 
-            // Accounting Payments using PaymentTrait
-            $partyType = ($sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
-            $paymentDateTime = $request->sale_date . ' ' . date('H:i:s');
-            $paymentMethod = $request->payment_method ?: 'Cash';
+                // Loyalty points redeemed as money off.
+                [$pointsUsed, $loyaltyDiscount] = $request->filled('redeem_points')
+                    ? CustomerProgramController::redeemValue((int) $customerId, (float) $request->input('redeem_points'), $grandTotal)
+                    : [0.0, 0.0];
+                $grandTotal -= $loyaltyDiscount;
 
-            if ($grandTotal > 0) {
-                $this->storeCreditPayment([
-                    'party_id'       => $customerId,
-                    'party_type'     => $partyType,
-                    'payment_type'   => $sale_type,
-                    'datetime'       => $paymentDateTime,
-                    'credit'         => $grandTotal,
-                    'sale_id'        => $sale->id,
-                    'payment_method' => '',
-                    'payment_method_account' => '',
-                ]);
-            }
+                $paidAmount = (float) ($request->paid_amount ?? 0);
+                if ($paidAmount > $grandTotal) $paidAmount = $grandTotal;
+                $dueAmount = $grandTotal - $paidAmount;
 
-            if ($paidAmount > 0) {
-                $this->storeDebitPayment([
-                    'party_id'       => $customerId,
-                    'party_type'     => $partyType,
-                    'payment_type'   => $sale_type . ' Payment Receive',
-                    'datetime'       => $paymentDateTime,
-                    'debit'          => $paidAmount,
-                    'sale_id'        => $sale->id,
-                    'payment_method' => $request->payment_method,
-                    'payment_method_account' => $request->payment_method_account,
-                ]);
-            }
+                // Credit limit: block (or only warn, per Customer Programs settings).
+                if ($creditProblem = CustomerProgramController::creditCheck((int) $customerId, $dueAmount)) {
+                    if (CustomerProgramController::setting('credit_mode') === 'block') {
+                        DB::rollBack();
 
-            if ($pointsUsed > 0) {
-                CustomerProgramController::addPoints((int) $customerId, -$pointsUsed, 'Redeem', $sale->id, $loyaltyDiscount, 'Redeemed on ' . $invoiceNo);
-            }
-            $earned = CustomerProgramController::earnPoints($grandTotal);
-            if ($earned > 0) {
-                CustomerProgramController::addPoints((int) $customerId, $earned, 'Earn', $sale->id, $grandTotal, 'Earned on ' . $invoiceNo);
-                $sale->loyalty_points_earned = $earned;
+                        return response()->json(['status' => false, 'message' => $creditProblem . ' Collect more payment or raise the limit.'], 422);
+                    }
+                }
+
+                // Generate Invoice No: INV-XXXXXX
+                $invoiceNo = $this->nextSequentialCode(Sale::class, 'invoice_no', 'INV');
+
+                // Create Sale
+                $sale = new Sale();
+                $sale->invoice_no       = $invoiceNo;
+                $sale->sale_type        = $sale_type;
+                $sale->customer_id      = $customerId;
+                $sale->sale_quotation_id = $quotation->id ?? null;
+                $sale->sale_date        = $request->sale_date;
+                $sale->subtotal         = round($subtotal, 2);
+                $sale->discount_type    = $discountType;
+                $sale->discount_value   = round($discountValue, 2);
+                $sale->discount_amount  = round($discountAmount, 2);
+                $sale->vat_amount       = $vat['amount'];
+                $sale->vat_inclusive    = $vat['inclusive'] ? 'Yes' : 'No';
+                $sale->loyalty_points_redeemed = $pointsUsed;
+                $sale->loyalty_discount = $loyaltyDiscount;
+                $sale->grand_total      = round($grandTotal, 2);
+                $sale->paid_amount      = round($paidAmount, 2);
+                $sale->due_amount       = round($dueAmount, 2);
+                $sale->payment_method   = $request->payment_method ?: null;
+                $sale->payment_method_account   = $request->payment_method_account ?: null;
+                $sale->remarks          = $request->remarks;
+                $sale->deleted          = 'No';
+                $sale->status           = 'Active';
+                $sale->created_by       = auth()->id();
+                $sale->created_date     = now();
                 $sale->save();
-            }
 
-            DB::commit();
+                // Save Sale Items & Deduct Stock
+                $purchasePrices = Product::whereIn('id', array_column($items, 'product_id'))->pluck('purchase_price', 'id');
 
-            // Invoice SMS (never blocks the sale).
-            $smsNote = null;
-            if (SmsController::enabled('invoice_sms')) {
-                $party = Party::find($customerId);
-                if ($party && $party->phone) {
-                    $sms = SmsController::send($party->phone, SmsController::render('invoice_sms', [
-                        'customer' => $party->name, 'invoice' => $invoiceNo, 'amount' => $grandTotal, 'paid' => $paidAmount, 'due' => $dueAmount,
-                    ]), 'Invoice', (int) $customerId);
-                    $smsNote = $sms['ok'] ? 'SMS sent.' : 'SMS not sent: ' . $sms['message'];
+                foreach ($items as $lineIndex => $item) {
+                    $qty = (float) $item['qty'];
+                    $price = (float) $item['sale_price'];
+                    $itemSub = $qty * $price;
+
+                    $dType = $item['discount_type'] ?? 'Amount';
+                    $dVal  = (float) ($item['discount_value'] ?? 0);
+                    $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
+                    if ($itemDisc > $itemSub) $itemDisc = $itemSub;
+                    $itemTotal = $itemSub - $itemDisc;
+
+                    $saleItem = new SaleItem();
+                    $saleItem->sale_id            = $sale->id;
+                    $saleItem->product_id         = $item['product_id'];
+                    $saleItem->product_variant_id = !empty($item['product_variant_id']) ? $item['product_variant_id'] : null;
+                    $saleItem->qty                = $qty;
+                    $saleItem->sale_price         = $price;
+                    $saleItem->purchase_price     = (float) ($purchasePrices[$item['product_id']] ?? 0);
+                    $saleItem->discount_type      = $dType;
+                    $saleItem->discount_value     = $dVal;
+                    $saleItem->discount_amount    = $itemDisc;
+                    $saleItem->subtotal           = $itemSub;
+                    $saleItem->total              = $itemTotal;
+                    $saleItem->vat_percent        = $vat['lines'][$lineIndex]['rate'] ?? 0;
+                    $saleItem->vat_amount         = $vat['lines'][$lineIndex]['vat'] ?? 0;
+                    $saleItem->deleted            = 'No';
+                    $saleItem->status             = 'Active';
+                    $saleItem->created_by         = auth()->id();
+                    $saleItem->created_date       = now();
+                    $saleItem->save();
+
+                    // Stock Reduction (out_qty) — batch-tracked products leave earliest expiry first
+                    foreach (StockController::allocate((int) $item['product_id'], $saleItem->product_variant_id ? (int) $saleItem->product_variant_id : null,
+                        (int) BranchController::activeId(), (float) $qty) as [$batchId, $part]) {
+                        $stock = new Stock();
+                        $stock->product_id         = $item['product_id'];
+                        $stock->product_variant_id = $saleItem->product_variant_id;
+                        $stock->batch_id           = $batchId;
+                        $stock->in_qty             = 0;
+                        $stock->out_qty            = $part;
+                        $stock->sale_id            = $sale->id;
+                        $stock->date               = $request->sale_date;
+                        $stock->reference_type     = 'Sale';
+                        $stock->reference_id       = $sale->id;
+                        $stock->remarks            = 'Sale: ' . $invoiceNo;
+                        $stock->deleted            = 'No';
+                        $stock->status             = 'Active';
+                        $stock->created_by         = auth()->id();
+                        $stock->created_date       = now();
+                        $stock->save();
+                    }
                 }
-            }
 
-            return response()->json([
-                'status'      => true,
-                'message'     => trim('Sale completed successfully. ' . ($earned > 0 ? number_format($earned, 0) . ' loyalty points earned. ' : '')
-                    . ($creditProblem ? 'Warning: ' . $creditProblem . ' ' : '') . ($smsNote ?? '')),
-                'sale_id'     => $sale->id,
-                'invoice_url' => route('sales.invoice.pdf', $sale->id)
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status'  => false,
-                'message' => $e->getMessage()
-            ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
-        }
+                // Accounting Payments using PaymentTrait
+                $partyType = ($sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
+                $paymentDateTime = $request->sale_date . ' ' . date('H:i:s');
+                $paymentMethod = $request->payment_method ?: 'Cash';
+
+                if ($grandTotal > 0) {
+                    $this->storeCreditPayment([
+                        'party_id'       => $customerId,
+                        'party_type'     => $partyType,
+                        'payment_type'   => $sale_type,
+                        'datetime'       => $paymentDateTime,
+                        'credit'         => $grandTotal,
+                        'sale_id'        => $sale->id,
+                        'payment_method' => '',
+                        'payment_method_account' => '',
+                    ]);
+                }
+
+                if ($paidAmount > 0) {
+                    $this->storeDebitPayment([
+                        'party_id'       => $customerId,
+                        'party_type'     => $partyType,
+                        'payment_type'   => $sale_type . ' Payment Receive',
+                        'datetime'       => $paymentDateTime,
+                        'debit'          => $paidAmount,
+                        'sale_id'        => $sale->id,
+                        'payment_method' => $request->payment_method,
+                        'payment_method_account' => $request->payment_method_account,
+                    ]);
+                }
+
+                if ($pointsUsed > 0) {
+                    CustomerProgramController::addPoints((int) $customerId, -$pointsUsed, 'Redeem', $sale->id, $loyaltyDiscount, 'Redeemed on ' . $invoiceNo);
+                }
+                $earned = CustomerProgramController::earnPoints($grandTotal);
+                if ($earned > 0) {
+                    CustomerProgramController::addPoints((int) $customerId, $earned, 'Earn', $sale->id, $grandTotal, 'Earned on ' . $invoiceNo);
+                    $sale->loyalty_points_earned = $earned;
+                    $sale->save();
+                }
+
+                if ($quotation) {
+                    SaleQuotationController::markConverted($quotation, 'sale', (int) $sale->id, $invoiceNo);
+                }
+
+                DB::commit();
+
+                // Invoice SMS (never blocks the sale).
+                $smsNote = null;
+                if (SmsController::enabled('invoice_sms')) {
+                    $party = Party::find($customerId);
+                    if ($party && $party->phone) {
+                        $sms = SmsController::send($party->phone, SmsController::render('invoice_sms', [
+                            'customer' => $party->name, 'invoice' => $invoiceNo, 'amount' => $grandTotal, 'paid' => $paidAmount, 'due' => $dueAmount,
+                        ]), 'Invoice', (int) $customerId);
+                        $smsNote = $sms['ok'] ? 'SMS sent.' : 'SMS not sent: ' . $sms['message'];
+                    }
+                }
+
+                return response()->json([
+                    'status'      => true,
+                    'message'     => trim('Sale completed successfully. ' . ($earned > 0 ? number_format($earned, 0) . ' loyalty points earned. ' : '')
+                        . ($creditProblem ? 'Warning: ' . $creditProblem . ' ' : '') . ($smsNote ?? '')),
+                    'sale_id'     => $sale->id,
+                    'invoice_url' => route('sales.invoice.pdf', $sale->id)
+                ]);
+            } catch (Exception $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                return response()->json([
+                    'status'  => false,
+                    'message' => self::safeError($e)
+                ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
+            }
+        });
     }
 
     /*
@@ -844,10 +904,10 @@ class SaleController extends Controller
 
         $generalSetting = DB::table('settings')->where('deleted', 'No')->first();
 
-        $pdf = Pdf::loadView(
+        $pdf = SettingController::pdf(
             'admin.inventory.sale.invoice',
             compact('sale', 'customer', 'items', 'amountInWords', 'preparedBy', 'generalSetting')
-        )->setPaper('a4', 'portrait');
+        );
 
         $filename = $sale->invoice_no . '.pdf';
 
@@ -863,58 +923,69 @@ class SaleController extends Controller
     */
     public function delete($id)
     {
-        DB::beginTransaction();
+        BranchController::guardOwn('sales', $id);
+        return self::retryOnDeadlock(function () use ($id) {
+            DB::beginTransaction();
 
-        try {
-            $sale = $this->branchSale($id);
-            if (!$sale) {
+            try {
+                $sale = $this->branchSale($id, true);
+                if (!$sale) {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'Sale not found in this branch.'], 404);
+                }
+
+                // A sale with returns cannot be deleted (delete the returns first).
+                if (SaleReturn::where('sale_id', $id)->where('deleted', 'No')->exists()) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Cannot delete this sale because it has sale returns. Delete the returns first.'
+                    ], 422);
+                }
+
+                CustomerProgramController::reverseSale((int) $id);
+
+                // A delivery invoice of a sale order: its quantities go back to "to deliver" and the order reopens.
+                // The order advance it used is free again (it is worked out from the live invoices).
+                if ($sale->sale_order_id) {
+                    self::undoOrderDelivery($sale);
+                }
+                $this->undoAppliedReceipts((int) $id);
+
+                $userId = auth()->id();
+                $now = now();
+
+                $sale->deleted = 'Yes';
+                $sale->deleted_by = $userId;
+                $sale->updated_by = $userId;
+                $sale->updated_date = $now;
+                $sale->save();
+
+                SaleItem::where('sale_id', $id)->where('deleted', 'No')->update([
+                    'deleted' => 'Yes',
+                    'deleted_by' => $userId,
+                    'updated_by' => $userId,
+                    'updated_date' => $now
+                ]);
+
+                Stock::where('sale_id', $id)->where('deleted', 'No')->update([
+                    'deleted' => 'Yes',
+                    'deleted_by' => $userId,
+                    'updated_by' => $userId,
+                    'updated_date' => $now
+                ]);
+
+                $this->deletePaymentsBy('sale_id', $id);
+
+                DB::commit();
+
+                return response()->json(['status' => true, 'message' => 'Sale deleted successfully.']);
+            } catch (Exception $e) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'message' => 'Sale not found in this branch.'], 404);
+                self::rethrowIfConcurrency($e);
+                return response()->json(['status' => false, 'message' => self::safeError($e)], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-
-            // A sale with returns cannot be deleted (delete the returns first).
-            if (SaleReturn::where('sale_id', $id)->where('deleted', 'No')->exists()) {
-                DB::rollBack();
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Cannot delete this sale because it has sale returns. Delete the returns first.'
-                ], 422);
-            }
-
-            CustomerProgramController::reverseSale((int) $id);
-
-            $userId = auth()->id();
-            $now = now();
-
-            $sale->deleted = 'Yes';
-            $sale->deleted_by = $userId;
-            $sale->updated_by = $userId;
-            $sale->updated_date = $now;
-            $sale->save();
-
-            SaleItem::where('sale_id', $id)->where('deleted', 'No')->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId,
-                'updated_by' => $userId,
-                'updated_date' => $now
-            ]);
-
-            Stock::where('sale_id', $id)->where('deleted', 'No')->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId,
-                'updated_by' => $userId,
-                'updated_date' => $now
-            ]);
-
-            $this->deletePaymentsBy('sale_id', $id);
-
-            DB::commit();
-
-            return response()->json(['status' => true, 'message' => 'Sale deleted successfully.']);
-        } catch (Exception $e) {
-            DB::rollBack();
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
-        }
+        });
     }
 
     /*
@@ -972,19 +1043,20 @@ class SaleController extends Controller
                     <td>' . date('Y-m-d', strtotime($row->datetime)) . '</td>
                     <td><strong>' . e($row->customer_name ?? 'Walk-In Customer') . '</strong></td>
                     <td class="text-center"><span class="badge bg-secondary">' . e($row->sale_type) . '</span></td>
-                    <td class="text-end fw-bold">' . number_format((float) $row->grand_total, 2, '.', '') . '</td>
+                    <td class="text-end fw-bold">' . number_format((float) $row->grand_total, 2, '.', '')
+                        . '<br><small class="text-muted">' . (($row->refund_mode ?? 'Credit') === 'Cash' ? 'Cash refund ' . number_format((float) $row->refund_amount, 2) : 'Customer credit') . '</small></td>
                     <td class="text-center">' . $statusBadge . '</td>
                     <td class="text-center">' . action_dropdown([
                         ['label' => 'Credit Note PDF', 'icon' => 'fas fa-file-pdf', 'href' => $invoiceUrl, 'target' => '_blank'],
                         ['divider' => true],
                         ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteSaleReturnBtn', 'attrs' => ['data-id' => $row->id]],
-                    ]) . '</td>
+                    ], $row->branch_id) . '</td>
                 </tr>';
             }
 
             return response()->json(['status' => true, 'html' => $html]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -993,20 +1065,44 @@ class SaleController extends Controller
     | SALE RETURN: Create Page & Data
     |--------------------------------------------------------------------------
     */
+    /** Invoices of this branch for the "New return" picker (search by invoice no., customer name or phone). */
+    public function returnInvoices(Request $request)
+    {
+        $term = trim((string) $request->query('q', ''));
+        $rows = BranchController::scopeOwn(DB::table('sales as s'), 's.branch_id')
+            ->leftJoin('parties as c', 'c.id', '=', 's.customer_id')
+            ->where('s.deleted', 'No')
+            ->when(in_array($request->query('type'), ['Walk-In', 'Wholesale'], true), fn ($q) => $q->where('s.sale_type', $request->query('type')))
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('s.invoice_no', 'like', "%$term%")
+                ->orWhere('c.name', 'like', "%$term%")->orWhere('c.phone', 'like', "%$term%")))
+            ->orderByDesc('s.id')->limit(30)
+            ->get(['s.id', 's.invoice_no', 's.sale_date', 's.grand_total', 'c.name', 'c.phone']);
+
+        return response()->json(['results' => $rows->map(fn ($r) => [
+            'id'   => $r->id,
+            'text' => $r->invoice_no . ' · ' . $r->sale_date . ' · ' . ($r->name ?: 'Walk-In') . ($r->phone ? ' (' . $r->phone . ')' : '') . ' · ' . number_format((float) $r->grand_total, 2),
+            'url'  => route('sales.return.page', $r->id),
+        ])]);
+    }
+
     public function returnPage($id)
     {
-        $sale = $this->branchSale($id);
+        $sale = $this->branchSale($id, true);
         abort_unless($sale, 404, 'Sale not found in this branch.');
         $customer = Party::find($sale->customer_id);
         $party_type = 'Return for ' . $sale->invoice_no;
+        $liquid = ChartOfAccount::where('slug', 'liquid-asset')->where('deleted', 'No')->value('id');
+        $payMethods = $liquid ? ChartOfAccount::where('deleted', 'No')->where('status', 'Active')->where('parent_id', $liquid)->orderBy('account_code')->get() : collect();
+        $customerBalance = $sale->customer_id ? $this->partyDue($sale->customer_id) : 0.0;
 
-        return view('admin.inventory.sale.return_create', compact('sale', 'customer', 'party_type'));
+        return view('admin.inventory.sale.return_create', compact('sale', 'customer', 'party_type', 'payMethods', 'customerBalance'));
     }
 
     public function returnData($id)
     {
+        BranchController::guardOwn('sales', $id);
         try {
-            $sale = $this->branchSale($id);
+            $sale = $this->branchSale($id, true);
             if (!$sale) {
                 return response()->json(['status' => false, 'message' => 'Sale not found in this branch.'], 404);
             }
@@ -1050,7 +1146,7 @@ class SaleController extends Controller
                 'items'    => $items->values(),   // values() keeps it a JSON array
             ]);
         } catch (Exception $e) {
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['status' => false, 'message' => self::safeError($e)], 500);
         }
     }
 
@@ -1068,150 +1164,228 @@ class SaleController extends Controller
             'items'           => 'required|array|min:1',
             'items.*.sale_item_id' => 'required|integer',
             'items.*.qty'     => 'required|numeric|min:0.0001',
+            // Credit (default) = the value stays on the customer's account; Cash = paid back now from a branch account.
+            'refund_mode'     => 'nullable|in:Credit,Cash',
+            'refund_amount'   => 'nullable|numeric|min:0',
+            'payment_method'  => ['nullable', 'required_if:refund_mode,Cash', 'integer',
+                Rule::exists('chart_of_accounts', 'id')->where('layer_level', 2)->where('account_type', 'Liquid Asset')->where('deleted', 'No')],
+            'payment_method_account' => ['nullable', 'required_if:refund_mode,Cash', 'integer', BranchController::ownLedgerRule(),
+                Rule::exists('chart_of_accounts', 'id')->where('layer_level', 3)->where('deleted', 'No')->where('parent_id', (int) $request->input('payment_method'))],
+        ], [
+            'payment_method.required_if' => 'Choose the payment method the cash refund is paid from.',
+            'payment_method_account.required_if' => 'Choose the account the cash refund is paid from.',
+            'payment_method_account.exists' => 'Choose an account of the selected payment method.',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        DB::beginTransaction();
+        BranchController::guardOwn('sales', $request->sale_id);
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
-            $sale = BranchController::scope(Sale::where('id', $request->sale_id)->where('deleted', 'No'), 'branch_id')->lockForUpdate()->first();
-            abort_unless($sale, 404, 'Sale not found in this branch.');
-            $items = $request->input('items', []);
+            try {
+                $sale = BranchController::scopeOwn(Sale::where('id', $request->sale_id)->where('deleted', 'No'), 'branch_id')->lockForUpdate()->first();
+                abort_unless($sale, 404, 'Sale not found in this branch.');
+                $items = $request->input('items', []);
 
-            $subtotal = 0;
-            $itemsToReturn = [];
-            $requested = [];   // per sale line, so the same line sent twice cannot exceed what was sold
+                $subtotal = 0;
+                $vatTotal = 0;
+                $itemsToReturn = [];
+                $requested = [];   // per sale line, so the same line sent twice cannot exceed what was sold
+                $vatGiven = [];    // VAT already put on this request's lines, per sale line
 
-            foreach ($items as $itemInput) {
-                $saleItem = SaleItem::where('id', $itemInput['sale_item_id'])
-                    ->where('sale_id', $sale->id)
-                    ->where('deleted', 'No')
-                    ->first();
-                abort_unless($saleItem, 422, 'A returned item does not belong to this sale.');
+                foreach ($items as $itemInput) {
+                    $saleItem = SaleItem::where('id', $itemInput['sale_item_id'])
+                        ->where('sale_id', $sale->id)
+                        ->where('deleted', 'No')
+                        ->first();
+                    abort_unless($saleItem, 422, 'A returned item does not belong to this sale.');
 
-                $alreadyReturned = DB::table('sale_return_items')
-                    ->where('sale_item_id', $saleItem->id)
-                    ->where('deleted', 'No')
-                    ->sum('qty');
+                    $alreadyReturned = DB::table('sale_return_items')
+                        ->where('sale_item_id', $saleItem->id)
+                        ->where('deleted', 'No')
+                        ->sum('qty');
 
-                $maxReturnable = (float)$saleItem->qty - (float)$alreadyReturned;
-                $returnQty = (float)$itemInput['qty'];
-                $requested[$saleItem->id] = ($requested[$saleItem->id] ?? 0) + $returnQty;
+                    $maxReturnable = (float)$saleItem->qty - (float)$alreadyReturned;
+                    $returnQty = (float)$itemInput['qty'];
+                    $requested[$saleItem->id] = ($requested[$saleItem->id] ?? 0) + $returnQty;
 
-                if ($requested[$saleItem->id] > $maxReturnable + 0.0005) {
-                    $name = Product::where('id', $saleItem->product_id)->value('name') ?? 'a product';
-                    abort(422, 'Return quantity for "' . $name . '" is more than what is left to return (' . round(max(0, $maxReturnable), 3) . ').');
+                    if ($requested[$saleItem->id] > $maxReturnable + 0.0005) {
+                        $name = Product::where('id', $saleItem->product_id)->value('name') ?? 'a product';
+                        abort(422, 'Return quantity for "' . $name . '" is more than what is left to return (' . round(max(0, $maxReturnable), 3) . ').');
+                    }
+
+                    $effectiveUnitPrice = self::returnUnitValue($sale, $saleItem);
+                    $itemTotal = round($returnQty * $effectiveUnitPrice, 2);
+                    $subtotal += $itemTotal;
+
+                    // The returned share of this line's VAT, worked out on the cumulative returned quantity so that
+                    // returning a line in several goes gives back exactly the VAT the sale charged on it.
+                    $itemVat = 0.0;
+                    if ((float) $saleItem->vat_amount > 0 && (float) $saleItem->qty > 0) {
+                        $priorVat = (float) DB::table('sale_return_items')->where('sale_item_id', $saleItem->id)->where('deleted', 'No')->sum('vat_amount');
+                        $target = round((float) $saleItem->vat_amount * min(1, ((float) $alreadyReturned + $requested[$saleItem->id]) / (float) $saleItem->qty), 2);
+                        $itemVat = max(0, round($target - $priorVat - ($vatGiven[$saleItem->id] ?? 0), 2));
+                        $vatGiven[$saleItem->id] = ($vatGiven[$saleItem->id] ?? 0) + $itemVat;
+                    }
+                    $vatTotal += $itemVat;
+
+                    $itemsToReturn[] = [
+                        'sale_item'   => $saleItem,
+                        'qty'         => $returnQty,
+                        'unit_price'  => $effectiveUnitPrice,
+                        'total'       => $itemTotal,
+                        'vat'         => $itemVat,
+                    ];
                 }
 
-                $effectiveUnitPrice = self::returnUnitValue($sale, $saleItem);
-                $itemTotal = round($returnQty * $effectiveUnitPrice, 2);
-                $subtotal += $itemTotal;
+                if (empty($itemsToReturn)) {
+                    abort(422, 'No valid items to return.');
+                }
 
-                $itemsToReturn[] = [
-                    'sale_item'   => $saleItem,
-                    'qty'         => $returnQty,
-                    'unit_price'  => $effectiveUnitPrice,
-                    'total'       => $itemTotal
-                ];
-            }
+                // Returning everything that is left gives back exactly what the sale still holds (its grand total less
+                // earlier returns), so per-line rounding never leaves a few paisa owed or over-refunded.
+                $saleLines = SaleItem::where('sale_id', $sale->id)->where('deleted', 'No')->get(['id', 'qty']);
+                $returnedBefore = DB::table('sale_return_items')->whereIn('sale_item_id', $saleLines->pluck('id')->all() ?: [0])
+                    ->where('deleted', 'No')->groupBy('sale_item_id')->selectRaw('sale_item_id, SUM(qty) q')->pluck('q', 'sale_item_id');
+                $fullReturn = $saleLines->every(fn ($l) => (float) ($returnedBefore[$l->id] ?? 0) + (float) ($requested[$l->id] ?? 0) >= (float) $l->qty - 0.0005);
+                if ($fullReturn) {
+                    $left = round((float) $sale->grand_total - (float) SaleReturn::where('sale_id', $sale->id)->where('deleted', 'No')->sum('grand_total'), 2);
+                    $diff = round($left - $subtotal, 2);
+                    if (abs($diff) > 0 && abs($diff) < 1) {
+                        $last = count($itemsToReturn) - 1;
+                        $itemsToReturn[$last]['total'] = round($itemsToReturn[$last]['total'] + $diff, 2);
+                        $subtotal = $left;
+                    }
+                }
+                $subtotal = round($subtotal, 2);
 
-            if (empty($itemsToReturn)) {
-                throw new Exception("No valid items to return.");
-            }
+                $refundMode = $request->input('refund_mode') === 'Cash' ? 'Cash' : 'Credit';
+                $refundAmount = $refundMode === 'Cash'
+                    ? round(min($subtotal, $request->filled('refund_amount') ? (float) $request->refund_amount : $subtotal), 2)
+                    : 0.0;
+                abort_if($refundMode === 'Cash' && $refundAmount <= 0, 422, 'Enter the cash refund amount.');
 
-            // Generate Return No: SR-XXXXXX
-            $returnNo = $this->nextSequentialCode(SaleReturn::class, 'return_no', 'SR');
+                // Generate Return No: SR-XXXXXX
+                $returnNo = $this->nextSequentialCode(SaleReturn::class, 'return_no', 'SR');
 
-            $saleReturn = new SaleReturn();
-            $saleReturn->return_no       = $returnNo;
-            $saleReturn->sale_id         = $sale->id;
-            $saleReturn->customer_id     = $sale->customer_id;
-            $saleReturn->sale_type       = $sale->sale_type;
-            $saleReturn->datetime        = $request->datetime;
-            $saleReturn->subtotal        = $subtotal;
-            $saleReturn->grand_total     = $subtotal;
-            $saleReturn->remarks         = $request->remarks;
-            $saleReturn->deleted         = 'No';
-            $saleReturn->status          = 'Active';
-            $saleReturn->created_by      = auth()->id();
-            $saleReturn->created_date = now();
-            $saleReturn->save();
+                $saleReturn = new SaleReturn();
+                $saleReturn->return_no       = $returnNo;
+                $saleReturn->sale_id         = $sale->id;
+                $saleReturn->customer_id     = $sale->customer_id;
+                $saleReturn->sale_type       = $sale->sale_type;
+                $saleReturn->datetime        = $request->datetime;
+                $saleReturn->subtotal        = $subtotal;
+                $saleReturn->vat_amount      = round($vatTotal, 2);
+                $saleReturn->grand_total     = $subtotal;
+                $saleReturn->refund_mode     = $refundMode;
+                $saleReturn->refund_amount   = $refundAmount;
+                $saleReturn->remarks         = $request->remarks;
+                $saleReturn->deleted         = 'No';
+                $saleReturn->status          = 'Active';
+                $saleReturn->created_by      = auth()->id();
+                $saleReturn->created_date = now();
+                $saleReturn->save();
 
-            // Return items & Restock (in_qty)
-            foreach ($itemsToReturn as $ret) {
-                $sItem = $ret['sale_item'];
+                // Return items & Restock (in_qty)
+                foreach ($itemsToReturn as $ret) {
+                    $sItem = $ret['sale_item'];
 
-                $returnItem = new SaleReturnItem();
-                $returnItem->sale_return_id     = $saleReturn->id;
-                $returnItem->sale_id            = $sale->id;
-                $returnItem->sale_item_id       = $sItem->id;
-                $returnItem->product_id         = $sItem->product_id;
-                $returnItem->product_variant_id = $sItem->product_variant_id;
-                $returnItem->qty                = $ret['qty'];
-                $returnItem->sale_price         = $ret['unit_price'];
-                $returnItem->subtotal           = $ret['total'];
-                $returnItem->total              = $ret['total'];
-                $returnItem->deleted            = 'No';
-                $returnItem->status             = 'Active';
-                $returnItem->created_by         = auth()->id();
-                $returnItem->created_date   = now();
-                $returnItem->save();
+                    $returnItem = new SaleReturnItem();
+                    $returnItem->sale_return_id     = $saleReturn->id;
+                    $returnItem->sale_id            = $sale->id;
+                    $returnItem->sale_item_id       = $sItem->id;
+                    $returnItem->product_id         = $sItem->product_id;
+                    $returnItem->product_variant_id = $sItem->product_variant_id;
+                    $returnItem->qty                = $ret['qty'];
+                    $returnItem->sale_price         = $ret['unit_price'];
+                    $returnItem->subtotal           = $ret['total'];
+                    $returnItem->vat_amount         = $ret['vat'];
+                    $returnItem->total              = $ret['total'];
+                    $returnItem->deleted            = 'No';
+                    $returnItem->status             = 'Active';
+                    $returnItem->created_by         = auth()->id();
+                    $returnItem->created_date   = now();
+                    $returnItem->save();
 
-                // Restock inventory (in_qty) — back into the batch the goods were sold from (latest expiry first)
-                // Columns qualified: product_batches also has product_id / product_variant_id / deleted.
-                $batchId = Stock::where('stocks.sale_id', $sale->id)->where('stocks.product_id', $sItem->product_id)
-                    ->where('stocks.product_variant_id', $sItem->product_variant_id)->where('stocks.deleted', 'No')->whereNotNull('stocks.batch_id')
-                    ->join('product_batches as pb', 'pb.id', '=', 'stocks.batch_id')
-                    ->orderByDesc('pb.expiry_date')->value('stocks.batch_id');
-                $stock = new Stock();
-                $stock->product_id         = $sItem->product_id;
-                $stock->product_variant_id = $sItem->product_variant_id;
-                $stock->batch_id           = $batchId;
-                $stock->in_qty             = $ret['qty'];
-                $stock->out_qty            = 0;
-                $stock->sale_return_id     = $saleReturn->id;
-                $stock->date               = date('Y-m-d', strtotime($request->datetime));
-                $stock->reference_type     = 'Sale Return';
-                $stock->reference_id       = $saleReturn->id;
-                $stock->remarks            = 'Return: ' . $returnNo;
-                $stock->deleted            = 'No';
-                $stock->status             = 'Active';
-                $stock->created_by         = auth()->id();
-                $stock->created_date       = now();
-                $stock->save();
-            }
+                    // Restock inventory (in_qty) — back into the batch the goods were sold from (latest expiry first)
+                    // Columns qualified: product_batches also has product_id / product_variant_id / deleted.
+                    $batchId = Stock::where('stocks.sale_id', $sale->id)->where('stocks.product_id', $sItem->product_id)
+                        ->where('stocks.product_variant_id', $sItem->product_variant_id)->where('stocks.deleted', 'No')->whereNotNull('stocks.batch_id')
+                        ->join('product_batches as pb', 'pb.id', '=', 'stocks.batch_id')
+                        ->orderByDesc('pb.expiry_date')->value('stocks.batch_id');
+                    $stock = new Stock();
+                    $stock->product_id         = $sItem->product_id;
+                    $stock->product_variant_id = $sItem->product_variant_id;
+                    $stock->batch_id           = $batchId;
+                    $stock->in_qty             = $ret['qty'];
+                    $stock->out_qty            = 0;
+                    $stock->sale_return_id     = $saleReturn->id;
+                    $stock->date               = date('Y-m-d', strtotime($request->datetime));
+                    $stock->reference_type     = 'Sale Return';
+                    $stock->reference_id       = $saleReturn->id;
+                    $stock->remarks            = 'Return: ' . $returnNo;
+                    $stock->deleted            = 'No';
+                    $stock->status             = 'Active';
+                    $stock->created_by         = auth()->id();
+                    $stock->created_date       = now();
+                    $stock->save();
+                }
 
-            // Adjust Customer Balance via PaymentTrait
-            if ($subtotal > 0) {
-                $partyType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
-                // Must match the payments.payment_type enum values.
-                $returnPaymentType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Sale Return' : 'Wholesale Return';
+                // Adjust Customer Balance via PaymentTrait
+                if ($subtotal > 0) {
+                    $partyType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Customer' : 'Customer';
+                    // Must match the payments.payment_type enum values.
+                    $returnPaymentType = ($sale->sale_type === 'Walk-In') ? 'Walk-In Sale Return' : 'Wholesale Return';
 
-                $this->storeDebitPayment([
-                    'party_id'       => $sale->customer_id,
-                    'party_type'     => $partyType,
-                    'payment_type'   => $returnPaymentType,
-                    'datetime'       => $request->datetime ?: (date('Y-m-d H:i:s')),
-                    'debit'          => $subtotal,
-                    'sale_return_id' => $saleReturn->id,
+                    $this->storeDebitPayment([
+                        'party_id'       => $sale->customer_id,
+                        'party_type'     => $partyType,
+                        'payment_type'   => $returnPaymentType,
+                        'datetime'       => $request->datetime ?: (date('Y-m-d H:i:s')),
+                        'debit'          => $subtotal,
+                        'sale_return_id' => $saleReturn->id,
+                    ]);
+
+                    // Cash refund: the money is paid back now from the chosen account ("Refund Paid" on the ledger),
+                    // so the return no longer stays as credit on the customer's account.
+                    if ($refundAmount > 0) {
+                        ReportController::ensureCash($request->payment_method_account, $refundAmount);
+                        $this->storeCreditPayment([
+                            'party_id'       => $sale->customer_id,
+                            'party_type'     => $partyType,
+                            'payment_type'   => 'Payment',
+                            'datetime'       => $request->datetime ?: (date('Y-m-d H:i:s')),
+                            'credit'         => $refundAmount,
+                            'sale_return_id' => $saleReturn->id,
+                            'payment_method' => $request->payment_method,
+                            'payment_method_account' => $request->payment_method_account,
+                            'remarks'        => 'Cash refund for ' . $returnNo,
+                        ]);
+                    }
+                }
+
+                // Loyalty: take back the points earned on the returned part of the sale (never below zero).
+                $pointsBack = self::reverseReturnLoyalty($sale, $saleReturn);
+
+                DB::commit();
+
+                return response()->json([
+                    'status'     => true,
+                    'message'    => 'Sale return processed successfully.'
+                        . ($refundAmount > 0 ? ' ' . number_format($refundAmount, 2) . ' refunded in cash.' : ' ' . number_format($subtotal, 2) . ' kept as customer credit.')
+                        . ($pointsBack > 0 ? ' ' . rtrim(rtrim(number_format($pointsBack, 2, '.', ''), '0'), '.') . ' loyalty points taken back.' : ''),
+                    'return_url' => route('sales.return.invoice.pdf', $saleReturn->id)
                 ]);
+            } catch (Exception $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                return response()->json(['status' => false, 'message' => self::safeError($e)],
+                    $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-
-            DB::commit();
-
-            return response()->json([
-                'status'     => true,
-                'message'    => 'Sale return processed successfully.',
-                'return_url' => route('sales.return.invoice.pdf', $saleReturn->id)
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-            return response()->json(['status' => false, 'message' => $e->getMessage()],
-                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
-        }
+        });
     }
 
     public function returnView($id)
@@ -1263,10 +1437,10 @@ class SaleController extends Controller
         $preparedBy = optional(\App\Models\User::find($saleReturn->created_by))->name ?? 'Admin';
         $generalSetting = DB::table('settings')->where('deleted', 'No')->first();
 
-        $pdf = Pdf::loadView(
+        $pdf = SettingController::pdf(
             'admin.inventory.sale.return_invoice',
             compact('saleReturn', 'sale', 'customer', 'items', 'amountInWords', 'preparedBy', 'generalSetting')
-        )->setPaper('a4', 'portrait');
+        );
 
         $filename = $saleReturn->return_no . '.pdf';
 
@@ -1275,42 +1449,57 @@ class SaleController extends Controller
 
     public function returnDelete($id)
     {
-        DB::beginTransaction();
+        BranchController::guardOwn('sale_returns', $id);
+        return self::retryOnDeadlock(function () use ($id) {
+            DB::beginTransaction();
 
-        try {
-            $saleReturn = $this->branchSaleReturn($id);
-            if (!$saleReturn) {
+            try {
+                $saleReturn = $this->branchSaleReturn($id, true);
+                if (!$saleReturn) {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'Sale return not found in this branch.'], 404);
+                }
+                $saleReturn = SaleReturn::where('id', $saleReturn->id)->where('deleted', 'No')->lockForUpdate()->first();
+                if (!$saleReturn) {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'Sale return is already deleted.'], 404);
+                }
+                $userId = auth()->id();
+                $now = now();
+
+                // Give back the loyalty points this return took (its VAT goes with the return rows).
+                if ((float) $saleReturn->loyalty_points_reversed > 0 && $saleReturn->customer_id) {
+                    CustomerProgramController::addPoints((int) $saleReturn->customer_id, (float) $saleReturn->loyalty_points_reversed, 'Reverse',
+                        (int) $saleReturn->sale_id, (float) $saleReturn->grand_total, 'Return ' . $saleReturn->return_no . ' deleted', (int) $saleReturn->id);
+                }
+
+                $saleReturn->deleted = 'Yes';
+                $saleReturn->deleted_by = $userId;
+                $saleReturn->deleted_date = $now;
+                $saleReturn->save();
+
+                SaleReturnItem::where('sale_return_id', $id)->update([
+                    'deleted' => 'Yes',
+                    'deleted_by' => $userId,
+                    'deleted_date' => $now
+                ]);
+
+                Stock::where('sale_return_id', $id)->update([
+                    'deleted' => 'Yes',
+                    'deleted_by' => $userId
+                ]);
+
+                $this->deletePaymentsBy('sale_return_id', $id);
+
+                DB::commit();
+
+                return response()->json(['status' => true, 'message' => 'Sale return deleted successfully.']);
+            } catch (Exception $e) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'message' => 'Sale return not found in this branch.'], 404);
+                self::rethrowIfConcurrency($e);
+                return response()->json(['status' => false, 'message' => self::safeError($e)], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-            $userId = auth()->id();
-            $now = now();
-
-            $saleReturn->deleted = 'Yes';
-            $saleReturn->deleted_by = $userId;
-            $saleReturn->deleted_date = $now;
-            $saleReturn->save();
-
-            SaleReturnItem::where('sale_return_id', $id)->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId,
-                'deleted_date' => $now
-            ]);
-
-            Stock::where('sale_return_id', $id)->update([
-                'deleted' => 'Yes',
-                'deleted_by' => $userId
-            ]);
-
-            $this->deletePaymentsBy('sale_return_id', $id);
-
-            DB::commit();
-
-            return response()->json(['status' => true, 'message' => 'Sale return deleted successfully.']);
-        } catch (Exception $e) {
-            DB::rollBack();
-            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
-        }
+        });
     }
 
     /*
@@ -1368,6 +1557,10 @@ class SaleController extends Controller
                 ->orderByDesc('sale_orders.id')
                 ->get();
 
+            // Delivery invoices per order (each delivery is a sale invoice).
+            $invoices = Sale::whereIn('sale_order_id', $orders->pluck('id')->all() ?: [0])->where('deleted', 'No')
+                ->orderBy('id')->get(['id', 'sale_order_id', 'invoice_no', 'grand_total'])->groupBy('sale_order_id');
+
             $statusColors = [
                 'Pending'   => 'bg-warning text-dark',
                 'Partial'   => 'bg-primary text-white',
@@ -1392,13 +1585,18 @@ class SaleController extends Controller
                     ['label' => 'Order PDF', 'icon' => 'fas fa-file-pdf', 'href' => $invoiceUrl, 'target' => '_blank'],
                 ];
 
+                $orderInvoices = $invoices[$row->id] ?? collect();
+                foreach ($orderInvoices as $inv) {
+                    $actions[] = ['label' => 'Invoice ' . $inv->invoice_no, 'icon' => 'fas fa-receipt', 'href' => route('sales.invoice.pdf', $inv->id), 'target' => '_blank'];
+                }
+
                 if ($isOpen) {
                     $actions[] = ['label' => 'Delivery', 'icon' => 'fas fa-truck', 'class' => 'text-success', 'href' => route('sales.orders.delivery_page', $row->id)];
                     $actions[] = ['label' => 'Cancel Order', 'icon' => 'fas fa-ban', 'class' => 'text-warning cancelOrderBtn', 'attrs' => ['data-id' => $row->id]];
                 }
 
-                // Delivered orders already created a sale, so they cannot be deleted here
-                if ($row->order_status !== 'Delivered') {
+                // An order with delivery invoices cannot be deleted (delete the invoices first, or cancel it).
+                if ($row->order_status !== 'Delivered' && $orderInvoices->isEmpty()) {
                     $actions[] = ['divider' => true];
                     $actions[] = ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteOrderBtn', 'attrs' => ['data-id' => $row->id]];
                 }
@@ -1406,7 +1604,7 @@ class SaleController extends Controller
                 $html .= '
                 <tr>
                     <td class="text-center">' . ($index + 1) . '</td>
-                    <td><strong class="text-primary">' . e($row->order_no) . '</strong></td>
+                    <td><strong class="text-primary">' . e($row->order_no) . '</strong>' . branch_tag($row->branch_id) . '</td>
                     <td>' . e($row->order_date) . '</td>
                     <td>' . e($row->delivery_date ?? '-') . '</td>
                     <td>
@@ -1417,9 +1615,10 @@ class SaleController extends Controller
                     </td>
                     <td class="text-end fw-bold">' . number_format((float) $row->grand_total, 2, '.', '') . '</td>
                     <td class="text-end text-success">' . number_format((float) $row->advance_paid, 2, '.', '') . '</td>
-                    <td class="text-end ' . ((float) $row->due_amount > 0 ? 'text-danger fw-bold' : '') . '">' . number_format((float) $row->due_amount, 2, '.', '') . '</td>
+                    <td class="text-end">' . number_format((float) $orderInvoices->sum('grand_total'), 2, '.', '')
+                        . ($orderInvoices->count() ? '<br><small class="text-muted">' . $orderInvoices->count() . ' invoice(s)</small>' : '') . '</td>
                     <td class="text-center">' . $badge . '</td>
-                    <td class="text-center">' . action_dropdown($actions) . '</td>
+                    <td class="text-center">' . action_dropdown($actions, $row->branch_id) . '</td>
                 </tr>';
             }
 
@@ -1430,7 +1629,7 @@ class SaleController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'status'  => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }
@@ -1469,7 +1668,8 @@ class SaleController extends Controller
             'remarks'        => 'nullable|string',
 
             'payment_method' => 'nullable|numeric',
-            'payment_method_account' => 'nullable|numeric',
+            'payment_method_account' => ['nullable', 'numeric', BranchController::ownLedgerRule()],
+            'sale_quotation_id' => 'nullable|integer',
 
             'items'                      => 'required|array|min:1',
             'items.*.product_id'         => 'required|integer|exists:products,id',
@@ -1488,151 +1688,168 @@ class SaleController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
-            $items    = $request->input('items', []);
-            $subtotal = 0;
+            try {
+                $items    = $request->input('items', []);
+                $subtotal = 0;
 
-            // Item totals
-            foreach ($items as $item) {
-                $qty     = (float) $item['qty'];
-                $price   = (float) $item['sale_price'];
-                $itemSub = $qty * $price;
+                // Item totals
+                foreach ($items as $item) {
+                    $qty     = (float) $item['qty'];
+                    $price   = (float) $item['sale_price'];
+                    $itemSub = $qty * $price;
 
-                $dType    = $item['discount_type'] ?? 'Amount';
-                $dVal     = (float) ($item['discount_value'] ?? 0);
-                $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
+                    $dType    = $item['discount_type'] ?? 'Amount';
+                    $dVal     = (float) ($item['discount_value'] ?? 0);
+                    $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
 
-                if ($itemDisc > $itemSub) {
-                    $itemDisc = $itemSub;
+                    if ($itemDisc > $itemSub) {
+                        $itemDisc = $itemSub;
+                    }
+
+                    $subtotal += ($itemSub - $itemDisc);
                 }
 
-                $subtotal += ($itemSub - $itemDisc);
-            }
+                // Header discount
+                $discountType   = $request->discount_type ?? 'Amount';
+                $discountValue  = (float) ($request->discount_value ?? 0);
+                $discountAmount = ($discountType === 'Percentage')
+                    ? ($subtotal * $discountValue) / 100
+                    : $discountValue;
 
-            // Header discount
-            $discountType   = $request->discount_type ?? 'Amount';
-            $discountValue  = (float) ($request->discount_value ?? 0);
-            $discountAmount = ($discountType === 'Percentage')
-                ? ($subtotal * $discountValue) / 100
-                : $discountValue;
-
-            if ($discountAmount > $subtotal) {
-                $discountAmount = $subtotal;
-            }
-
-            $grandTotal  = $subtotal - $discountAmount;
-            $advancePaid = (float) ($request->advance_paid ?? 0);
-
-            if ($advancePaid > $grandTotal) {
-                $advancePaid = $grandTotal;
-            }
-
-            $dueAmount = max(0, $grandTotal - $advancePaid);
-
-            // Order No: SO-XXXXXX
-            $orderNo = $this->nextSequentialCode(SaleOrder::class, 'order_no', 'SO');
-
-            // Create order
-            $order = new SaleOrder();
-            $order->order_no        = $orderNo;
-            $order->customer_id     = $request->customer_id;
-            $order->order_date      = $request->order_date;
-            $order->delivery_date   = $request->delivery_date;
-            $order->subtotal        = round($subtotal, 2);
-            $order->discount_type   = $discountType;
-            $order->discount_value  = round($discountValue, 2);
-            $order->discount_amount = round($discountAmount, 2);
-            $order->grand_total     = round($grandTotal, 2);
-            $order->advance_paid    = round($advancePaid, 2);
-            $order->due_amount      = round($dueAmount, 2);
-            $order->order_status    = 'Pending';
-            $order->remarks         = $request->remarks;
-            $order->deleted         = 'No';
-            $order->status          = 'Active';
-            $order->created_by      = auth()->id();
-            $order->created_date    = now();
-            $order->save();
-
-            // Order items
-            foreach ($items as $item) {
-                $qty     = (float) $item['qty'];
-                $price   = (float) $item['sale_price'];
-                $itemSub = $qty * $price;
-
-                $dType    = $item['discount_type'] ?? 'Amount';
-                $dVal     = (float) ($item['discount_value'] ?? 0);
-                $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
-
-                if ($itemDisc > $itemSub) {
-                    $itemDisc = $itemSub;
+                if ($discountAmount > $subtotal) {
+                    $discountAmount = $subtotal;
                 }
 
-                $itemTotal = $itemSub - $itemDisc;
+                $grandTotal  = $subtotal - $discountAmount;
 
-                $orderItem = new SaleOrderItem();
-                $orderItem->sale_order_id      = $order->id;
-                $orderItem->product_id         = $item['product_id'];
-                $orderItem->product_variant_id = !empty($item['product_variant_id']) ? $item['product_variant_id'] : null;
-                $orderItem->qty                = $qty;
-                $orderItem->sale_price         = $price;
-                $orderItem->discount_type      = $dType;
-                $orderItem->discount_value     = $dVal;
-                $orderItem->discount_amount    = round($itemDisc, 2);
-                $orderItem->subtotal           = round($itemSub, 2);
-                $orderItem->total              = round($itemTotal, 2);
-                $orderItem->deleted            = 'No';
-                $orderItem->status             = 'Active';
-                $orderItem->created_by         = auth()->id();
-                $orderItem->created_date       = now();
-                $orderItem->save();
-            }
-            $paymentDateTime = $request->order_date . ' ' . date('H:i:s');
-            $paymentMethod = $request->payment_method ?: '';
-            $paymentMethodAccount = $request->payment_method_account ?: '';
+                // VAT like a sale: a converted quotation keeps its own rate, otherwise the VAT settings. Each delivery
+                // invoice works its VAT out the same way, so the invoices add up to the order.
+                $vatLines = [];
+                foreach ($items as $i => $item) {
+                    $lineSub = (float) $item['qty'] * (float) $item['sale_price'];
+                    $lineDisc = ($item['discount_type'] ?? 'Amount') === 'Percentage' ? $lineSub * (float) ($item['discount_value'] ?? 0) / 100 : (float) ($item['discount_value'] ?? 0);
+                    $vatLines[$i] = ['product_id' => $item['product_id'], 'total' => $lineSub - min($lineDisc, $lineSub)];
+                }
+                $quotation = $request->filled('sale_quotation_id') ? SaleQuotationController::convertible((int) $request->sale_quotation_id, (int) $request->customer_id) : null;
+                $vat = $quotation
+                    ? self::fixedRateVat($vatLines, $discountAmount, (float) $quotation->tax_percent)
+                    : CustomerProgramController::vat($vatLines, $discountAmount);
+                if (!$vat['inclusive']) {
+                    $grandTotal += $vat['amount'];
+                }
 
-            if ($grandTotal > 0) {
-                $this->storeCreditPayment([
-                    'party_id'       => $request->customer_id,
-                    'party_type'     => 'Customer',
-                    'payment_type'   => 'Sale Order',
-                    'datetime'       => $paymentDateTime,
-                    'credit'         => $grandTotal,
-                    'order_id'       => $order->id,
-                    'payment_method' => null,
-                    'payment_method_account' => null,
+                $advancePaid = (float) ($request->advance_paid ?? 0);
+
+                if ($advancePaid > $grandTotal) {
+                    $advancePaid = $grandTotal;
+                }
+
+                $dueAmount = max(0, $grandTotal - $advancePaid);
+
+                // Order No: SO-XXXXXX
+                $orderNo = $this->nextSequentialCode(SaleOrder::class, 'order_no', 'SO');
+
+                // Create order
+                $order = new SaleOrder();
+                $order->order_no        = $orderNo;
+                $order->customer_id     = $request->customer_id;
+                $order->order_date      = $request->order_date;
+                $order->delivery_date   = $request->delivery_date;
+                $order->subtotal        = round($subtotal, 2);
+                $order->discount_type   = $discountType;
+                $order->discount_value  = round($discountValue, 2);
+                $order->discount_amount = round($discountAmount, 2);
+                $order->vat_percent     = $quotation ? (float) $quotation->tax_percent : null;
+                $order->vat_amount      = $vat['amount'];
+                $order->vat_inclusive   = $vat['inclusive'] ? 'Yes' : 'No';
+                $order->sale_quotation_id = $quotation->id ?? null;
+                $order->grand_total     = round($grandTotal, 2);
+                $order->advance_paid    = round($advancePaid, 2);
+                $order->due_amount      = round($dueAmount, 2);
+                $order->order_status    = 'Pending';
+                $order->remarks         = $request->remarks;
+                $order->deleted         = 'No';
+                $order->status          = 'Active';
+                $order->created_by      = auth()->id();
+                $order->created_date    = now();
+                $order->save();
+
+                // Order items
+                foreach ($items as $item) {
+                    $qty     = (float) $item['qty'];
+                    $price   = (float) $item['sale_price'];
+                    $itemSub = $qty * $price;
+
+                    $dType    = $item['discount_type'] ?? 'Amount';
+                    $dVal     = (float) ($item['discount_value'] ?? 0);
+                    $itemDisc = ($dType === 'Percentage') ? ($itemSub * $dVal) / 100 : $dVal;
+
+                    if ($itemDisc > $itemSub) {
+                        $itemDisc = $itemSub;
+                    }
+
+                    $itemTotal = $itemSub - $itemDisc;
+
+                    $orderItem = new SaleOrderItem();
+                    $orderItem->sale_order_id      = $order->id;
+                    $orderItem->product_id         = $item['product_id'];
+                    $orderItem->product_variant_id = !empty($item['product_variant_id']) ? $item['product_variant_id'] : null;
+                    $orderItem->qty                = $qty;
+                    $orderItem->sale_price         = $price;
+                    $orderItem->discount_type      = $dType;
+                    $orderItem->discount_value     = $dVal;
+                    $orderItem->discount_amount    = round($itemDisc, 2);
+                    $orderItem->subtotal           = round($itemSub, 2);
+                    $orderItem->total              = round($itemTotal, 2);
+                    $orderItem->deleted            = 'No';
+                    $orderItem->status             = 'Active';
+                    $orderItem->created_by         = auth()->id();
+                    $orderItem->created_date       = now();
+                    $orderItem->save();
+                }
+                $paymentDateTime = $request->order_date . ' ' . date('H:i:s');
+                $paymentMethod = $request->payment_method ?: '';
+                $paymentMethodAccount = $request->payment_method_account ?: '';
+                $partyType = Party::where('id', $request->customer_id)->value('type') ?: 'Customer';
+
+                // An order charges nothing: each delivery is a sale invoice that charges what was delivered.
+                // The advance is a receipt now and is applied to those invoices.
+                if ($advancePaid > 0) {
+                    $this->storeDebitPayment([
+                        'party_id'       => $request->customer_id,
+                        'party_type'     => $partyType,
+                        'payment_type'   => 'Sale Order Payment Receive',
+                        'datetime'       => $paymentDateTime,
+                        'debit'          => $advancePaid,
+                        'order_id'       => $order->id,
+                        'payment_method' => $paymentMethod,
+                        'payment_method_account' => $paymentMethodAccount,
+                    ]);
+                }
+                if ($quotation) {
+                    SaleQuotationController::markConverted($quotation, 'order', (int) $order->id, $orderNo);
+                }
+                DB::commit();
+
+                return response()->json([
+                    'status'    => true,
+                    'message'   => 'Sale order created successfully.',
+                    'order_id'  => $order->id,
+                    'order_url' => route('sales.order.invoice.pdf', $order->id)
                 ]);
+            } catch (Exception $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+                return response()->json([
+                    'status'  => false,
+                    'message' => self::safeError($e)
+                ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-
-            if ($advancePaid > 0) {
-                $this->storeDebitPayment([
-                    'party_id'       => $request->customer_id,
-                    'party_type'     => 'Customer',
-                    'payment_type'   => 'Sale Order Payment Receive',
-                    'datetime'       => $paymentDateTime,
-                    'debit'          => $advancePaid,
-                    'order_id'       => $order->id,
-                    'payment_method' => $paymentMethod,
-                    'payment_method_account' => $paymentMethodAccount,
-                ]);
-            }
-            DB::commit();
-
-            return response()->json([
-                'status'    => true,
-                'message'   => 'Sale order created successfully.',
-                'order_id'  => $order->id,
-                'order_url' => route('sales.order.invoice.pdf', $order->id)
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return response()->json([
-                'status'  => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
+        });
     }
 
     /*
@@ -1662,14 +1879,13 @@ class SaleController extends Controller
         $amountInWords  = function_exists('amount_in_words') ? amount_in_words($order->grand_total) : '';
         $preparedBy     = optional(\App\Models\User::find($order->created_by))->name ?? 'Admin';
         $generalSetting = DB::table('settings')->where('deleted', 'No')->first();
+        $invoices = Sale::where('sale_order_id', $order->id)->where('deleted', 'No')->orderBy('id')->get(['invoice_no', 'sale_date', 'grand_total']);
+        $advanceLeft = self::orderAdvanceLeft($order);
 
-        // NOTE: make sure this view file exists at
-        // resources/views/admin/inventory/sale/order_invoice.blade.php
-        // (your create/index views are in admin/inventory/sale_order/ - use that path if the PDF view lives there)
-        $pdf = Pdf::loadView(
+        $pdf = SettingController::pdf(
             'admin.inventory.sale_order.invoice',
-            compact('order', 'customer', 'items', 'amountInWords', 'preparedBy', 'generalSetting')
-        )->setPaper('a4', 'portrait');
+            compact('order', 'customer', 'items', 'amountInWords', 'preparedBy', 'generalSetting', 'invoices', 'advanceLeft')
+        );
 
         $filename = $order->order_no . '.pdf';
 
@@ -1706,88 +1922,72 @@ class SaleController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
+        BranchController::guardOwn('sale_orders', $id);
+        return self::retryOnDeadlock(function () use ($request, $id) {
+            DB::beginTransaction();
 
-        try {
-            $order = $this->branchOrderQuery($id)
-                ->lockForUpdate()
-                ->first();
+            try {
+                $order = $this->branchOrderQuery($id, true)
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$order) {
+                if (!$order) {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'Sale order not found.'], 404);
+                }
+
+                if ($order->order_status === 'Delivered') {
+                    DB::rollBack();
+                    return response()->json([
+                        'status'  => false,
+                        'message' => 'A delivered order cannot be cancelled. Use Sale Return instead.'
+                    ], 422);
+                }
+
+                if ($order->order_status === 'Cancelled') {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'This order is already cancelled.'], 422);
+                }
+
+                // Cancelling just closes the order: it never charged the customer, and what was delivered already is on
+                // its own sale invoices, which stay. The part of the advance not used by those invoices stays on the
+                // customer's account as credit (it can be paid back from Payment).
+                $order->order_status    = 'Cancelled';
+                $order->cancel_datetime = now();
+
+                if ($request->filled('reason')) {
+                    $order->remarks = trim(($order->remarks ? $order->remarks . "\n" : '') . 'Cancelled: ' . $request->reason);
+                }
+
+                $order->updated_by   = auth()->id();
+                $order->updated_date = now();
+                $order->save();
+
+                $unused = self::orderAdvanceLeft($order);
+
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Sale order cancelled.' . ($unused > 0.004
+                        ? ' The unused advance of ' . number_format($unused, 2) . ' stays on the customer\'s account as credit.'
+                        : '')
+                ]);
+            } catch (Exception $e) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'message' => 'Sale order not found.'], 404);
-            }
+                self::rethrowIfConcurrency($e);
 
-            if ($order->order_status === 'Delivered') {
-                DB::rollBack();
                 return response()->json([
                     'status'  => false,
-                    'message' => 'A delivered order cannot be cancelled. Use Sale Return instead.'
-                ], 422);
+                    'message' => self::safeError($e)
+                ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-
-            if ($order->order_status === 'Cancelled') {
-                DB::rollBack();
-                return response()->json(['status' => false, 'message' => 'This order is already cancelled.'], 422);
-            }
-
-            $order->order_status = 'Cancelled';
-
-            if ($request->filled('reason')) {
-                $order->remarks = trim(($order->remarks ? $order->remarks . "\n" : '') . 'Cancelled: ' . $request->reason);
-            }
-
-            $order->updated_by   = auth()->id();
-            $order->updated_date = now();
-            $order->save();
-
-            // The order charged the customer its full total when it was placed. After cancelling they owe only
-            // for what was delivered (nothing, or the delivered part of a partial order). Any advance stays
-            // on the customer's account as a credit.
-            $delivered = 0.0;
-            foreach (SaleOrderItem::where('sale_order_id', $order->id)->where('deleted', 'No')->get() as $line) {
-                if ((float) $line->qty > 0) {
-                    $delivered += (float) $line->total * min(1, (float) $line->delivery_qty / (float) $line->qty);
-                }
-            }
-            if ((float) $order->subtotal > 0) {
-                $delivered *= (float) $order->grand_total / (float) $order->subtotal;
-            }
-            $delivered = round($delivered, 2);
-
-            $charges = Payment::where('order_id', $order->id)->where('payment_type', 'Sale Order')
-                ->where('deleted', 'No')->orderBy('id')->get();
-            foreach ($charges as $i => $charge) {
-                if ($i === 0 && $delivered > 0) {
-                    $charge->credit = $delivered;
-                    $charge->remarks = trim(($charge->remarks ? $charge->remarks . ' ' : '') . '(cancelled: delivered part only)');
-                    $charge->save();
-                } else {
-                    $this->deletePaymentsBy('id', $charge->id);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Sale order cancelled.' . ((float) $order->advance_paid > 0
-                    ? ' The advance of ' . number_format((float) $order->advance_paid, 2) . ' stays on the customer\'s account as credit.'
-                    : '')
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return response()->json([
-                'status'  => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
+        });
     }
 
     public function orderDeliveryPage($id)
     {
-        $order = $this->branchOrderQuery($id)->first();
+        $order = $this->branchOrderQuery($id, true)->first();
         abort_unless($order, 404, 'Sale order not found in this branch.');
 
         if (in_array($order->order_status, ['Cancelled', 'Delivered'], true)) {
@@ -1798,16 +1998,32 @@ class SaleController extends Controller
 
         $customer = Party::find($order->customer_id);
 
-        $items = SaleOrderItem::where('sale_order_id', $id)
-            ->where('deleted', 'No')
-            ->get();
+        $items = DB::table('sale_order_items')
+            ->leftJoin('products', 'products.id', '=', 'sale_order_items.product_id')
+            ->leftJoin('product_variants', 'product_variants.id', '=', 'sale_order_items.product_variant_id')
+            ->leftJoin('attributes', 'attributes.id', '=', 'product_variants.attribute_id')
+            ->where('sale_order_items.sale_order_id', $order->id)
+            ->where('sale_order_items.deleted', 'No')
+            ->orderBy('sale_order_items.id')
+            ->get(['sale_order_items.*', 'products.name as product_name', 'products.sku', 'attributes.name as variant_name']);
 
-        return view('admin.inventory.sale_order.delivery', compact('order', 'items', 'customer'));
+        $branchId = (int) BranchController::activeId();
+        foreach ($items as $item) {
+            $item->in_stock = StockController::onHand((int) $item->product_id, $item->product_variant_id ? (int) $item->product_variant_id : null, $branchId);
+        }
+
+        $advanceLeft = self::orderAdvanceLeft($order);
+        $invoices = Sale::where('sale_order_id', $order->id)->where('deleted', 'No')->orderBy('id')->get(['id', 'invoice_no', 'sale_date', 'grand_total']);
+
+        return view('admin.inventory.sale_order.delivery', compact('order', 'items', 'customer', 'advanceLeft', 'invoices'));
     }
 
     /**
-     * Deliver (part of) a sale order: checks each quantity against what is still to deliver and the branch's
-     * stock, moves the goods out of stock and sets the order Partial / Delivered — all in one transaction.
+     * Deliver (part of) a sale order. The delivery is a Wholesale sale invoice (sales.sale_order_id) for exactly the
+     * delivered lines at the order's prices: line discounts and the order discount in proportion (the last delivery
+     * of a line / of the order takes what is left, so the invoices add up to the order), VAT worked out like the
+     * order (a quotation's fixed rate, else the VAT settings). The goods leave stock earliest expiry first, the
+     * customer is charged the invoice, and the order's unused advance is applied to it. All in one transaction.
      */
     public function orderDelivery(Request $request, $id)
     {
@@ -1819,158 +2035,349 @@ class SaleController extends Controller
             return response()->json(['status' => false, 'message' => 'Enter the quantity to deliver.'], 422);
         }
 
-        DB::beginTransaction();
+        BranchController::guardOwn('sale_orders', $id);
+        return self::retryOnDeadlock(function () use ($request, $id, $items) {
+            DB::beginTransaction();
 
-        try {
-            $saleOrder = $this->branchOrderQuery($id)->lockForUpdate()->first();
-            abort_unless($saleOrder, 404, 'Sale order not found in this branch.');
-            abort_if($saleOrder->order_status === 'Cancelled', 422, 'A cancelled order cannot be delivered.');
-            abort_if($saleOrder->order_status === 'Delivered', 422, 'This order is already delivered.');
+            try {
+                $saleOrder = $this->branchOrderQuery($id, true)->lockForUpdate()->first();
+                abort_unless($saleOrder, 404, 'Sale order not found in this branch.');
+                abort_if($saleOrder->order_status === 'Cancelled', 422, 'A cancelled order cannot be delivered.');
+                abort_if($saleOrder->order_status === 'Delivered', 422, 'This order is already delivered.');
 
-            $orderItems = SaleOrderItem::where('sale_order_id', $saleOrder->id)->where('deleted', 'No')
-                ->lockForUpdate()->get()->keyBy('id');
+                $orderItems = SaleOrderItem::where('sale_order_id', $saleOrder->id)->where('deleted', 'No')
+                    ->lockForUpdate()->get()->keyBy('id');
 
-            // Sum per order line (the same line sent twice must still fit the remaining quantity).
-            $wanted = [];
-            foreach ($items as $item) {
-                if (!is_array($item) || !isset($item['sale_order_item_id'], $item['delivery_qty'])) {
-                    continue;
+                // Sum per order line (the same line sent twice must still fit the remaining quantity).
+                $wanted = [];
+                foreach ($items as $item) {
+                    if (!is_array($item) || !isset($item['sale_order_item_id'], $item['delivery_qty'])) {
+                        continue;
+                    }
+                    abort_unless(is_numeric($item['delivery_qty']), 422, 'Delivery quantity must be a number.');
+                    $qty = (float) $item['delivery_qty'];
+                    abort_if($qty < 0, 422, 'Delivery quantity cannot be negative.');
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                    $lineId = (int) $item['sale_order_item_id'];
+                    abort_unless($orderItems->has($lineId), 422, 'An item does not belong to this order.');
+                    $wanted[$lineId] = ($wanted[$lineId] ?? 0) + $qty;
                 }
-                abort_unless(is_numeric($item['delivery_qty']), 422, 'Delivery quantity must be a number.');
-                $qty = (float) $item['delivery_qty'];
-                abort_if($qty < 0, 422, 'Delivery quantity cannot be negative.');
-                if ($qty <= 0) {
-                    continue;
+                abort_if(!$wanted, 422, 'Enter a delivery quantity for at least one item.');
+
+                $branchId = (int) BranchController::activeId();
+                $saleDate = $request->filled('sale_date') && strtotime((string) $request->sale_date)
+                    ? date('Y-m-d', strtotime((string) $request->sale_date)) : now()->toDateString();
+
+                // Same lock as store(): a sale and a delivery of the same product cannot both take the last units.
+                Product::whereIn('id', $orderItems->only(array_keys($wanted))->pluck('product_id')->unique()->all() ?: [0])
+                    ->orderBy('id')->lockForUpdate()->get(['id']);
+
+                // What earlier delivery invoices of this order already took (the last delivery gets the remainder).
+                $prior = DB::table('sale_items as si')->join('sales as s', 's.id', '=', 'si.sale_id')
+                    ->where('s.sale_order_id', $saleOrder->id)->where('s.deleted', 'No')->where('si.deleted', 'No')
+                    ->groupBy('si.sale_order_item_id')
+                    ->selectRaw('si.sale_order_item_id, SUM(si.discount_amount) AS disc')->pluck('disc', 'sale_order_item_id');
+                $priorHeaderDisc = (float) Sale::where('sale_order_id', $saleOrder->id)->where('deleted', 'No')->sum('discount_amount');
+
+                $lines = [];
+                foreach ($wanted as $lineId => $qty) {
+                    $orderItem = $orderItems[$lineId];
+                    $name = Product::where('id', $orderItem->product_id)->value('name') ?? ('Product #' . $orderItem->product_id);
+                    $variantId = $orderItem->product_variant_id ? (int) $orderItem->product_variant_id : null;
+
+                    $remaining = max(0, (float) $orderItem->qty - (float) $orderItem->delivery_qty);
+                    abort_if($qty > $remaining + 0.0005, 422, 'Delivery quantity for "' . $name . '" is more than the remaining ' . round($remaining, 3) . '.');
+
+                    $available = StockController::onHand((int) $orderItem->product_id, $variantId, $branchId);
+                    abort_if($qty > $available + 0.0005, 422, 'Not enough stock for "' . $name . '". Available: ' . round($available, 3) . ', required: ' . round($qty, 3) . '.');
+
+                    $lineSub = $qty * (float) $orderItem->sale_price;
+                    $disc = $qty >= $remaining - 0.0005
+                        ? (float) $orderItem->discount_amount - (float) ($prior[$lineId] ?? 0)
+                        : ((float) $orderItem->qty > 0 ? (float) $orderItem->discount_amount * $qty / (float) $orderItem->qty : 0);
+                    $disc = round(min(max(0, $disc), $lineSub), 2);
+
+                    $lines[] = ['item' => $orderItem, 'qty' => $qty, 'sub' => $lineSub, 'disc' => $disc, 'total' => $lineSub - $disc];
+                    $orderItem->delivery_qty = (float) $orderItem->delivery_qty + $qty;
                 }
-                $lineId = (int) $item['sale_order_item_id'];
-                abort_unless($orderItems->has($lineId), 422, 'An item does not belong to this order.');
-                $wanted[$lineId] = ($wanted[$lineId] ?? 0) + $qty;
+
+                $isPartial = $orderItems->contains(fn ($l) => (float) $l->delivery_qty + 0.0005 < (float) $l->qty);
+
+                $subtotal = array_sum(array_column($lines, 'total'));
+                $headerDisc = !$isPartial
+                    ? (float) $saleOrder->discount_amount - $priorHeaderDisc
+                    : ((float) $saleOrder->subtotal > 0 ? (float) $saleOrder->discount_amount * $subtotal / (float) $saleOrder->subtotal : 0);
+                $headerDisc = round(min(max(0, $headerDisc), $subtotal), 2);
+
+                $vatLines = array_map(fn ($l) => ['product_id' => $l['item']->product_id, 'total' => $l['total']], $lines);
+                $vat = $saleOrder->vat_percent !== null
+                    ? self::fixedRateVat($vatLines, $headerDisc, (float) $saleOrder->vat_percent)
+                    : CustomerProgramController::vat($vatLines, $headerDisc);
+                $grandTotal = round($subtotal - $headerDisc + ($vat['inclusive'] ? 0 : $vat['amount']), 2);
+
+                // The last delivery closes the order: its invoice takes exactly what is left of the order total, so
+                // rounding on the lines never leaves the invoices a paisa off the order (the difference goes on the
+                // invoice discount).
+                if (!$isPartial) {
+                    $left = round((float) $saleOrder->grand_total - (float) Sale::where('sale_order_id', $saleOrder->id)->where('deleted', 'No')->sum('grand_total'), 2);
+                    $diff = round($left - $grandTotal, 2);
+                    if ($diff != 0 && abs($diff) < 1 && $headerDisc - $diff >= 0) {
+                        $headerDisc = round($headerDisc - $diff, 2);
+                        $grandTotal = $left;
+                    } elseif ($diff != 0 && abs($diff) < 1 && $lines[count($lines) - 1]['disc'] - $diff >= 0) {
+                        $k = count($lines) - 1;
+                        $lines[$k]['disc'] = round($lines[$k]['disc'] - $diff, 2);
+                        $lines[$k]['total'] = $lines[$k]['sub'] - $lines[$k]['disc'];
+                        $subtotal = round($subtotal + $diff, 2);
+                        $grandTotal = $left;
+                    }
+                }
+
+                $advance = round(min(self::orderAdvanceLeft($saleOrder), $grandTotal), 2);
+
+                $invoiceNo = $this->nextSequentialCode(Sale::class, 'invoice_no', 'INV');
+                $sale = new Sale();
+                $sale->invoice_no        = $invoiceNo;
+                $sale->sale_type         = 'Wholesale';
+                $sale->customer_id       = $saleOrder->customer_id;
+                $sale->sale_order_id     = $saleOrder->id;
+                $sale->sale_quotation_id = $saleOrder->sale_quotation_id;
+                $sale->sale_date         = $saleDate;
+                $sale->subtotal          = round($subtotal, 2);
+                $sale->discount_type     = 'Amount';
+                $sale->discount_value    = $headerDisc;
+                $sale->discount_amount   = $headerDisc;
+                $sale->vat_amount        = $vat['amount'];
+                $sale->vat_inclusive     = $vat['inclusive'] ? 'Yes' : 'No';
+                $sale->grand_total       = $grandTotal;
+                $sale->paid_amount       = $advance;
+                $sale->advance_applied   = $advance;
+                $sale->due_amount        = round($grandTotal - $advance, 2);
+                $sale->remarks           = 'Delivered from Sale Order ' . $saleOrder->order_no;
+                $sale->deleted           = 'No';
+                $sale->status            = 'Active';
+                $sale->created_by        = auth()->id();
+                $sale->created_date      = now();
+                $sale->save();
+
+                $purchasePrices = Product::whereIn('id', array_map(fn ($l) => $l['item']->product_id, $lines))->pluck('purchase_price', 'id');
+                foreach ($lines as $i => $l) {
+                    $orderItem = $l['item'];
+                    $orderItem->save();
+
+                    $saleItem = new SaleItem();
+                    $saleItem->sale_id            = $sale->id;
+                    $saleItem->sale_order_item_id = $orderItem->id;
+                    $saleItem->product_id         = $orderItem->product_id;
+                    $saleItem->product_variant_id = $orderItem->product_variant_id;
+                    $saleItem->qty                = $l['qty'];
+                    $saleItem->sale_price         = $orderItem->sale_price;
+                    $saleItem->purchase_price     = (float) ($purchasePrices[$orderItem->product_id] ?? 0);
+                    $saleItem->discount_type      = 'Amount';
+                    $saleItem->discount_value     = $l['disc'];
+                    $saleItem->discount_amount    = $l['disc'];
+                    $saleItem->subtotal           = round($l['sub'], 2);
+                    $saleItem->total              = round($l['total'], 2);
+                    $saleItem->vat_percent        = $vat['lines'][$i]['rate'] ?? 0;
+                    $saleItem->vat_amount         = $vat['lines'][$i]['vat'] ?? 0;
+                    $saleItem->deleted            = 'No';
+                    $saleItem->status             = 'Active';
+                    $saleItem->created_by         = auth()->id();
+                    $saleItem->created_date       = now();
+                    $saleItem->save();
+
+                    // Stock out like any sale: batch-tracked products leave earliest expiry first.
+                    foreach (StockController::allocate((int) $orderItem->product_id, $orderItem->product_variant_id ? (int) $orderItem->product_variant_id : null, $branchId, (float) $l['qty']) as [$batchId, $part]) {
+                        $stock = new Stock();
+                        $stock->product_id         = $orderItem->product_id;
+                        $stock->product_variant_id = $orderItem->product_variant_id;
+                        $stock->batch_id           = $batchId;
+                        $stock->in_qty             = 0;
+                        $stock->out_qty            = $part;
+                        $stock->sale_id            = $sale->id;
+                        $stock->date               = $saleDate;
+                        $stock->reference_type     = 'Sale';
+                        $stock->reference_id       = $sale->id;
+                        $stock->remarks            = 'Sale: ' . $invoiceNo . ' (order ' . $saleOrder->order_no . ')';
+                        $stock->deleted            = 'No';
+                        $stock->status             = 'Active';
+                        $stock->created_by         = auth()->id();
+                        $stock->created_date       = now();
+                        $stock->save();
+                    }
+                }
+
+                // Charge the customer the delivered value (the advance is already a receipt on their account).
+                if ($grandTotal > 0) {
+                    $this->storeCreditPayment([
+                        'party_id'       => $saleOrder->customer_id,
+                        'party_type'     => Party::where('id', $saleOrder->customer_id)->value('type') ?: 'Customer',
+                        'payment_type'   => 'Wholesale',
+                        'datetime'       => $saleDate . ' ' . date('H:i:s'),
+                        'credit'         => $grandTotal,
+                        'sale_id'        => $sale->id,
+                        'payment_method' => '',
+                        'payment_method_account' => '',
+                        'remarks'        => 'Delivery of ' . $saleOrder->order_no,
+                    ]);
+                }
+
+                $earned = CustomerProgramController::earnPoints($grandTotal);
+                if ($earned > 0 && $saleOrder->customer_id) {
+                    CustomerProgramController::addPoints((int) $saleOrder->customer_id, $earned, 'Earn', $sale->id, $grandTotal, 'Earned on ' . $invoiceNo);
+                    $sale->loyalty_points_earned = $earned;
+                    $sale->save();
+                }
+
+                $saleOrder->order_status      = $isPartial ? 'Partial' : 'Delivered';
+                $saleOrder->delivery_datetime = now();
+                $saleOrder->updated_by        = auth()->id();
+                $saleOrder->updated_date      = now();
+                $saleOrder->save();
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => true,
+                    'message' => ($isPartial
+                        ? 'Order marked as partially delivered successfully.'
+                        : 'Order marked as delivered successfully.')
+                        . ' Invoice ' . $invoiceNo . ' for ' . number_format($grandTotal, 2)
+                        . ($advance > 0 ? ' (' . number_format($advance, 2) . ' paid from the order advance).' : '.'),
+                    'order_status' => $saleOrder->order_status,
+                    'sale_id'      => $sale->id,
+                    'invoice_no'   => $invoiceNo,
+                    'invoice_url'  => route('sales.invoice.pdf', $sale->id),
+                ]);
+            } catch (Exception $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+                return response()->json(['status' => false, 'message' => self::safeError($e)],
+                    $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
-            abort_if(!$wanted, 422, 'Enter a delivery quantity for at least one item.');
-
-            $branchId = (int) BranchController::activeId();
-            $today = now()->toDateString();
-
-            foreach ($wanted as $lineId => $qty) {
-                $orderItem = $orderItems[$lineId];
-                $name = Product::where('id', $orderItem->product_id)->value('name') ?? ('Product #' . $orderItem->product_id);
-                $variantId = $orderItem->product_variant_id ? (int) $orderItem->product_variant_id : null;
-
-                $remaining = max(0, (float) $orderItem->qty - (float) $orderItem->delivery_qty);
-                abort_if($qty > $remaining + 0.0005, 422, 'Delivery quantity for "' . $name . '" is more than the remaining ' . round($remaining, 3) . '.');
-
-                $available = StockController::onHand((int) $orderItem->product_id, $variantId, $branchId);
-                abort_if($qty > $available + 0.0005, 422, 'Not enough stock for "' . $name . '". Available: ' . round($available, 3) . ', required: ' . round($qty, 3) . '.');
-
-                $orderItem->delivery_qty = (float) $orderItem->delivery_qty + $qty;
-                $orderItem->save();
-
-                // Stock Reduction (out_qty) — batch-tracked products leave earliest expiry first
-                foreach (StockController::allocate((int) $orderItem->product_id, $variantId, $branchId, $qty) as [$batchId, $part]) {
-                    $stock = new Stock();
-                    $stock->product_id         = $orderItem->product_id;
-                    $stock->product_variant_id = $orderItem->product_variant_id;
-                    $stock->batch_id           = $batchId;
-                    $stock->in_qty             = 0;
-                    $stock->out_qty            = $part;
-                    $stock->order_id           = $saleOrder->id;
-                    $stock->date               = $today;
-                    $stock->reference_type     = 'Order';
-                    $stock->reference_id       = $saleOrder->id;
-                    $stock->remarks            = 'Order: ' . $saleOrder->order_no;
-                    $stock->deleted            = 'No';
-                    $stock->status             = 'Active';
-                    $stock->created_by         = auth()->id();
-                    $stock->created_date       = now();
-                    $stock->save();
-                }
-            }
-
-            $isPartial = $orderItems->contains(fn ($l) => (float) $l->delivery_qty + 0.0005 < (float) $l->qty);
-
-            $saleOrder->order_status      = $isPartial ? 'Partial' : 'Delivered';
-            $saleOrder->delivery_datetime = now();
-            $saleOrder->updated_by        = auth()->id();
-            $saleOrder->updated_date      = now();
-            $saleOrder->save();
-
-            DB::commit();
-
-            return response()->json([
-                'status' => true,
-                'message' => $isPartial
-                    ? 'Order marked as partially delivered successfully.'
-                    : 'Order marked as delivered successfully.',
-                'order_status' => $saleOrder->order_status,
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()],
-                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
-        }
+        });
     }
 
 
     public function orderDelete($id)
     {
-        DB::beginTransaction();
+        BranchController::guardOwn('sale_orders', $id);
+        return self::retryOnDeadlock(function () use ($id) {
+            DB::beginTransaction();
 
-        try {
-            $order = $this->branchOrderQuery($id)->lockForUpdate()->first();
+            try {
+                $order = $this->branchOrderQuery($id, true)->lockForUpdate()->first();
 
-            if (!$order) {
+                if (!$order) {
+                    DB::rollBack();
+                    return response()->json(['status' => false, 'message' => 'Sale order not found.'], 404);
+                }
+
+                $invoices = Sale::where('sale_order_id', $order->id)->where('deleted', 'No')->pluck('invoice_no');
+                if ($order->order_status === 'Delivered' || $invoices->isNotEmpty()) {
+                    DB::rollBack();
+                    return response()->json([
+                        'status'  => false,
+                        'message' => 'This order has delivery invoices (' . ($invoices->implode(', ') ?: 'delivered') . '). Delete those invoices first, or cancel the order to close it.'
+                    ], 422);
+                }
+
+                $userId = auth()->id();
+
+                $order->deleted    = 'Yes';
+                $order->status    = 'Inactive';
+                $order->deleted_date = now();
+                $order->deleted_by = $userId;
+                $order->save();
+
+                SaleOrderItem::where('sale_order_id', $id)
+                    ->where('deleted', 'No')
+                    ->update([
+                        'deleted'    => 'Yes',
+                        'status'    => 'Inactive',
+                        'deleted_date'    => now(),
+                        'deleted_by' => $userId
+                    ]);
+                $this->deletePaymentsBy('order_id', $id);
+                Stock::where('order_id', $id)
+                    ->where('deleted', 'No')
+                    ->update([
+                        'deleted'    => 'Yes',
+                        'status'    => 'Inactive',
+                        'deleted_date'    => now(),
+                        'deleted_by' => $userId
+                    ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Sale order deleted successfully.'
+                ]);
+            } catch (Exception $e) {
                 DB::rollBack();
-                return response()->json(['status' => false, 'message' => 'Sale order not found.'], 404);
-            }
+                self::rethrowIfConcurrency($e);
 
-            if ($order->order_status === 'Delivered') {
-                DB::rollBack();
                 return response()->json([
                     'status'  => false,
-                    'message' => 'A delivered order cannot be deleted because a sale invoice was created from it.'
-                ], 422);
+                    'message' => self::safeError($e)
+                ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 500);
             }
+        });
+    }
 
-            $userId = auth()->id();
+    /** Receipts applied to a deleted invoice stay on the customer's account, just no longer tied to it. */
+    private function undoAppliedReceipts(int $saleId): void
+    {
+        Payment::where('applied_sale_id', $saleId)->update(['applied_sale_id' => null]);
+    }
 
-            $order->deleted    = 'Yes';
-            $order->status    = 'Inactive';
-            $order->deleted_date = now();
-            $order->deleted_by = $userId;
+    /** The order's advance not yet applied to its delivery invoices. */
+    public static function orderAdvanceLeft(object $order): float
+    {
+        $used = (float) Sale::where('sale_order_id', $order->id)->where('deleted', 'No')->sum('advance_applied');
+
+        return round(max(0, (float) $order->advance_paid - $used), 2);
+    }
+
+    /**
+     * VAT at one fixed rate on the lines after the sale discount (a converted quotation's rate), same shape as
+     * CustomerProgramController::vat(). The total is worked out on the whole base the way the quotation does, so
+     * the sale / order total equals the quotation's.
+     */
+    public static function fixedRateVat(array $lines, float $discount, float $rate): array
+    {
+        $out = ['inclusive' => false, 'amount' => 0.0, 'lines' => []];
+        if ($rate <= 0) {
+            return $out;
+        }
+        $subtotal = array_sum(array_column($lines, 'total'));
+        $share = $subtotal > 0 ? max(0, 1 - $discount / $subtotal) : 0;
+        foreach ($lines as $i => $l) {
+            $out['lines'][$i] = ['rate' => $rate, 'vat' => round((float) $l['total'] * $share * $rate / 100, 2)];
+        }
+        $out['amount'] = round(max(0, $subtotal - $discount) * $rate / 100, 2);
+
+        return $out;
+    }
+
+    /** After a delivery invoice is deleted: its quantities are undelivered again and the order reopens. */
+    private static function undoOrderDelivery(Sale $sale): void
+    {
+        $order = SaleOrder::where('id', $sale->sale_order_id)->lockForUpdate()->first();
+        if (!$order) {
+            return;
+        }
+        foreach (SaleItem::where('sale_id', $sale->id)->whereNotNull('sale_order_item_id')->get() as $si) {
+            SaleOrderItem::where('id', $si->sale_order_item_id)->update(['delivery_qty' => DB::raw('GREATEST(0, delivery_qty - ' . (float) $si->qty . ')')]);
+        }
+        if ($order->order_status !== 'Cancelled') {
+            $delivered = (float) SaleOrderItem::where('sale_order_id', $order->id)->where('deleted', 'No')->sum('delivery_qty');
+            $order->order_status = $delivered > 0.0005 ? 'Partial' : 'Pending';
             $order->save();
-
-            SaleOrderItem::where('sale_order_id', $id)
-                ->where('deleted', 'No')
-                ->update([
-                    'deleted'    => 'Yes',
-                    'status'    => 'Inactive',
-                    'deleted_date'    => now(),
-                    'deleted_by' => $userId
-                ]);
-            $this->deletePaymentsBy('order_id', $id);
-            Stock::where('order_id', $id)
-                ->where('deleted', 'No')
-                ->update([
-                    'deleted'    => 'Yes',
-                    'status'    => 'Inactive',
-                    'deleted_date'    => now(),
-                    'deleted_by' => $userId
-                ]);
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Sale order deleted successfully.'
-            ]);
-        } catch (Exception $e) {
-            DB::rollBack();
-
-            return response()->json([
-                'status'  => false,
-                'message' => $e->getMessage()
-            ], 500);
         }
     }
 
@@ -1994,20 +2401,80 @@ class SaleController extends Controller
         return (clone $base)->where('phone', 'like', '%' . substr($phone, -11))->orderBy('id')->first();
     }
 
-    /** A sale of the logged-in branch (null if missing, deleted or another branch's). */
-    private function branchSale($id): ?Sale
+    /**
+     * Points earned on a sale, in the share the returns now cover (by value), less what earlier returns already
+     * took back; capped by the customer's balance so it never goes below zero. Returns the points taken.
+     */
+    private static function reverseReturnLoyalty(Sale $sale, SaleReturn $saleReturn): float
     {
-        return BranchController::scope(Sale::where('id', $id)->where('deleted', 'No'), 'branch_id')->first();
+        $earned = (float) ($sale->loyalty_points_earned ?? 0);
+        if ($earned <= 0 || (float) $sale->grand_total <= 0 || !$sale->customer_id) {
+            return 0.0;
+        }
+        $returns = SaleReturn::where('sale_id', $sale->id)->where('deleted', 'No')->where('id', '!=', $saleReturn->id)
+            ->selectRaw('COALESCE(SUM(grand_total), 0) AS total, COALESCE(SUM(loyalty_points_reversed), 0) AS points')->first();
+        $share = min(1, ((float) $returns->total + (float) $saleReturn->grand_total) / (float) $sale->grand_total);
+        $take = round($earned * $share, 2) - (float) $returns->points;
+
+        $balance = (float) DB::table('parties')->where('id', $sale->customer_id)->lockForUpdate()->value('loyalty_points');
+        $take = round(min($take, max(0, $balance)), 2);
+        if ($take <= 0) {
+            return 0.0;
+        }
+
+        CustomerProgramController::addPoints((int) $sale->customer_id, -$take, 'Reverse', (int) $sale->id, (float) $saleReturn->grand_total,
+            'Returned on ' . $saleReturn->return_no, (int) $saleReturn->id);
+        $saleReturn->loyalty_points_reversed = $take;
+        $saleReturn->save();
+
+        return $take;
     }
 
-    private function branchSaleReturn($id): ?SaleReturn
+    /** VAT / loyalty / credit settings the POS and the sale create page compute their totals with (same as store()). */
+    private static function salePrograms(): array
     {
-        return BranchController::scope(SaleReturn::where('id', $id)->where('deleted', 'No'), 'branch_id')->first();
+        return [
+            'vat_enabled'   => CustomerProgramController::on('vat_enabled'),
+            'vat_rate'      => (float) CustomerProgramController::setting('vat_rate'),
+            'vat_inclusive' => CustomerProgramController::on('vat_inclusive'),
+            'loyalty'       => CustomerProgramController::on('loyalty_enabled'),
+            'credit_mode'   => CustomerProgramController::setting('credit_mode'),
+        ];
     }
 
-    private function branchOrderQuery($id)
+    /**
+     * A sale the user may see (null if missing, deleted or of a branch the user does not see). $own = true for
+     * changes (delete, return): only the working branch's, and another visible branch's sale is refused (403)
+     * with "Sign in to <Branch> to change it".
+     */
+    private function branchSale($id, bool $own = false): ?Sale
     {
-        return BranchController::scope(SaleOrder::where('id', $id)->where('deleted', 'No'), 'branch_id');
+        if ($own) {
+            BranchController::guardOwn('sales', $id);
+        }
+
+        return ($own ? BranchController::scopeOwn(Sale::where('id', $id)->where('deleted', 'No'), 'branch_id')
+            : BranchController::scope(Sale::where('id', $id)->where('deleted', 'No'), 'branch_id'))->first();
+    }
+
+    private function branchSaleReturn($id, bool $own = false): ?SaleReturn
+    {
+        if ($own) {
+            BranchController::guardOwn('sale_returns', $id);
+        }
+
+        return ($own ? BranchController::scopeOwn(SaleReturn::where('id', $id)->where('deleted', 'No'), 'branch_id')
+            : BranchController::scope(SaleReturn::where('id', $id)->where('deleted', 'No'), 'branch_id'))->first();
+    }
+
+    private function branchOrderQuery($id, bool $own = false)
+    {
+        if ($own) {
+            BranchController::guardOwn('sale_orders', $id);
+        }
+
+        return $own ? BranchController::scopeOwn(SaleOrder::where('id', $id)->where('deleted', 'No'), 'branch_id')
+            : BranchController::scope(SaleOrder::where('id', $id)->where('deleted', 'No'), 'branch_id');
     }
 
     /**

@@ -106,13 +106,13 @@ class JournalController extends Controller
 
                 $output['data'][] = [
                     $i++,
-                    '<span class="fw-semibold">' . e($journal->journal_no) . '</span>',
+                    '<span class="fw-semibold">' . e($journal->journal_no) . '</span>' . branch_tag($journal->branch_id),
                     '<span class="d-none">' . $date->format('Y-m-d') . '</span>' . e($date->format('d M Y')),
                     e($journal->reference_no ?: '-'),
                     $accountsCell ?: '<span class="text-muted">-</span>',
                     '<span class="d-none">' . sprintf('%021.2f', (float) $journal->total_debit) . '</span>'
                         . '<span class="d-block text-end fw-semibold">' . number_format((float) $journal->total_debit, 2) . '</span>',
-                    $this->actionButtons('Journal', $id),
+                    $this->actionButtons('Journal', $id, [], $journal->branch_id),
                 ];
             }
 
@@ -253,84 +253,99 @@ class JournalController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
-            $lines = collect($request->input('details'))->map(fn ($d) => [
-                'account_group_id' => (int) $d['account_group_id'],
-                'account_id'       => (int) $d['account_id'],
-                'description'      => $this->nullIfBlank($d['description'] ?? null),
-                'debit'            => round((float) ($d['debit'] ?? 0), 2),
-                'credit'           => round((float) ($d['credit'] ?? 0), 2),
-            ]);
+            try {
+                $lines = collect($request->input('details'))->map(fn ($d) => [
+                    'account_group_id' => (int) $d['account_group_id'],
+                    'account_id'       => (int) $d['account_id'],
+                    'description'      => $this->nullIfBlank($d['description'] ?? null),
+                    'debit'            => round((float) ($d['debit'] ?? 0), 2),
+                    'credit'           => round((float) ($d['credit'] ?? 0), 2),
+                ]);
 
-            $total = round($lines->sum('debit'), 2);
+                $total = round($lines->sum('debit'), 2);
 
-            if ($request->filled('id')) {
-                $journal = BranchController::scope(Journal::where('id', (int) $request->input('id')))
-                    ->where('deleted', 'No')->lockForUpdate()->first();
+                if ($request->filled('id')) {
+                    BranchController::guardOwn('journals', $request->input('id'));
+                    $journal = BranchController::scopeOwn(Journal::where('id', (int) $request->input('id')))
+                        ->where('deleted', 'No')->lockForUpdate()->first();
 
-                if (!$journal) {
-                    abort(404, 'Journal not found.');
+                    if (!$journal) {
+                        abort(404, 'Journal not found.');
+                    }
+
+                    if ($closed = AccountingReportController::closedDateMessage($journal->journal_date)) {
+                        abort(422, $closed);
+                    }
+
+                    // money out of a cash ledger (credit − debit on it), checked before the old lines leave the books
+                    ReportController::ensureCashLines(self::netCredits($lines), self::netCredits(DB::table('journal_details')
+                        ->where('journal_id', $journal->id)->where('deleted', 'No')->get(['account_id', 'debit', 'credit'])));
+                    $this->reverseJournal($journal->id);
+
+                    $journal->updated_by   = Auth::id();
+                    $journal->updated_date = now();
+                } else {
+                    ReportController::ensureCashLines(self::netCredits($lines));
+                    $journal = new Journal();
+                    $journal->journal_no   = $this->nextSequentialCode(Journal::class, 'journal_no', 'JV');
+                    $journal->created_by   = Auth::id();
+                    $journal->created_date = now();
                 }
 
-                if ($closed = AccountingReportController::closedDateMessage($journal->journal_date)) {
-                    abort(422, $closed);
+                $journal->journal_date = $request->input('journal_date');
+                $journal->reference_no = $this->nullIfBlank($request->input('reference_no'));
+                $journal->remarks      = $this->nullIfBlank($request->input('remarks'));
+                $journal->total_debit  = $total;
+                $journal->total_credit = $total;
+                $journal->save();
+
+                foreach ($lines as $line) {
+                    $detail = new JournalDetail();
+                    $detail->journal_id       = $journal->id;
+                    $detail->account_group_id = $line['account_group_id'];
+                    $detail->account_id       = $line['account_id'];
+                    $detail->description      = $line['description'];
+                    $detail->debit            = $line['debit'];
+                    $detail->credit           = $line['credit'];
+                    $detail->created_by       = Auth::id();
+                    $detail->created_date     = now();
+                    $detail->save();
                 }
 
-                $this->reverseJournal($journal->id);
+                $this->postBalances(
+                    $this->sumByColumn($lines, 'account_id', 'debit'),
+                    $this->sumByColumn($lines, 'account_id', 'credit'),
+                    1
+                );
 
-                $journal->updated_by   = Auth::id();
-                $journal->updated_date = now();
-            } else {
-                $journal = new Journal();
-                $journal->journal_no   = $this->nextSequentialCode(Journal::class, 'journal_no', 'JV');
-                $journal->created_by   = Auth::id();
-                $journal->created_date = now();
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Journal ' . $journal->journal_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
+                ]);
+            } catch (HttpExceptionInterface $e) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+            } catch (Throwable $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                Log::error('Journal store error', $this->ctx($e));
+
+                return response()->json(['status' => false, 'message' => 'Unable to save the journal. Please try again.'], 500);
             }
+        });
+    }
 
-            $journal->journal_date = $request->input('journal_date');
-            $journal->reference_no = $this->nullIfBlank($request->input('reference_no'));
-            $journal->remarks      = $this->nullIfBlank($request->input('remarks'));
-            $journal->total_debit  = $total;
-            $journal->total_credit = $total;
-            $journal->save();
-
-            foreach ($lines as $line) {
-                $detail = new JournalDetail();
-                $detail->journal_id       = $journal->id;
-                $detail->account_group_id = $line['account_group_id'];
-                $detail->account_id       = $line['account_id'];
-                $detail->description      = $line['description'];
-                $detail->debit            = $line['debit'];
-                $detail->credit           = $line['credit'];
-                $detail->created_by       = Auth::id();
-                $detail->created_date     = now();
-                $detail->save();
-            }
-
-            $this->postBalances(
-                $this->sumByColumn($lines, 'account_id', 'debit'),
-                $this->sumByColumn($lines, 'account_id', 'credit'),
-                1
-            );
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Journal ' . $journal->journal_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
-            ]);
-        } catch (HttpExceptionInterface $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Journal store error', $this->ctx($e));
-
-            return response()->json(['status' => false, 'message' => 'Unable to save the journal. Please try again.'], 500);
-        }
+    /** [account_id => credit − debit] for the accounts a journal's lines take money out of. */
+    private static function netCredits($lines): array
+    {
+        return collect($lines)->map(fn ($l) => (array) $l)->groupBy('account_id')
+            ->map(fn ($g) => round($g->sum('credit') - $g->sum('debit'), 2))->filter(fn ($v) => $v > 0)->all();
     }
 
     /* ------------------------------------------------------------------ */
@@ -347,7 +362,8 @@ class JournalController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $journal = BranchController::scope(DB::table('journals'))
+                BranchController::guardOwn('journals', $request->input('id'));
+                $journal = BranchController::scopeOwn(DB::table('journals'))
                     ->where('id', (int) $request->input('id'))->where('deleted', 'No')
                     ->lockForUpdate()->first();
 

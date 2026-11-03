@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -20,7 +21,7 @@ use Throwable;
  */
 class SalaryAdjustmentController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public const ADDITION_HEADS  = ['Overtime', 'Arrear', 'Incentive', 'Allowance', 'Other Addition'];
     public const DEDUCTION_HEADS = ['Absence', 'Late Fine', 'Penalty', 'Tax', 'Other Deduction'];
@@ -120,7 +121,7 @@ class SalaryAdjustmentController extends Controller
             'Grade'      => DB::table('pay_grades')->pluck('name', 'id'),
             'Step'       => DB::table('pay_steps as s')->join('pay_grades as g', 'g.id', '=', 's.pay_grade_id')
                 ->selectRaw("s.id, CONCAT(g.name, ' / Step ', s.step_no) as label")->pluck('label', 'id'),
-            'Employee'   => DB::table('employees')->selectRaw("id, CONCAT(name, ' (', COALESCE(employee_code, ''), ')') as label")->pluck('label', 'id'),
+            'Employee'   => BranchController::scope(DB::table('employees'), 'branch_id')->selectRaw("id, CONCAT(name, ' (', COALESCE(employee_code, ''), ')') as label")->pluck('label', 'id'),
         ];
 
         // How many employees each assignment reaches and what it costs (from the live month lines).
@@ -263,6 +264,9 @@ class SalaryAdjustmentController extends Controller
             $month = $this->month($request->input('month'));
             $employeeId = (int) $request->input('employee_id');
 
+            if ($problem = BranchController::otherBranchProblem('employees', $employeeId)) {
+                return response()->json(['status' => false, 'message' => $problem], 403);
+            }
             if (!self::ownEmployee($employeeId)) {
                 return response()->json(['status' => false, 'message' => 'Select an employee of this branch.'], 422);
             }
@@ -321,6 +325,9 @@ class SalaryAdjustmentController extends Controller
     public function deleteAdjustment(int $id)
     {
         $row = DB::table('salary_adjustments')->where('id', $id)->where('deleted', 'No')->first();
+        if ($row && ($problem = BranchController::otherBranchProblem('employees', $row->employee_id))) {
+            return response()->json(['status' => false, 'message' => $problem], 403);
+        }
         if (!$row || !self::ownEmployee((int) $row->employee_id)) {
             return response()->json(['status' => false, 'message' => 'That entry no longer exists. Reload the list.'], 404);
         }
@@ -336,7 +343,8 @@ class SalaryAdjustmentController extends Controller
     /** The employee exists and belongs to the logged-in branch. */
     private static function ownEmployee(int $employeeId): bool
     {
-        return BranchController::scope(DB::table('employees'), 'branch_id')->where('id', $employeeId)->where('deleted', 'No')->exists();
+        // bonuses / additions / deductions are given in the employee's own (working) branch
+        return BranchController::scopeOwn(DB::table('employees'), 'branch_id')->where('id', $employeeId)->where('deleted', 'No')->exists();
     }
 
     private function month(?string $value): Carbon

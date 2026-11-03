@@ -26,14 +26,21 @@
             overflow: hidden;
             page-break-inside: avoid;
         }
+        /* The whole name is printed: up to 2 lines, long names in a smaller font over up to 3 lines. */
         .label .name {
             font-size: 8px;
-            line-height: 1.1;
-            max-height: 18px;
-            overflow: hidden;
+            line-height: 1.15;
             margin-bottom: 1px;
             font-weight: 600;
+            width: 100%;
+            overflow-wrap: anywhere;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            flex-shrink: 0;
         }
+        .label .name.long { font-size: 6.5px; -webkit-line-clamp: 3; }
         .label .barcode-svg { max-width: 100%; }
         .label .barcode-svg svg { width: 100%; height: auto; }
         .label .barcode-error { font-size: 8px; color: {{ $pc['danger'] }}; line-height: 1.2; }
@@ -57,7 +64,7 @@
             @for ($i = 0; $i < $line['qty']; $i++)
                 <div class="label">
                     @if ($settings['show_name'])
-                        <div class="name">{{ \Illuminate\Support\Str::limit($line['name'], 40) }}</div>
+                        <div class="name{{ mb_strlen($line['name']) > 34 ? ' long' : '' }}" title="{{ $line['name'] }}">{{ $line['name'] }}</div>
                     @endif
 
                     <div class="barcode-svg">

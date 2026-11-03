@@ -79,9 +79,19 @@
                                 <th colspan="5" class="text-end">Subtotal</th>
                                 <th class="text-end">{{ number_format((float) $saleReturn->subtotal, 2) }}</th>
                             </tr>
+                            @if ((float) ($saleReturn->vat_amount ?? 0) > 0)
+                                <tr>
+                                    <th colspan="5" class="text-end fw-normal">VAT{{ ($sale->vat_inclusive ?? 'No') === 'Yes' ? ' (included in prices)' : ' (included in the refund)' }}</th>
+                                    <th class="text-end fw-normal">{{ number_format((float) $saleReturn->vat_amount, 2) }}</th>
+                                </tr>
+                            @endif
                             <tr>
                                 <th colspan="5" class="text-end">Grand Total</th>
                                 <th class="text-end">{{ number_format((float) $saleReturn->grand_total, 2) }}</th>
+                            </tr>
+                            <tr>
+                                <th colspan="5" class="text-end fw-normal">Refund</th>
+                                <th class="text-end fw-normal">{{ ($saleReturn->refund_mode ?? 'Credit') === 'Cash' ? 'Cash ' . number_format((float) $saleReturn->refund_amount, 2) : 'Customer credit' }}</th>
                             </tr>
                         </tfoot>
                     </table>

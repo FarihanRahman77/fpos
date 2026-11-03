@@ -118,17 +118,35 @@
                 Object.keys(count).map(function(k) { return ' · ' + esc(k) + ' <b>' + count[k] + '</b>'; }).join(''));
         }
 
-        function load() {
-            $('#rows').html('<tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>');
+        // One request per date / department change: a newer request aborts the older one and stale answers are ignored.
+        let loadXhr = null, loadSeq = 0, loadKey = null, loadTimer = null, loading = false;
+
+        function setBusy(on) {
+            loading = on;
+            $('#saveBtn, #markPresent, #clearAll').prop('disabled', on || isFuture);
+            $('#saveBtn').html(on ? '<span class="spinner-border spinner-border-sm me-1"></span> Loading…' : '<i class="fas fa-save"></i> Save');
+        }
+
+        function load(force) {
             const f = { date: $('#date').val() };
+            if (!f.date) return;
             if ($('#department_id').val()) f.department_id = $('#department_id').val();
-            $.ajax({
+            const key = JSON.stringify(f);
+            if (!force && key === loadKey) return;
+            loadKey = key;
+
+            if (loadXhr) loadXhr.abort();
+            const seq = ++loadSeq;
+            setBusy(true);
+            $('#rows').html('<tr><td colspan="7" class="text-center text-muted py-4">Loading…</td></tr>');
+            loadXhr = $.ajax({
                 url: R.data,
                 type: 'GET',
                 dataType: 'json',
                 data: f,
                 success: function(response) {
                     // alert(JSON.stringify(response));
+                    if (seq !== loadSeq) return;
                     rows = response.data;
                     isFuture = response.future;
                     $('#dayLabel').text(response.label);
@@ -136,21 +154,32 @@
                     if (response.holiday) notes.push('Holiday: ' + response.holiday + '. Anyone who works today gets all their hours as overtime.');
                     if (response.future) notes.push('This date is in the future: attendance cannot be saved yet.');
                     $('#note').toggleClass('d-none', !notes.length).text(notes.join(' '));
-                    $('#saveBtn, #markPresent').prop('disabled', response.future);
                     render();
                 },
                 error: function(xhr) {
                     // alert(JSON.stringify(xhr));
+                    if (seq !== loadSeq || xhr.statusText === 'abort') return;
+                    loadKey = null;
                     Voucher.ajaxError(xhr, 'Unable to load the attendance.');
+                },
+                complete: function() {
+                    if (seq !== loadSeq) return;
+                    loadXhr = null;
+                    setBusy(false);
                 }
             });
+        }
+
+        function scheduleLoad() {
+            clearTimeout(loadTimer);
+            loadTimer = setTimeout(function() { load(false); }, 250);
         }
 
         function dirty($tr) { $tr.addClass('dirty'); }
 
         $(document).ready(function() {
             Voucher.initSelect2($('#department_id'));
-            $('#date, #department_id').on('change', load);
+            $('#date, #department_id').on('change', scheduleLoad);
 
             $(document).on('input change', '#rows input, #rows select', function() { dirty($(this).closest('tr')); });
 
@@ -175,11 +204,13 @@
             });
 
             $('#saveBtn').on('click', function() {
-                if (isFuture) return;
+                if (isFuture || loading) return;
                 const payload = [];
+                let absent = 0;
                 $('#rows tr[data-i]').each(function() {
                     const r = rows[$(this).data('i')];
                     if (!$(this).hasClass('dirty') && r.saved) return;
+                    if (!r.day_type && !$(this).find('.f-in').val() && !$(this).find('.f-status').val()) absent++;   // no check-in on a working day = Absent
                     payload.push({
                         employee_id: r.employee_id,
                         check_in: $(this).find('.f-in').val(),
@@ -190,7 +221,22 @@
                 });
                 if (!payload.length) { toastr.info('Nothing changed.'); return; }
 
-                const $b = $(this).prop('disabled', true);
+                if (absent > 0) {
+                    Swal.fire({
+                        title: 'Save attendance?',
+                        text: absent + ' employee(s) have no times and will be saved as Absent.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Save, mark them Absent',
+                        cancelButtonText: 'Go back'
+                    }).then(function(r) { if (r.isConfirmed) saveRows(payload); });
+                    return;
+                }
+                saveRows(payload);
+            });
+
+            function saveRows(payload) {
+                const $b = $('#saveBtn').prop('disabled', true);
                 $.ajax({
                     url: R.save,
                     type: 'POST',
@@ -199,17 +245,17 @@
                     success: function(response) {
                         // alert(JSON.stringify(response));
                         toastr.success(response.message);
-                        load();
+                        load(true);
                     },
                     error: function(xhr) {
                         // alert(JSON.stringify(xhr));
                         Voucher.ajaxError(xhr, 'Unable to save the attendance.');
                     },
-                    complete: function() { $b.prop('disabled', false); }
+                    complete: function() { if (!loading) $b.prop('disabled', isFuture); }
                 });
-            });
+            }
 
-            load();
+            load(true);
         });
     </script>
 @endpush

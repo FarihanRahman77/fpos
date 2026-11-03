@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -21,7 +22,7 @@ use Throwable;
  */
 class LeaveController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public const STATUSES = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
@@ -52,7 +53,7 @@ class LeaveController extends Controller
                 ->when($request->filled('leave_type_id'), fn ($q) => $q->where('la.leave_type_id', (int) $request->query('leave_type_id')))
                 ->when(in_array($request->query('leave_status'), self::STATUSES, true), fn ($q) => $q->where('la.leave_status', $request->query('leave_status')))
                 ->orderByDesc('la.from_date')->orderByDesc('la.id')
-                ->get(['la.*', 'e.name as employee_name', 'e.employee_code', 'e.designation', 't.name as type_name', 't.is_paid']);
+                ->get(['la.*', 'e.name as employee_name', 'e.employee_code', 'e.designation', 'e.branch_id', 't.name as type_name', 't.is_paid']);
 
             $badge = ['Pending' => 'bg-warning text-dark', 'Approved' => 'bg-success', 'Rejected' => 'bg-danger', 'Cancelled' => 'bg-secondary'];
 
@@ -75,7 +76,7 @@ class LeaveController extends Controller
 
                 return [
                     $i + 1,
-                    '<span class="fw-semibold">' . e($r->application_no) . '</span>',
+                    '<span class="fw-semibold">' . e($r->application_no) . '</span>' . branch_tag($r->branch_id),
                     '<span class="fw-semibold">' . e($r->employee_name) . '</span><div class="text-muted small">' . e($r->employee_code) . ($r->designation ? ' · ' . e($r->designation) : '') . '</div>',
                     e($r->type_name) . ($r->is_paid === 'No' ? ' <span class="badge bg-danger-subtle text-danger-emphasis">Unpaid</span>' : ''),
                     '<span class="d-none">' . $from->format('Y-m-d') . '</span>' . e($from->format('d M Y'))
@@ -84,7 +85,7 @@ class LeaveController extends Controller
                     '<span class="d-block text-end fw-semibold">' . rtrim(rtrim(number_format((float) $r->days, 1), '0'), '.') . '</span>',
                     e($r->reason ?: '-'),
                     '<span class="badge ' . $badge[$r->leave_status] . '">' . $r->leave_status . '</span>',
-                    action_dropdown($items),
+                    action_dropdown($items, $r->branch_id),
                 ];
             });
 
@@ -145,6 +146,8 @@ class LeaveController extends Controller
                 'id' => $b['type']->id, 'name' => $b['type']->name, 'paid' => $b['paid'],
                 'entitled' => $b['entitled'] + $b['adjusted'], 'taken' => $b['taken'], 'pending' => $b['pending'], 'balance' => $b['balance'],
             ], $balances)),
+            // Leave types this employee may apply for (group allows it, unpaid, or matching gender).
+            'allowed'  => self::allowedTypeIds($employee, $balances),
         ]);
     }
 
@@ -179,9 +182,13 @@ class LeaveController extends Controller
 
                 abort_if($days <= 0, 422, 'The selected dates are weekends or holidays only.');
 
-                $employee = self::employees()->where('id', (int) $request->input('employee_id'))->first();
+                self::guardEmployee($request->input('employee_id'));
+                $employee = self::employees(true)->where('id', (int) $request->input('employee_id'))->first();
                 abort_unless($employee, 422, 'Select an employee of this branch.');
                 $this->checkOverlap($employee->id, $from, $to, $id);
+                $typeName = (string) DB::table('leave_types')->where('id', (int) $request->input('leave_type_id'))->value('name');
+                $genderProblem = self::genderProblem($employee, $typeName);
+                abort_if($genderProblem !== null, 422, $genderProblem);
                 $this->checkBalance($employee, (int) $request->input('leave_type_id'), $from, $to, $half, $id);
 
                 $data = [
@@ -196,7 +203,10 @@ class LeaveController extends Controller
 
                 if ($id) {
                     $current = DB::table('leave_applications')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
-                    abort_unless($current && self::employees()->where('id', $current->employee_id)->exists(), 404, 'Leave application not found.');
+                    if ($current) {
+                        self::guardEmployee($current->employee_id);
+                    }
+                    abort_unless($current && self::employees(true)->where('id', $current->employee_id)->exists(), 404, 'Leave application not found.');
                     abort_unless($current->leave_status === 'Pending', 422, 'Only a pending application can be edited.');
                     DB::table('leave_applications')->where('id', $id)->update($data + ['updated_by' => Auth::id(), 'updated_date' => now(), 'updated_at' => now()]);
 
@@ -238,11 +248,18 @@ class LeaveController extends Controller
         if (!isset($map[$action])) {
             return response()->json(['status' => false, 'message' => 'Unknown action.'], 422);
         }
+        if ($action === 'reject' && trim((string) $request->input('note')) === '') {
+            return response()->json(['status' => false, 'message' => 'Write why the leave is rejected.',
+                'errors' => ['note' => ['Write why the leave is rejected.']]], 422);
+        }
 
         try {
             $status = DB::transaction(function () use ($request, $id, $action, $map) {
                 $leave = DB::table('leave_applications')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
-                abort_unless($leave && self::employees()->where('id', $leave->employee_id)->exists(), 404, 'Leave application not found.');
+                if ($leave) {
+                    self::guardEmployee($leave->employee_id);
+                }
+                abort_unless($leave && self::employees(true)->where('id', $leave->employee_id)->exists(), 404, 'Leave application not found.');
 
                 $allowed = $action === 'cancel' ? ['Pending', 'Approved'] : ['Pending'];
                 abort_unless(in_array($leave->leave_status, $allowed, true), 422, 'This application is already ' . strtolower($leave->leave_status) . '.');
@@ -281,7 +298,10 @@ class LeaveController extends Controller
     {
         $leave = DB::table('leave_applications')->where('id', $id)->where('deleted', 'No')->first();
 
-        if (!$leave || !self::employees()->where('id', $leave->employee_id)->exists()) {
+        if ($leave) {
+            self::guardEmployee($leave->employee_id);
+        }
+        if (!$leave || !self::employees(true)->where('id', $leave->employee_id)->exists()) {
             return response()->json(['status' => false, 'message' => 'Leave application not found.'], 404);
         }
         if ($leave->leave_status === 'Approved') {
@@ -345,7 +365,8 @@ class LeaveController extends Controller
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
         }
-        if (!self::employees()->where('id', (int) $request->input('employee_id'))->exists()) {
+        self::guardEmployee($request->input('employee_id'));
+        if (!self::employees(true)->where('id', (int) $request->input('employee_id'))->exists()) {
             return response()->json(['status' => false, 'message' => 'Select an employee of this branch.'], 422);
         }
 
@@ -366,7 +387,7 @@ class LeaveController extends Controller
     public function deleteAdjustment(int $id)
     {
         if (!DB::table('leave_adjustments')->where('id', $id)->where('deleted', 'No')
-            ->whereIn('employee_id', self::employees()->select('id'))->update($this->deletedColumns())) {
+            ->whereIn('employee_id', self::employees(true)->select('id'))->update($this->deletedColumns())) {
             return response()->json(['status' => false, 'message' => 'Adjustment not found.'], 404);
         }
 
@@ -375,10 +396,17 @@ class LeaveController extends Controller
 
     /* ------------------------------------------------------------------ */
 
-    /** Employees of the logged-in branch. */
-    private static function employees()
+    /** Employees of the branches the user sees; $own = the working branch's only (applying, deciding, deleting). */
+    private static function employees(bool $own = false)
     {
-        return BranchController::scope(DB::table('employees'), 'branch_id')->where('deleted', 'No');
+        return ($own ? BranchController::scopeOwn(DB::table('employees'), 'branch_id') : BranchController::scope(DB::table('employees'), 'branch_id'))
+            ->where('deleted', 'No');
+    }
+
+    /** Refuses (403) changing a leave / adjustment of an employee of another visible branch. */
+    private static function guardEmployee($employeeId): void
+    {
+        BranchController::guardOwn('employees', $employeeId);
     }
 
     /**
@@ -430,6 +458,39 @@ class LeaveController extends Controller
                 $b['type']->name, $year, $days + 0, $available + 0, $b['entitled'] + $b['adjusted'], $b['taken'] + 0, $b['pending'] + 0
             ));
         }
+    }
+
+    /** Maternity leave is for women and paternity leave for men, when the employee's gender is known. */
+    public static function genderProblem(object $employee, string $typeName): ?string
+    {
+        $gender = strtolower((string) ($employee->gender ?? ''));
+        if (preg_match('/maternity/i', $typeName) && $gender === 'male') {
+            return $typeName . ' is for female employees only.';
+        }
+        if (preg_match('/paternity/i', $typeName) && $gender === 'female') {
+            return $typeName . ' is for male employees only.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Leave types an employee may apply for, from balances(): unpaid types always; paid types only when the
+     * employee's group gives days for them (or an adjustment did); maternity / paternity only to the matching gender.
+     */
+    public static function allowedTypeIds(object $employee, array $balances): array
+    {
+        $ids = [];
+        foreach ($balances as $b) {
+            if (self::genderProblem($employee, (string) $b['type']->name) !== null) {
+                continue;
+            }
+            if (!$b['paid'] || ($b['entitled'] + $b['adjusted']) > 0) {
+                $ids[] = (int) $b['type']->id;
+            }
+        }
+
+        return $ids;
     }
 
     /* ================================================================== */

@@ -27,12 +27,22 @@ class ProductController extends Controller
         $categories     = $this->activeList('categories');
         $units          = $this->activeList('units');
         $attributeTypes = $this->activeList('attribute_types');
+        // VAT on sales is switched on in Settings > VAT, Loyalty & Credit; the form says so when it is off.
+        $vatEnabled     = CustomerProgramController::on('vat_enabled');
+        $vatRate        = (float) CustomerProgramController::setting('vat_rate');
+        // List filters also offer inactive brands / categories (older products may still use them).
+        $filterBrands     = DB::table('brands')->where('deleted', 'No')->orderBy('name')->get(['id', 'name', 'status']);
+        $filterCategories = DB::table('categories')->where('deleted', 'No')->orderBy('name')->get(['id', 'name', 'status']);
 
         return view('admin.inventory.products.index', compact(
+            'filterBrands',
+            'filterCategories',
             'brands',
             'categories',
             'units',
-            'attributeTypes'
+            'attributeTypes',
+            'vatEnabled',
+            'vatRate'
         ));
     }
 
@@ -41,13 +51,88 @@ class ProductController extends Controller
     |--------------------------------------------------------------------------
     | PRODUCT LIST
     |--------------------------------------------------------------------------
+    |
+    | One row per product, one value per column. Stock on hand is the sum over
+    | the branches the user sees (BranchController::scope), active variants only.
+    | Filters, search, ordering and paging run here (DataTables server-side), so
+    | the page works with large catalogues. Without a `draw` parameter the
+    | endpoint returns every matching row as { status, data, summary }.
+    |
+    | Stock status: Out = on hand <= 0; Low = on hand > 0 and <= alert qty;
+    | In stock = above the alert qty.
+    |
     */
 
-    public function list()
+    /** Sortable list columns => SQL expression (keys are the DataTables `name` of each column). */
+    private const LIST_ORDER = [
+        'name'           => 'p.name',
+        'sku'            => 'p.sku',
+        'barcode'        => 'p.barcode',
+        'category_name'  => 'c.name',
+        'brand_name'     => 'b.name',
+        'unit_name'      => 'u.name',
+        'variant_count'  => 'variant_count',
+        'purchase_price' => 'p.purchase_price',
+        'sale_price'     => 'p.sale_price',
+        'old_sale_price' => 'p.old_sale_price',
+        'discount'       => 'p.discount',
+        'margin'         => 'margin',
+        'current_stock'  => 'current_stock',
+        'stock_alert'    => 'p.stock_alert',
+        'stock_state'    => 'stock_state_rank',
+        'track_batch'    => 'p.track_batch',
+        'status'         => 'p.status',
+        'id'             => 'p.id',
+    ];
+
+    /** Price filters: request key prefix => [column, label]. */
+    private const PRICE_FILTERS = [
+        'purchase_price' => ['p.purchase_price', 'purchase price'],
+        'sale_price'     => ['p.sale_price', 'sale price'],
+        'old_price'      => ['p.old_sale_price', 'old price'],
+    ];
+
+    public function list(Request $request)
     {
+        $rules = [
+            'category_id'  => 'nullable|integer|exists:categories,id',
+            'brand_id'     => 'nullable|integer|exists:brands,id',
+            'stock_status' => 'nullable|in:in,low,out',
+            'status'       => 'nullable|in:Active,Inactive',
+        ];
+        $names = [];
+        foreach (self::PRICE_FILTERS as $key => [, $label]) {
+            $rules[$key . '_min'] = 'nullable|numeric|min:0';
+            $rules[$key . '_max'] = 'nullable|numeric|min:0';
+            $names[$key . '_min'] = 'minimum ' . $label;
+            $names[$key . '_max'] = 'maximum ' . $label;
+        }
+
+        $validator = Validator::make($request->all(), $rules, [], $names);
+
+        $validator->after(function ($v) use ($request) {
+            foreach (self::PRICE_FILTERS as $key => [, $label]) {
+                $min = $request->input($key . '_min');
+                $max = $request->input($key . '_max');
+                if (is_numeric($min) && is_numeric($max) && (float) $min > (float) $max) {
+                    $v->errors()->add($key . '_max', 'The maximum ' . $label . ' must be at least the minimum.');
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => false,
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
         try {
 
-            // Current stock (only active variants are counted).
+            $stock = 'COALESCE(stock_data.current_stock, 0)';
+
+            // Current stock in the visible branches (only active variants are counted).
             $stockSubQuery = BranchController::scope(DB::table('stocks as s'), 's.branch_id')
                 ->leftJoin('product_variants as pv', function ($join) {
                     $join->on('pv.id', '=', 's.product_variant_id')
@@ -64,47 +149,140 @@ class ProductController extends Controller
                 })
                 ->groupBy('s.product_id');
 
-            // Opening stock.
-            $openingStockSubQuery = BranchController::scope(DB::table('stocks as os'), 'os.branch_id')
-                ->leftJoin('product_variants as opv', function ($join) {
-                    $join->on('opv.id', '=', 'os.product_variant_id')
-                        ->where('opv.deleted', 'No');
-                })
-                ->select(
-                    'os.product_id',
-                    DB::raw('SUM(os.in_qty) as opening_stock')
-                )
-                ->where('os.deleted', 'No')
-                ->where('os.reference_type', 'Opening Stock')
-                ->where(function ($query) {
-                    $query->whereNull('os.product_variant_id')
-                        ->orWhereNotNull('opv.id');
-                })
-                ->groupBy('os.product_id');
+            $variantSubQuery = DB::table('product_variants')
+                ->select('product_id', DB::raw('COUNT(*) as variant_count'))
+                ->where('deleted', 'No')
+                ->groupBy('product_id');
 
-            $products = DB::table('products as p')
+            $base = DB::table('products as p')
                 ->leftJoin('brands as b', 'b.id', '=', 'p.brand_id')
                 ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->leftJoin('units as u', 'u.id', '=', 'p.unit_id')
                 ->leftJoinSub($stockSubQuery, 'stock_data', function ($join) {
                     $join->on('stock_data.product_id', '=', 'p.id');
                 })
-                ->leftJoinSub($openingStockSubQuery, 'opening_data', function ($join) {
-                    $join->on('opening_data.product_id', '=', 'p.id');
+                ->leftJoinSub($variantSubQuery, 'variant_data', function ($join) {
+                    $join->on('variant_data.product_id', '=', 'p.id');
                 })
-                ->select(
-                    'p.*',
-                    'b.name as brand_name',
-                    'c.name as category_name',
-                    DB::raw('COALESCE(stock_data.current_stock, 0) as current_stock'),
-                    DB::raw('COALESCE(opening_data.opening_stock, 0) as opening_stock')
-                )
-                ->where('p.deleted', 'No')
-                ->orderByDesc('p.id')
-                ->get();
+                ->where('p.deleted', 'No');
+
+            $total = DB::table('products')->where('deleted', 'No')->count();
+
+            // Filters.
+            $base->when($request->filled('category_id'), fn ($q) => $q->where('p.category_id', (int) $request->input('category_id')))
+                ->when($request->filled('brand_id'), fn ($q) => $q->where('p.brand_id', (int) $request->input('brand_id')))
+                ->when($request->filled('status'), fn ($q) => $q->where('p.status', $request->input('status')));
+
+            foreach (self::PRICE_FILTERS as $key => [$column]) {
+                if ($request->filled($key . '_min')) {
+                    $base->where($column, '>=', (float) $request->input($key . '_min'));
+                }
+                if ($request->filled($key . '_max')) {
+                    $base->where($column, '<=', (float) $request->input($key . '_max'));
+                }
+            }
+
+            switch ($request->input('stock_status')) {
+                case 'out':
+                    $base->whereRaw("$stock <= 0");
+                    break;
+                case 'low':
+                    $base->whereRaw("$stock > 0 AND $stock <= p.stock_alert");
+                    break;
+                case 'in':
+                    $base->whereRaw("$stock > 0 AND $stock > p.stock_alert");
+                    break;
+            }
+
+            // DataTables search box: name, SKU, barcodes (product + variants), category, brand.
+            $search = trim((string) data_get($request->input('search'), 'value', ''));
+            if ($search !== '') {
+                $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
+                $base->where(function ($q) use ($like) {
+                    $q->where('p.name', 'like', $like)
+                        ->orWhere('p.sku', 'like', $like)
+                        ->orWhere('p.barcode', 'like', $like)
+                        ->orWhere('c.name', 'like', $like)
+                        ->orWhere('b.name', 'like', $like)
+                        ->orWhereExists(function ($v) use ($like) {
+                            $v->select(DB::raw(1))->from('product_variants as sv')
+                                ->whereColumn('sv.product_id', 'p.id')
+                                ->where('sv.deleted', 'No')
+                                ->where('sv.barcode', 'like', $like);
+                        });
+                });
+            }
+
+            // Summary of the filtered set (cards above the table). Stock value at purchase price.
+            $sum = (clone $base)->selectRaw(
+                "COUNT(*) as products,
+                 COALESCE(SUM(CASE WHEN $stock > 0 AND $stock > p.stock_alert THEN 1 ELSE 0 END), 0) as in_stock,
+                 COALESCE(SUM(CASE WHEN $stock > 0 AND $stock <= p.stock_alert THEN 1 ELSE 0 END), 0) as low_stock,
+                 COALESCE(SUM(CASE WHEN $stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock,
+                 COALESCE(SUM(CASE WHEN $stock > 0 THEN $stock * p.purchase_price ELSE 0 END), 0) as stock_value"
+            )->first();
+
+            $summary = [
+                'products'     => (int) $sum->products,
+                'in_stock'     => (int) $sum->in_stock,
+                'low_stock'    => (int) $sum->low_stock,
+                'out_of_stock' => (int) $sum->out_of_stock,
+                'stock_value'  => round((float) $sum->stock_value, 2),
+                'total'        => $total,
+            ];
+
+            $rows = (clone $base)->select(
+                'p.id',
+                'p.name',
+                'p.sku',
+                'p.barcode',
+                'p.image',
+                'p.stock_alert',
+                'p.track_batch',
+                'p.purchase_price',
+                'p.sale_price',
+                'p.old_sale_price',
+                'p.discount',
+                'p.status',
+                'b.name as brand_name',
+                'c.name as category_name',
+                'u.name as unit_name',
+                DB::raw('COALESCE(variant_data.variant_count, 0) as variant_count'),
+                DB::raw("$stock as current_stock"),
+                DB::raw('CASE WHEN p.sale_price > 0 THEN (p.sale_price - p.purchase_price) / p.sale_price * 100 END as margin'),
+                DB::raw("CASE WHEN $stock <= 0 THEN 'out' WHEN $stock <= p.stock_alert THEN 'low' ELSE 'in' END as stock_state"),
+                DB::raw("CASE WHEN $stock <= 0 THEN 0 WHEN $stock <= p.stock_alert THEN 1 ELSE 2 END as stock_state_rank")
+            );
+
+            // Ordering: only columns whose DataTables `name` is in LIST_ORDER.
+            foreach ((array) $request->input('order', []) as $order) {
+                $key = data_get($request->input('columns'), (int) ($order['column'] ?? -1) . '.name');
+                if (is_string($key) && isset(self::LIST_ORDER[$key])) {
+                    $rows->orderBy(DB::raw(self::LIST_ORDER[$key]), strtolower($order['dir'] ?? '') === 'desc' ? 'desc' : 'asc');
+                }
+            }
+            $rows->orderByDesc('p.id');
+
+            if (!$request->has('draw')) {
+                return response()->json([
+                    'status'  => true,
+                    'data'    => $rows->get(),
+                    'summary' => $summary,
+                ]);
+            }
+
+            $length = (int) $request->input('length', 25);
+            if ($length > 0) {
+                $rows->offset(max(0, (int) $request->input('start', 0)))->limit(min($length, 1000));
+            }
 
             return response()->json([
-                'status' => true,
-                'data'   => $products
+                'status'          => true,
+                'draw'            => (int) $request->input('draw'),
+                'recordsTotal'    => $total,
+                'recordsFiltered' => $summary['products'],
+                'summary'         => $summary,
+                'data'            => $rows->get(),
             ]);
         } catch (\Throwable $e) {
             return $this->serverError($e);
@@ -1103,8 +1281,9 @@ class ProductController extends Controller
     | SKU
     |--------------------------------------------------------------------------
     |
-    | Product Name + Category + Brand
-    | e.g. SAMSUNG-GALAXY-A08-MOBILE-SAMSUNG
+    | Short code: Category (3) - Brand (3) - Name (3 letters of up to 4 words; sizes like 400G kept)
+    | e.g. "Nestle Cerelac Rice 400g", Baby Care, Nestle  ->  BAB-NES-NESCERRIC400G
+    | A number is appended when the code is taken. Existing SKUs are never changed.
     |
     */
 
@@ -1114,16 +1293,21 @@ class ProductController extends Controller
         $brandName = '',
         $ignoreProductId = null
     ) {
+        $words = fn ($text) => array_values(array_filter(explode('-', Str::upper(Str::slug((string) $text, '-')))));
+        $short = fn ($text) => substr(implode('', $words($text)), 0, 3);
 
-        $parts = array_filter([$productName, $categoryName, $brandName]);
+        $nameCode = '';
+        foreach (array_slice($words($productName), 0, 4) as $word) {
+            $nameCode .= preg_match('/\d/', $word) ? substr($word, 0, 6) : substr($word, 0, 3);
+        }
 
-        $base = Str::upper(Str::slug(implode('-', $parts), '-'));
+        $base = implode('-', array_filter([$short($categoryName), $short($brandName), $nameCode]));
 
         if ($base === '') {
             $base = 'PRODUCT';
         }
 
-        $base = substr($base, 0, 80);
+        $base = substr($base, 0, 40);
 
         $sku     = $base;
         $counter = 1;
@@ -1311,7 +1495,7 @@ class ProductController extends Controller
             mkdir($directory, 0755, true);
         }
 
-        $filename = time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+        $filename = time() . '_' . Str::random(10) . '.' . $file->guessExtension();
 
         $file->move($directory, $filename);
 

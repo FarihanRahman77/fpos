@@ -334,7 +334,7 @@ class ActivityLogController extends Controller
             $length = $length < 1 ? 25 : min($length, 200);
 
             $rows = $q->orderByDesc('a.id')->offset($start)->limit($length)
-                ->get(['a.id', 'a.created_at', 'a.method', 'a.route_name', 'a.url', 'a.action', 'a.subject_type', 'a.subject_id', 'a.ip', 'a.status_code', 'u.name as user_name']);
+                ->get(['a.id', 'a.created_at', 'a.method', 'a.route_name', 'a.url', 'a.action', 'a.subject_type', 'a.subject_id', 'a.ip', 'a.status_code', 'a.branch_id', 'u.name as user_name']);
 
             $methodBadge = ['POST' => 'bg-primary', 'PUT' => 'bg-info text-dark', 'PATCH' => 'bg-info text-dark', 'DELETE' => 'bg-danger'];
 
@@ -349,7 +349,7 @@ class ActivityLogController extends Controller
                     return [
                         $start + $i + 1,
                         e(Carbon::parse($r->created_at)->format('d M Y')) . '<div class="text-muted small">' . e(Carbon::parse($r->created_at)->format('h:i:s A')) . '</div>',
-                        e($r->user_name ?? 'System'),
+                        e($r->user_name ?? 'System') . branch_tag($r->branch_id),
                         '<span class="fw-semibold">' . e($r->action) . '</span>'
                             . ($r->subject_id ? ' <span class="text-muted small">#' . (int) $r->subject_id . '</span>' : '')
                             . '<div class="text-muted small text-break">' . e($r->route_name ?? $r->url) . '</div>',

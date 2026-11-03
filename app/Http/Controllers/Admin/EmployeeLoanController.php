@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\AccountBalanceTrait;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
@@ -24,18 +25,18 @@ use Throwable;
  */
 class EmployeeLoanController extends Controller
 {
-    use AccountBalanceTrait, VoucherHelperTrait;
+    use AccountBalanceTrait, VoucherHelperTrait, SafeJsonErrors;
 
     public function index()
     {
-        $ledgers = fn ($type) => DB::table('chart_of_accounts')->where('layer_level', 3)->where('account_type', $type)
-            ->where('deleted', 'No')->where('status', 'Active')->orderBy('account_code')->get(['id', 'account_name']);
-
+        // Paid from: cash / bank usable in the logged-in branch (shared + its own). Ledger: employee loan / advance asset ledgers only.
         return view('admin.payroll.loans.index', [
-            'employees'       => BranchController::scope(DB::table('employees'), 'branch_id')->where('deleted', 'No')->where('status', 'Active')->orderBy('name')
+            // the loan form gives loans to the working branch's employees (the list filter uses the same list)
+            'employees'       => BranchController::scopeOwn(DB::table('employees'), 'branch_id')->where('deleted', 'No')->where('status', 'Active')->orderBy('name')
                 ->get(['id', 'name', 'employee_code', 'department', 'gross_salary', 'net_salary']),
-            'paymentAccounts' => $ledgers('Liquid Asset'),
-            'loanAccounts'    => $ledgers('Asset'),
+            'paymentAccounts' => PayrollSetupController::payrollLedgers('Liquid Asset'),
+            'loanAccounts'    => PayrollSetupController::loanLedgers(),
+            'ledgerDefaults'  => PayrollSetupController::payrollLedgerDefaults(),
             'payroll'         => PayrollSetupController::salarySettings(),
         ]);
     }
@@ -69,7 +70,7 @@ class EmployeeLoanController extends Controller
 
                     return [
                         $i + 1,
-                        '<span class="fw-semibold">' . e($r->loan_no) . '</span><div class="text-muted small">' . e($r->loan_type) . '</div>',
+                        '<span class="fw-semibold">' . e($r->loan_no) . '</span><div class="text-muted small">' . e($r->loan_type) . '</div>' . branch_tag($r->branch_id),
                         e($r->name) . '<div class="text-muted small">' . e($r->employee_code) . '</div>',
                         e(Carbon::parse($r->issue_date)->format('d M Y')),
                         $m($r->amount),
@@ -78,7 +79,7 @@ class EmployeeLoanController extends Controller
                         $m($r->recovered),
                         '<span class="d-block text-end fw-semibold">' . number_format($balance, 2) . '</span>',
                         '<span class="badge ' . ($badge[$r->loan_status] ?? 'bg-secondary') . '">' . e($r->loan_status) . '</span>',
-                        action_dropdown($items),
+                        action_dropdown($items, $r->branch_id),
                     ];
                 }),
             ]);
@@ -139,18 +140,21 @@ class EmployeeLoanController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'employee_id'        => ['required', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No')->where('status', 'Active')
-                ->whereIn('branch_id', array_filter([BranchController::current()]) ?: BranchController::allowedIds())],
+                ->where('branch_id', (int) BranchController::activeId())],
             'loan_type'          => ['required', Rule::in(['Advance Salary', 'Loan'])],
             'amount'             => ['required', 'numeric', 'min:1'],
             'issue_date'         => ['required', 'date'],
             'payment_account_id' => ['required', 'integer', $this->coaExists(3, 'Liquid Asset')],
-            'loan_account_id'    => ['required', 'integer', $this->coaExists(3, 'Asset')],
+            'loan_account_id'    => ['required', 'integer', $this->coaExists(3, 'Asset'),
+                Rule::in(PayrollSetupController::loanLedgers()->pluck('id')->all())],
             'installments'       => ['required', 'integer', 'min:1', 'max:240'],
             'start_month'        => ['required', 'date_format:Y-m'],
             'remarks'            => ['nullable', 'string', 'max:255'],
         ], [
             'payment_account_id.required' => 'Select the cash / bank account the money is paid from.',
             'loan_account_id.required'    => 'Select the employee loan / advance ledger (an Asset ledger).',
+            'loan_account_id.in'          => 'Select an employee loan / advance ledger (e.g. "Employee Loans & Advances").',
+            'payment_account_id.exists'   => 'Select a cash / bank account of this branch.',
             'start_month.required'        => 'Select the first salary month to deduct from.',
         ]);
 
@@ -164,6 +168,7 @@ class EmployeeLoanController extends Controller
                 $count  = (int) $request->input('installments');
                 $start  = Carbon::createFromFormat('!Y-m', $request->input('start_month'));
                 abort_if($start->lt(Carbon::parse($request->input('issue_date'))->startOfMonth()), 422, 'Deduction cannot start before the issue month.');
+                ReportController::ensureCash($request->input('payment_account_id'), $amount);
 
                 $last = DB::table('employee_loans')->lockForUpdate()->max('loan_no');
                 $next = $last ? ((int) substr($last, 3)) + 1 : 1;
@@ -195,7 +200,7 @@ class EmployeeLoanController extends Controller
                 DB::table('payroll_settings')->update(['loan_account_id' => (int) $request->input('loan_account_id')]);
 
                 return DB::table('employee_loans')->where('id', $id)->first();
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => $loan->loan_no . ' issued: ' . number_format((float) $loan->amount, 2)
                 . ', ' . $loan->installments . ' installment(s) of ' . number_format((float) $loan->installment_amount, 2) . '.']);
@@ -223,7 +228,8 @@ class EmployeeLoanController extends Controller
 
         try {
             DB::transaction(function () use ($request, $id) {
-                $loan = BranchController::scope(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('employee_loans', $id);
+                $loan = BranchController::scopeOwn(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
                 abort_unless($loan && $loan->loan_status === 'Running', 422, 'Only a running loan can be rescheduled.');
 
                 $left = round((float) $loan->amount - (float) $loan->recovered, 2);
@@ -243,7 +249,7 @@ class EmployeeLoanController extends Controller
                 self::log($id, now()->toDateString(), 'Reschedule', 0, null, null, null,
                     trim($count . ' × ' . number_format($installment, 2) . ' from ' . Carbon::createFromFormat('!Y-m', $request->input('start_month'))->format('M Y')
                         . ($request->input('remarks') ? ' · ' . $request->input('remarks') : '')));
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Schedule updated.']);
         } catch (HttpExceptionInterface $e) {
@@ -263,7 +269,10 @@ class EmployeeLoanController extends Controller
             'txn_date'           => ['required', 'date'],
             'payment_account_id' => ['required', 'integer', $this->coaExists(3, 'Liquid Asset')],
             'remarks'            => ['nullable', 'string', 'max:255'],
-        ], ['payment_account_id.required' => 'Select the cash / bank account the money is received in.']);
+        ], [
+            'payment_account_id.required' => 'Select the cash / bank account the money is received in.',
+            'payment_account_id.exists'   => 'Select a cash / bank account of this branch.',
+        ]);
 
         if ($validator->fails()) {
             return response()->json(['status' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
@@ -271,7 +280,8 @@ class EmployeeLoanController extends Controller
 
         try {
             $loan = DB::transaction(function () use ($request, $id) {
-                $loan = BranchController::scope(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('employee_loans', $id);
+                $loan = BranchController::scopeOwn(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
                 abort_unless($loan && $loan->loan_status === 'Running', 422, 'Only a running loan can be repaid.');
 
                 $left = round((float) $loan->amount - (float) $loan->recovered, 2);
@@ -288,7 +298,7 @@ class EmployeeLoanController extends Controller
                 $this->postBalances([(int) $request->input('payment_account_id') => $amount], [(int) $loan->loan_account_id => $amount], 1);
 
                 return DB::table('employee_loans')->where('id', $id)->first();
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Repayment saved. ' . ($loan->loan_status === 'Closed' ? $loan->loan_no . ' is fully repaid.'
                 : number_format((float) $loan->amount - (float) $loan->recovered, 2) . ' left.')]);
@@ -306,7 +316,8 @@ class EmployeeLoanController extends Controller
     {
         try {
             DB::transaction(function () use ($request, $id) {
-                $loan = BranchController::scope(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('employee_loans', $id);
+                $loan = BranchController::scopeOwn(DB::table('employee_loans'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
                 abort_unless($loan && $loan->loan_status === 'Running', 422, 'Only a running loan can be cancelled.');
                 abort_if((float) $loan->recovered > 0, 422, 'Part of this loan is already recovered; it cannot be cancelled.');
 
@@ -319,7 +330,7 @@ class EmployeeLoanController extends Controller
                 DB::table('employee_loans')->where('id', $id)->update([
                     'loan_status' => 'Cancelled', 'updated_by' => Auth::id(), 'updated_date' => now(), 'updated_at' => now(),
                 ]);
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Loan cancelled and the payout reversed.']);
         } catch (HttpExceptionInterface $e) {

@@ -11,8 +11,12 @@ trait PartyDueTrait
      * Current due of a party: opening balance plus the ledger, signed by party type.
      * Always returns a number (0 for an unknown party) so callers can do math with it;
      * query errors are thrown and handled by the caller's try/catch.
+     *
+     * Default (display): the ledgers of the branches the user sees; the opening balance (main branch's) counts when
+     * the main branch is one of them. $ownBranch = true (checks before booking, e.g. paying back a credit): the
+     * working branch only, opening balance only in the main branch.
      */
-    public function partyDue($partyId): float
+    public function partyDue($partyId, bool $ownBranch = false): float
     {
         $party = Party::find($partyId);
 
@@ -20,9 +24,10 @@ trait PartyDueTrait
             return 0.0;
         }
 
-        // Only this branch's ledger; the opening balance belongs to the main branch.
-        $ledger = Payment::where('party_id', $partyId)
-            ->where('branch_id', \App\Http\Controllers\Admin\BranchController::activeId())
+        $branches = \App\Http\Controllers\Admin\BranchController::class;
+        $ledger = Payment::where('party_id', $partyId);
+        $ownBranch ? $branches::scopeOwn($ledger, 'branch_id') : $branches::scope($ledger, 'branch_id');
+        $ledger = $ledger
             ->where('deleted', 'No')
             ->where('status', 'Active')
             // party_id also holds employee ids on employee expense rows
@@ -30,7 +35,8 @@ trait PartyDueTrait
             ->selectRaw('COALESCE(SUM(debit), 0) AS debit, COALESCE(SUM(credit), 0) AS credit')
             ->first();
 
-        $opening = \App\Http\Controllers\Admin\BranchController::isMainBranch() ? (float) ($party->opening_balance ?? 0) : 0.0;
+        $withOpening = $ownBranch ? $branches::isMainBranch() : $branches::mainVisible();
+        $opening = $withOpening ? (float) ($party->opening_balance ?? 0) : 0.0;
         if (($party->opening_balance_type ?? 'Due') === 'Advance') {
             $opening = -$opening; // an opening advance reduces what is owed
         }

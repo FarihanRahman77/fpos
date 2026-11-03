@@ -79,6 +79,15 @@
 
                         </div>
 
+                        {{-- Supplier's own invoice / reference number --}}
+                        <div class="col-md-2">
+                            <label class="form-label" for="supplier_invoice_no">
+                                Supplier Invoice No.
+                            </label>
+                            <input type="text" id="supplier_invoice_no" name="supplier_invoice_no" class="form-control"
+                                maxlength="100" placeholder="Optional">
+                        </div>
+
                     </div>
 
 
@@ -403,7 +412,39 @@
             </div>
 
         </form>
+    </div>
 
+    {{-- Variant picker: which variants of the chosen product to add --}}
+    <div class="modal fade" id="variantPicker" tabindex="-1" aria-labelledby="variantPickerTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="variantPickerTitle">Choose variants</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">Tick the variants to add. Each variant becomes its own line; a variant already in the cart gets the quantity added.</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width: 32px;"><input type="checkbox" class="form-check-input" id="variantPickerAll" aria-label="Tick all variants"></th>
+                                    <th>Variant</th>
+                                    <th class="text-end">Price</th>
+                                    <th style="width: 110px;">Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody id="variantPickerRows"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary me-auto" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-outline-primary" id="variantPickerAddAll">Add all</button>
+                    <button type="button" class="btn btn-primary" id="variantPickerAdd">Add selected</button>
+                </div>
+            </div>
+        </div>
     </div>
 @endsection
 @push('scripts')
@@ -820,81 +861,106 @@
 
                 /*
                 |--------------------------------------------------------------------------
-                | Product Has Variants
+                | Product Has Variants: let the user pick one, several or all of them
                 |--------------------------------------------------------------------------
-                |
-                | Add first variant by default.
-                | User can change variant in cart.
-                |
                 */
 
-                let firstVariant = variants[0];
-
-
-                let existingIndex = cart.findIndex(function(item) {
-
-                    return item.product_id == product.id &&
-                        item.product_variant_id == firstVariant.id;
-
-                });
-
-
-                if (existingIndex >= 0) {
-
-                    cart[existingIndex].qty =
-                        parseFloat(cart[existingIndex].qty) + 1;
-
-                } else {
-
-                    cart.push({
-
-                        product_id: product.id,
-
-                        product_variant_id: firstVariant.id,
-
-                        product_name: product.name,
-
-                        sku: product.sku || '',
-
-                        variants: variants,
-
-                        qty: 1,
-
-                        purchase_price: parseFloat(
-                            firstVariant.purchase_price ||
-                            product.purchase_price ||
-                            0
-                        ),
-
-                        discount_type: 'Amount',
-
-                        discount_value: 0,
-
-                        track_batch: product.track_batch || 'No',
-
-                        batch_no: '',
-
-                        expiry_date: '',
-
-                        discount_amount: 0,
-
-                        subtotal: 0,
-
-                        total: 0
-
-                    });
-
-                }
-
-
-                renderCart();
-
+                openVariantPicker(product, variants);
 
                 $('#product_id')
                     .val(null)
                     .trigger('change');
 
             }
+
+
+            // Price of a variant line: the variant's own purchase price, else the product's.
+            function variantPrice(product, variant) {
+                let price = parseFloat(variant && variant.purchase_price);
+                return price > 0 ? price : parseFloat(product.purchase_price || 0);
+            }
+
+            function variantLabel(variant) {
+                return variant.name || variant.variant_name || variant.barcode || ('Variant #' + variant.id);
+            }
+
+            // One cart row per variant: the same variant adds to its row, another variant gets a new row.
+            function addVariantLine(product, variants, variant, qty) {
+                let existingIndex = cart.findIndex(function(item) {
+                    return item.product_id == product.id && item.product_variant_id == variant.id;
+                });
+
+                if (existingIndex >= 0) {
+                    cart[existingIndex].qty = parseFloat(cart[existingIndex].qty) + qty;
+                    return;
+                }
+
+                cart.push({
+                    product_id: product.id,
+                    product_variant_id: variant.id,
+                    product_name: product.name,
+                    product_price: parseFloat(product.purchase_price || 0),
+                    sku: product.sku || '',
+                    variants: variants,
+                    qty: qty,
+                    purchase_price: variantPrice(product, variant),
+                    discount_type: 'Amount',
+                    discount_value: 0,
+                    track_batch: product.track_batch || 'No',
+                    batch_no: '',
+                    expiry_date: '',
+                    discount_amount: 0,
+                    subtotal: 0,
+                    total: 0
+                });
+            }
+
+            let picker = { product: null, variants: [] };
+
+            function openVariantPicker(product, variants) {
+                picker = { product: product, variants: variants };
+                $('#variantPickerTitle').text('Choose variants of ' + product.name);
+                $('#variantPickerAll').prop('checked', false);
+                $('#variantPickerRows').html(variants.map(function(variant, vi) {
+                    let inCart = cart.some(function(item) { return item.product_id == product.id && item.product_variant_id == variant.id; });
+                    return `
+                    <tr>
+                        <td><input type="checkbox" class="form-check-input vp-check" id="vp_${vi}" data-vi="${vi}" aria-label="Add ${escapeHtml(variantLabel(variant))}"></td>
+                        <td><label for="vp_${vi}" class="mb-0">${escapeHtml(variantLabel(variant))}</label>${inCart ? ' <span class="badge bg-secondary">in cart</span>' : ''}</td>
+                        <td class="text-end">${variantPrice(product, variant).toFixed(2)}</td>
+                        <td><input type="number" class="form-control form-control-sm text-end vp-qty" data-vi="${vi}" min="0.0001" step="any" value="1" aria-label="Quantity"></td>
+                    </tr>`;
+                }).join(''));
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('variantPicker')).show();
+            }
+
+            function addPickedVariants(all) {
+                let added = 0;
+                $('#variantPickerRows tr').each(function() {
+                    let vi = $(this).find('.vp-check').data('vi');
+                    if (!all && !$(this).find('.vp-check').is(':checked')) {
+                        return;
+                    }
+                    let qty = parseFloat($(this).find('.vp-qty').val());
+                    addVariantLine(picker.product, picker.variants, picker.variants[vi], qty > 0 ? qty : 1);
+                    added++;
+                });
+                if (!added) {
+                    toastr.error('Tick at least one variant, or use Add all.');
+                    return;
+                }
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('variantPicker')).hide();
+                renderCart();
+            }
+
+            $('#variantPickerAll').on('change', function() {
+                $('#variantPickerRows .vp-check').prop('checked', $(this).is(':checked'));
+            });
+            $(document).on('input', '#variantPickerRows .vp-qty', function() {
+                $(this).closest('tr').find('.vp-check').prop('checked', true);
+            });
+            $('#variantPickerAdd').on('click', function() { addPickedVariants(false); });
+            $('#variantPickerAddAll').on('click', function() { addPickedVariants(true); });
 
 
             /*
@@ -1014,11 +1080,18 @@
                         </strong>
 
                         ${item.track_batch === 'Yes' ? `
-                        <div class="d-flex gap-1 mt-1">
-                            <input type="text" class="form-control form-control-sm batchInput" data-index="${index}"
-                                placeholder="Batch no." maxlength="60" value="${escapeHtml(item.batch_no || '')}" aria-label="Batch number">
-                            <input type="date" class="form-control form-control-sm expiryInput" data-index="${index}"
-                                value="${item.expiry_date || ''}" aria-label="Expiry date" title="Expiry date">
+                        <div class="row g-1 mt-1">
+                            <div class="col-6">
+                                <label class="form-label small mb-0" for="batch_${index}">Batch no.</label>
+                                <input type="text" class="form-control form-control-sm batchInput" id="batch_${index}" data-index="${index}"
+                                    placeholder="blank = auto" maxlength="60" value="${escapeHtml(item.batch_no || '')}">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small mb-0" for="expiry_${index}">Expiry date <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control form-control-sm expiryInput${item.expiry_missing ? ' is-invalid' : ''}" id="expiry_${index}" data-index="${index}"
+                                    value="${item.expiry_date || ''}" required>
+                            </div>
+                            <div class="col-12"><small class="text-muted">Batch-tracked. Leave the batch no. blank to number it automatically (purchase no. + line).</small></div>
                         </div>` : ''}
 
 
@@ -1311,13 +1384,22 @@
 
                 if (variant) {
 
-                    if (variant.purchase_price !== undefined) {
+                    let price = parseFloat(variant.purchase_price);
 
-                        cart[index].purchase_price =
-                            parseFloat(variant.purchase_price || 0);
+                    cart[index].purchase_price =
+                        price > 0 ? price : parseFloat(cart[index].product_price || cart[index].purchase_price || 0);
 
-                    }
+                }
 
+                // Switching to a variant that already has a row: merge into that row.
+                let twin = cart.findIndex(function(item, i) {
+                    return i != index && item.product_id == cart[index].product_id && variantId && item.product_variant_id == variantId;
+                });
+
+                if (twin >= 0) {
+                    cart[twin].qty = parseFloat(cart[twin].qty) + parseFloat(cart[index].qty || 0);
+                    cart.splice(index, 1);
+                    toastr.info('That variant was already in the cart, so the quantities were added together.');
                 }
 
 
@@ -1538,7 +1620,24 @@
                     return;
                 }
 
+                // Batch-tracked products need their expiry date (the batch no. may stay blank: it is generated).
+                let noExpiry = cart.filter(function(item) {
+                    item.expiry_missing = item.track_batch === 'Yes' && !item.expiry_date;
+                    return item.expiry_missing;
+                });
 
+                if (noExpiry.length) {
+
+                    renderCart();
+
+                    toastr.error(
+                        'Enter the expiry date for ' + noExpiry.map(function(item) { return item.product_name; }).join(', ') + ' (batch-tracked).'
+                    );
+
+                    $('.expiryInput.is-invalid').first().trigger('focus');
+
+                    return;
+                }
                 /*
                 |--------------------------------------------------------------------------
                 | SweetAlert Confirmation
@@ -1640,6 +1739,8 @@
                         payment_method_account: $('#payment_method_account').val(),
 
                         remarks: $('#remarks').val(),
+
+                        supplier_invoice_no: $('#supplier_invoice_no').val(),
 
                         items: items
 
@@ -1762,11 +1863,17 @@
             // These must live inside this ready() block: `cart` and calculateSummary() are local to it.
             $(document).on('input change', '.batchInput', function() { cart[$(this).data('index')].batch_no = $(this).val(); });
             $(document).on('input', '#vat_percent', function() { calculateSummary(); });
-            $(document).on('change', '.expiryInput', function() { cart[$(this).data('index')].expiry_date = $(this).val(); });
+            $(document).on('change', '.expiryInput', function() {
+                let line = cart[$(this).data('index')];
+                line.expiry_date = $(this).val();
+                line.expiry_missing = false;
+                $(this).toggleClass('is-invalid', !line.expiry_date && line.track_batch === 'Yes');
+            });
 
             function escapeHtml(value) {
-                return $('<div>').text(value ?? '').html();
-            }
+        // Escapes quotes too: the output also goes into attribute values.
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
 
         });
     </script>

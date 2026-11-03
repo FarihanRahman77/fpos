@@ -2,43 +2,34 @@
 
 namespace Tests\Feature\Auth;
 
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\AppTestCase;
 
-class PasswordConfirmationTest extends TestCase
+/** Updated from the stock Breeze test: the user signs in to a branch first (SetBranch requires one). Same assertions. */
+class PasswordConfirmationTest extends AppTestCase
 {
-    use RefreshDatabase;
-
     public function test_confirm_password_screen_can_be_rendered(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this->actingAs($user)->get('/confirm-password');
-
-        $response->assertStatus(200);
+        $this->get('/confirm-password')->assertStatus(200);
     }
 
     public function test_password_can_be_confirmed(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this->actingAs($user)->post('/confirm-password', [
-            'password' => 'password',
-        ]);
+        $response = $this->post('/confirm-password', ['password' => $this->password]);
 
         $response->assertRedirect();
         $response->assertSessionHasNoErrors();
+        $this->assertNotNull(session('auth.password_confirmed_at'));
     }
 
     public function test_password_is_not_confirmed_with_invalid_password(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this->actingAs($user)->post('/confirm-password', [
-            'password' => 'wrong-password',
-        ]);
-
-        $response->assertSessionHasErrors();
+        $this->post('/confirm-password', ['password' => 'wrong-password'])->assertSessionHasErrors('password');
+        $this->assertNull(session('auth.password_confirmed_at'));
     }
 }

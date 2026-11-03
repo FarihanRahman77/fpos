@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -43,7 +44,7 @@ use Barryvdh\DomPDF\Facade\Pdf as PDF;
  */
 class AttendanceController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public const STATUSES = ['Present', 'Late', 'Half Day', 'Absent', 'Leave', 'Holiday', 'Weekly Off'];
     public const CODES = ['Present' => 'P', 'Late' => 'L', 'Half Day' => 'HD', 'Absent' => 'A', 'Leave' => 'LV', 'Holiday' => 'H', 'Weekly Off' => 'W'];
@@ -67,7 +68,8 @@ class AttendanceController extends Controller
         $date = $this->dateParam($request->query('date'));
         $deptId = $request->filled('department_id') ? (int) $request->query('department_id') : null;
 
-        $employees = self::employeesQuery($date, $date, $deptId)->get();
+        $employees = self::employeesQuery($date, $date, $deptId, null, true, true);   // marked in the working branch
+        $employees = $employees->get();
         $ids = $employees->pluck('id')->all();
         $rows = DB::table('attendances')->where('date', $date)->whereIn('employee_id', $ids ?: [0])->get()->keyBy('employee_id');
         $ctx = self::context($date, $date, $ids);
@@ -133,7 +135,7 @@ class AttendanceController extends Controller
         try {
             $date = Carbon::parse($request->input('date'))->toDateString();
             $input = collect($request->input('rows'))->keyBy(fn ($r) => (int) $r['employee_id']);
-            $employees = self::employeesQuery($date, $date, null, $input->keys()->all())->get()->keyBy('id');
+            $employees = self::employeesQuery($date, $date, null, $input->keys()->all(), true, true)->get()->keyBy('id');
             $ctx = self::context($date, $date, $employees->keys()->all());
 
             $saved = DB::transaction(function () use ($input, $employees, $ctx, $date) {
@@ -195,10 +197,10 @@ class AttendanceController extends Controller
         [$month, $deptId, $empId] = $this->monthFilters($request);
         $summary = self::monthSummary($month, $deptId, $empId ? [$empId] : null);
 
-        $pdf = PDF::loadView('admin.attendance.monthly-pdf', $summary + [
+        $pdf = SettingController::pdf('admin.attendance.monthly-pdf', $summary + [
             'department' => $deptId ? DB::table('departments')->where('id', $deptId)->value('name') : 'All departments',
             'codes'      => self::CODES,
-        ])->setPaper('a4', 'landscape');
+        ], 'landscape');
 
         $name = 'Attendance-' . $month->format('Y-m') . '.pdf';
 
@@ -497,7 +499,7 @@ class AttendanceController extends Controller
         // employee lookups: exact and without leading zeros (Excel drops them)
         $field = $request->input('id_type') === 'code' ? 'employee_code' : 'device_user_id';
         $lookup = [];
-        foreach (BranchController::scope(DB::table('employees'), 'branch_id')->where('deleted', 'No')->whereNotNull($field)->get(['id', 'name', 'employee_code', $field . ' as ident']) as $e) {
+        foreach (BranchController::scopeOwn(DB::table('employees'), 'branch_id')->where('deleted', 'No')->whereNotNull($field)->get(['id', 'name', 'employee_code', $field . ' as ident']) as $e) {
             $lookup[(string) $e->ident] = $e;
             $lookup['~' . ltrim((string) $e->ident, '0')] ??= $e;
         }
@@ -561,6 +563,8 @@ class AttendanceController extends Controller
             'settings' => self::settings(),
             'days'     => self::DAYS,
             'branches' => DB::table('branches')->where('deleted', 'No')->orderBy('name')->get(['id', 'name']),
+            // This year's weekend of the holiday calendar: a shift with a different weekly off gets a hint.
+            'calendarWeekend' => array_values(array_map(fn ($d) => LeaveController::DAY_NAMES[$d], LeaveController::weekendDays((int) now()->year))),
         ]);
     }
 
@@ -708,11 +712,15 @@ class AttendanceController extends Controller
     }
 
     /** Active employees employed at some point between two dates. */
-    public static function employeesQuery(string $from, string $to, ?int $departmentId = null, ?array $ids = null, bool $branchOnly = true)
+    /**
+     * $branchOnly: the branches the user sees (false = every branch, device sync). $ownBranch: the working branch only
+     * (marking attendance, imports, sending to salary — attendance rows are saved in the working branch).
+     */
+    public static function employeesQuery(string $from, string $to, ?int $departmentId = null, ?array $ids = null, bool $branchOnly = true, bool $ownBranch = false)
     {
         $query = DB::table('employees as e');
 
-        return ($branchOnly ? BranchController::scope($query, 'e.branch_id') : $query)
+        return ($ownBranch ? BranchController::scopeOwn($query, 'e.branch_id') : ($branchOnly ? BranchController::scope($query, 'e.branch_id') : $query))
             ->where('e.deleted', 'No')->where('e.status', 'Active')
             ->where(fn ($q) => $q->whereNull('e.joining_date')->orWhere('e.joining_date', '<=', $to))
             ->where(fn ($q) => $q->whereNull('e.resign_date')->orWhere('e.resign_date', '>=', $from))
@@ -931,18 +939,24 @@ class AttendanceController extends Controller
      * A working day without a row counts as Absent only when attendance was taken that day
      * (anyone has a row for the date) — days nobody recorded show "·" and count nowhere.
      */
-    public static function monthSummary(Carbon $month, ?int $departmentId = null, ?array $employeeIds = null): array
+    public static function monthSummary(Carbon $month, ?int $departmentId = null, ?array $employeeIds = null, bool $ownBranch = false): array
     {
         $from = $month->copy()->startOfMonth()->toDateString();
         $to = $month->copy()->endOfMonth()->toDateString();
         $today = today()->toDateString();
 
-        $employees = self::employeesQuery($from, $to, $departmentId, $employeeIds)->get();
+        $employees = self::employeesQuery($from, $to, $departmentId, $employeeIds, true, $ownBranch)->get();
         $ids = $employees->pluck('id')->all();
         $rows = DB::table('attendances')->whereIn('employee_id', $ids ?: [0])->whereBetween('date', [$from, $to])->get()
             ->keyBy(fn ($r) => $r->employee_id . '|' . $r->date);
         // Only this branch's attendance tells whether attendance was taken on a day.
-        $recorded = array_flip(BranchController::scope(DB::table('attendances'), 'branch_id')->whereBetween('date', [$from, $to])->distinct()->pluck('date')->all());
+        // Attendance is taken per branch: a day counts as "taken" for an employee when their branch has rows that day.
+        $recordedBy = BranchController::scope(DB::table('attendances'), 'branch_id')->whereBetween('date', [$from, $to])->distinct()
+            ->get(['branch_id', 'date'])->groupBy('branch_id')->map(fn ($g) => array_flip($g->pluck('date')->all()));
+        $recorded = [];
+        foreach ($recordedBy as $set) {
+            $recorded += $set;
+        }
         $ctx = self::context($from, $to, $ids);
 
         $dates = [];
@@ -969,7 +983,7 @@ class AttendanceController extends Controller
                     $status = $r->attendance_status;
                 } elseif ($type) {
                     $status = $type;
-                } elseif ($date <= $today && isset($recorded[$date])) {
+                } elseif ($date <= $today && isset($recordedBy[$e->branch_id][$date])) {
                     $status = 'Absent';
                 } else {
                     $status = $date > $today ? null : '·';
@@ -1018,11 +1032,12 @@ class AttendanceController extends Controller
      * absence (absent + ½ per half day) × daily rate, late fine (lates ÷ N, whole days) × daily rate,
      * overtime hours × multiplier × gross / days / hours per day.
      */
+    /** Salary lines from attendance for the WORKING branch's employees (sent to salary from there). */
     public static function salaryLines(Carbon $month, ?int $departmentId = null): array
     {
         $month = $month->copy()->startOfMonth();
         $s = self::settings();
-        $summary = self::monthSummary($month, $departmentId);
+        $summary = self::monthSummary($month, $departmentId, null, true);
         $processed = array_flip(PayrollRunController::processedIds($month));
         $existing = DB::table('salary_adjustments')->where('month', $month->toDateString())->where('deleted', 'No')
             ->where('remarks', 'like', self::REMARK_PREFIX . '%')->groupBy('employee_id')

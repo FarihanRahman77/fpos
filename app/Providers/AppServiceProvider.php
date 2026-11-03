@@ -25,6 +25,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Password reset links: the host comes from APP_URL, never from the request's Host header (which anyone can
+        // set, so the e-mailed link — with its token — could otherwise point to another site). If APP_URL holds only
+        // a host (e.g. http://localhost), the install's folder (/FPOS/public) is taken from the script path.
+        \Illuminate\Auth\Notifications\ResetPassword::createUrlUsing(function ($user, string $token) {
+            $app = rtrim((string) config('app.url'), '/');
+            $base = parse_url($app, PHP_URL_PATH) ? $app : $app . request()->getBaseUrl();
+
+            return $base . route('password.reset', ['token' => $token, 'email' => $user->getEmailForPasswordReset()], false);
+        });
 
         $generalSetting = null;
 
@@ -50,13 +59,16 @@ class AppServiceProvider extends ServiceProvider
         $themeCss = '';
         $pdfColors = [];
         try {
-            $themeCss = SettingController::themeCss($generalSetting->theme_colors ?? null);
+            $themeCss = SettingController::themeCss($generalSetting->theme_colors ?? null, $generalSetting->button_radius ?? null);
             $pdfColors = SettingController::pdfColors();
         } catch (Throwable $exception) {
             Log::warning('Unable to build the theme colors.', ['exception' => $exception]);
         }
         View::share('themeCss', $themeCss);
         View::share('pc', $pdfColors);
+
+        // Roles & permissions: @perm('sales.create') … @endperm, or @perm(['a.view', 'b.view']) for any of them.
+        \Illuminate\Support\Facades\Blade::if('perm', fn ($permission) => \App\Http\Controllers\Admin\PermissionController::allows($permission));
 
         // System > Email & SMS: SMTP settings saved in the app override .env (never breaks boot).
         try {

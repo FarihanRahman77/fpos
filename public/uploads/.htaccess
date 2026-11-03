@@ -1,0 +1,8 @@
+# Uploaded files are data, never code or pages: refuse anything that could run or render as HTML/script here.
+Options -Indexes -ExecCGI
+<FilesMatch "(?i)\.(php\d?|phtml|phar|phps|pht|cgi|pl|py|sh|asp|aspx|jsp|shtml?|html?|xhtml|svg|js|mjs|htaccess)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

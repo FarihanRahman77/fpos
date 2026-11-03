@@ -8,6 +8,7 @@
             'additions'      => array_map(fn ($a) => $a['name'] . ': ' . number_format($a['amount'], 2) . (!empty($a['remarks']) ? ' — ' . $a['remarks'] : ''), $r['additions_detail'] ?? []),
             'deductions'     => array_map(fn ($a) => $a['name'] . ': ' . number_format($a['amount'], 2) . (!empty($a['remarks']) ? ' — ' . $a['remarks'] : ''), $r['deductions_detail'] ?? []),
             'loan_deduction' => array_map(fn ($l) => $l['loan_no'] . ' (' . $l['type'] . '): ' . number_format($l['amount'], 2), $r['loan_detail'] ?? []),
+            'earned_gross'   => !empty($r['earned_note']) ? ['Full gross ' . number_format($r['gross_salary'], 2) . ' less ' . $r['earned_note'] . ': ' . number_format($r['prorate_off'], 2)] : [],
             default          => [],
         };
 
@@ -69,5 +70,5 @@
             </tfoot>
         </table>
     </div>
-    <p class="text-muted small mt-2 mb-0">Hover Bonus, Additions, Deductions or Loan to see each line. “Not processed” rows are a live preview; processing freezes them.</p>
+    <p class="text-muted small mt-2 mb-0">Hover Pro-rated Gross, Bonus, Additions, Deductions or Loan to see each line. “Not processed” rows are a live preview; processing freezes them.</p>
 @endif

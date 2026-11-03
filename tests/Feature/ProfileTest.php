@@ -2,42 +2,45 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Illuminate\Support\Facades\DB;
+use Tests\AppTestCase;
 
-class ProfileTest extends TestCase
+/**
+ * Updated from the stock Breeze test.
+ * - The user signs in to a branch first (SetBranch signs out sessions without one).
+ * - The app's profile page is admin.users.profile/{id} (own profile only); /profile (Breeze) is still routed for the
+ *   update / delete actions.
+ * - Deleting an account is a soft delete (users.deleted = Yes, the row stays for the records the user made), and the
+ *   last active account cannot delete itself.
+ */
+class ProfileTest extends AppTestCase
 {
-    use RefreshDatabase;
-
+    /** Was: GET /profile is 200. Now: the app's profile page (admin.users.profile) shows the user's own profile. */
     public function test_profile_page_is_displayed(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this
-            ->actingAs($user)
-            ->get('/profile');
+        $this->get(route('admin.users.profile', $this->ids['user.cashier']))
+            ->assertOk()->assertSee('Cashier Two')->assertSee('Branch Two');
+    }
 
-        $response->assertOk();
+    /** New: someone else's profile id redirects to your own. */
+    public function test_profile_of_another_user_redirects_to_own(): void
+    {
+        $this->signIn('cashier', 'two');
+
+        $this->get(route('admin.users.profile', $this->ids['user.superadmin']))
+            ->assertRedirect(route('admin.users.profile', $this->ids['user.cashier']));
     }
 
     public function test_profile_information_can_be_updated(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this
-            ->actingAs($user)
-            ->patch('/profile', [
-                'name' => 'Test User',
-                'email' => 'test@example.com',
-            ]);
+        $this->patch('/profile', ['name' => 'Test User', 'email' => 'test@example.com'])
+            ->assertSessionHasNoErrors()->assertRedirect('/profile');
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
-
-        $user->refresh();
-
+        $user = $this->user('cashier');
         $this->assertSame('Test User', $user->name);
         $this->assertSame('test@example.com', $user->email);
         $this->assertNull($user->email_verified_at);
@@ -45,55 +48,50 @@ class ProfileTest extends TestCase
 
     public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this
-            ->actingAs($user)
-            ->patch('/profile', [
-                'name' => 'Test User',
-                'email' => $user->email,
-            ]);
+        $this->patch('/profile', ['name' => 'Test User', 'email' => 'cashier@example.test'])
+            ->assertSessionHasNoErrors()->assertRedirect('/profile');
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
-
-        $this->assertNotNull($user->refresh()->email_verified_at);
+        $this->assertNotNull($this->user('cashier')->email_verified_at);
     }
 
+    /** Was: the user row is gone (hard delete). Now: soft delete (deleted = Yes), signed out, and cannot log in again. */
     public function test_user_can_delete_their_account(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this
-            ->actingAs($user)
-            ->delete('/profile', [
-                'password' => 'password',
-            ]);
-
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/');
+        $this->delete('/profile', ['password' => $this->password])
+            ->assertSessionHasNoErrors()->assertRedirect('/');
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $this->assertDatabaseHas('users', ['id' => $this->ids['user.cashier'], 'deleted' => 'Yes']);
+
+        $this->post('/login', ['email' => 'cashier@example.test', 'password' => $this->password, 'branch_id' => $this->branch('two')])
+            ->assertSessionHasErrors('branch_id');
+        $this->assertGuest();
     }
 
     public function test_correct_password_must_be_provided_to_delete_account(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
 
-        $response = $this
-            ->actingAs($user)
-            ->from('/profile')
-            ->delete('/profile', [
-                'password' => 'wrong-password',
-            ]);
+        $this->from('/profile')->delete('/profile', ['password' => 'wrong-password'])
+            ->assertSessionHasErrorsIn('userDeletion', 'password')->assertRedirect('/profile');
 
-        $response
-            ->assertSessionHasErrorsIn('userDeletion', 'password')
-            ->assertRedirect('/profile');
+        $this->assertDatabaseHas('users', ['id' => $this->ids['user.cashier'], 'deleted' => 'No']);
+    }
 
-        $this->assertNotNull($user->fresh());
+    /** New: the last active account cannot delete itself (nobody could sign in afterwards). */
+    public function test_last_active_user_cannot_delete_their_account(): void
+    {
+        DB::table('users')->where('id', '!=', $this->ids['user.superadmin'])->update(['status' => 'Inactive']);
+        $this->signIn('superadmin', 'main');
+
+        $this->from('/profile')->delete('/profile', ['password' => $this->password])
+            ->assertSessionHasErrorsIn('userDeletion', 'password');
+
+        $this->assertAuthenticated();
+        $this->assertDatabaseHas('users', ['id' => $this->ids['user.superadmin'], 'deleted' => 'No']);
     }
 }

@@ -17,18 +17,28 @@
 
         <div class="navbar-actions ms-auto">
             @isset($loggedInBranch)
-                {{-- Signed in to one branch; to work in another, sign out and sign in to it. --}}
-                <span class="branch-switch" title="You are signed in to this branch. Sign out to use another branch.">
+                {{-- Working branch (new records, stock, cash drawer, changes); "+N" = other branches whose data is also shown. --}}
+                @php($navVisible = \App\Http\Controllers\Admin\BranchController::visibleNames())
+                @php($navOthers = collect($navVisible)->except($loggedInBranch->id))
+                <span class="branch-switch"
+                    title="{{ $navOthers->isEmpty()
+                        ? 'You are signed in to this branch. Sign out to use another branch.'
+                        : 'Working in ' . $loggedInBranch->name . ' (new records, stock and cash). Also showing data of: ' . $navOthers->implode(', ') . '. To change their records, sign in to that branch.' }}">
                     <i class="bi bi-building" aria-hidden="true"></i>
                     <span class="d-none d-md-inline">{{ $loggedInBranch->name }}</span>
+                    @if ($navOthers->isNotEmpty())
+                        <span class="badge rounded-pill bg-secondary ms-1">+{{ $navOthers->count() }}</span>
+                    @endif
                 </span>
             @endisset
 
+            @perm('pos.view')
             <a class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2 px-3 fw-semibold {{ request()->routeIs('sales.pos') ? 'active' : '' }}"
                 href="{{ route('sales.pos') }}" title="Point of Sale">
                 <i class="bi bi-shop" aria-hidden="true"></i>
                 <span class="d-none d-sm-inline">POS</span>
             </a>
+            @endperm
             <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="Switch color theme"
                 title="Switch color theme">
                 <i class="bi bi-moon-stars" data-theme-icon aria-hidden="true"></i>
@@ -60,7 +70,9 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                     <li><a class="dropdown-item" href="{{ route('admin.users.profile', Auth::user()->id) }}">Profile</a></li>
+                    @perm('settings.view')
                     <li><a class="dropdown-item" href="{{ route('admin.settings.index') }}">Settings</a></li>
+                    @endperm
                     <li>
                         <hr class="dropdown-divider">
                     </li>

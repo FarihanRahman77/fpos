@@ -1,7 +1,7 @@
 @extends('admin.master')
 
 @section('title')
-    {{ $generalSetting['company_name'] ?? '' }} Attribute Categories
+    {{ $generalSetting['company_name'] ?? '' }} Attribute Types
 @endsection
 
 @section('content')
@@ -42,7 +42,7 @@
         <div class="col-md-6">
 
             <h4 class="mb-0">
-                Attribute Categories
+                Attribute Types
             </h4>
 
         </div>
@@ -56,7 +56,7 @@
 
                 <i class="fas fa-plus"></i>
 
-                Add Attribute Category
+                Add Attribute Type
 
             </button>
 
@@ -167,7 +167,7 @@
                     <h5 class="modal-title"
                         id="attributeTypeModalTitle">
 
-                        Add Attribute Category
+                        Add Attribute Type
 
                     </h5>
 
@@ -190,7 +190,7 @@
                         <label for="attribute_type_name"
                                class="form-label">
 
-                            Category Name
+                            Attribute Type Name
 
                             <span class="required">*</span>
 
@@ -280,7 +280,7 @@
 
                 <h5 class="modal-title">
 
-                    Delete Attribute Category
+                    Delete Attribute Type
 
                 </h5>
 
@@ -295,7 +295,7 @@
 
             <div class="modal-body">
 
-                Are you sure you want to delete this attribute category?
+                Are you sure you want to delete this attribute type?
 
                 <input type="hidden"
                        id="delete_attribute_type_id">
@@ -363,7 +363,7 @@ $(document).ready(function() {
 
                         toastr.error(
                             json.message ||
-                            'Unable to load attribute categories.'
+                            'Unable to load attribute types.'
                         );
 
                         return [];
@@ -471,7 +471,7 @@ $(document).ready(function() {
                 processing: 'Loading...',
 
                 emptyTable:
-                    'No attribute categories found.'
+                    'No attribute types found.'
 
             }
 
@@ -492,7 +492,7 @@ $(document).ready(function() {
             resetAttributeTypeForm();
 
             $('#attributeTypeModalTitle')
-                .text('Add Attribute Category');
+                .text('Add Attribute Type');
 
             $('#saveAttributeTypeBtn')
                 .text('Save');
@@ -731,7 +731,7 @@ $(document).ready(function() {
 
                     $('#attributeTypeModalTitle')
                         .text(
-                            'Edit Attribute Category'
+                            'Edit Attribute Type'
                         );
 
 
@@ -748,7 +748,7 @@ $(document).ready(function() {
                 error: function(xhr) {
                     // alert(JSON.stringify(xhr));
                     toastr.error(
-                        'Unable to load attribute category.'
+                        'Unable to load attribute type.'
                     );
 
                 }
@@ -868,7 +868,7 @@ $(document).ready(function() {
 
                     toastr.error(
                         xhr.responseJSON?.message ||
-                        'Unable to delete attribute category.'
+                        'Unable to delete attribute type.'
                     );
 
                 },

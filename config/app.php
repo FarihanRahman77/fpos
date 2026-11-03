@@ -70,7 +70,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => 'Asia/Dhaka',   // Bangladesh shop: "today" must roll over at local midnight (MySQL also runs on Dhaka time)
 
     /*
     |--------------------------------------------------------------------------

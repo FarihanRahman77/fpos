@@ -638,7 +638,7 @@
                     '<td>' + actionDropdown([
                         { label: 'Edit', icon: 'fas fa-edit', onclick: 'editBillPayment(' + p.id + ')' },
                         { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger', onclick: 'deleteBillPayment(' + p.id + ')' }
-                    ]) + '</td>' +
+                    ], d.locked_tip) + '</td>' +
                     '</tr>';
             }).join('');
 

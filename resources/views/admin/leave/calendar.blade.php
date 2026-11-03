@@ -250,7 +250,13 @@
 
             add: function() {
                 Cal.prepare('Add Holiday');
-                $('#from_date, #to_date').val(Cal.year() + '-01-01');
+                // Today when the selected year is this year; otherwise the same day and month in the selected year.
+                const now = new Date(), y = Cal.year(), pad2 = function(n) { return (n < 10 ? '0' : '') + n; };
+                let day = now.getDate();
+                const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+                if (day > lastDay) day = lastDay;   // 29 Feb in a non-leap year
+                $('#from_date, #to_date').val(y + '-' + pad2(now.getMonth() + 1) + '-' + pad2(day))
+                    .attr({ min: y + '-01-01', max: y + '-12-31' });
                 Cal.modal.show();
             },
 

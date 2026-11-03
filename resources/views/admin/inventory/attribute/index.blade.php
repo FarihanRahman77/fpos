@@ -120,7 +120,7 @@
                            class="form-control border-dark"
                            id="attribute_type_id"
                            name="attribute_type_id">
-                        <option value="">Select Attribute Types</option>
+                        <option value="">Select Attribute Type</option>
                         @foreach($attributeTypes as $type)
                         <option value="{{ $type->id }}">{{ $type->name }}</option>
                         @endforeach

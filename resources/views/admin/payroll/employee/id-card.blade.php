@@ -3,35 +3,38 @@
 <head>
     <meta charset="utf-8">
     <title>ID Card - {{ $employee->name }}</title>
+    @php $headFont = "'" . $pdfT['head_font'] . "', serif"; @endphp
     <style>
-        /* CR80 card: 54 x 85.6 mm, portrait. Page 1 = front, page 2 = back. */
+        /* Colors and fonts follow the PDF template ($pdfT), company name/logo from $pdfCo. CR80 card: 54 x 85.6 mm, portrait. Page 1 = front, page 2 = back. */
         @page { margin: 0; }
         * { margin: 0; padding: 0; }
-        body { font-family: 'DejaVu Sans', sans-serif; color: {{ $pc['ink'] }}; }
+        body { font-family: '{{ $pdfT['font'] }}', sans-serif; color: {{ $pdfT['ink'] }}; background: {{ $pdfT['paper'] }}; }
         table { border-collapse: collapse; }
 
         .card { position: relative; width: 54mm; height: 85.6mm; overflow: hidden; }
         .page-break { page-break-after: always; }
 
-        .band { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; text-align: center; }
+        .band { background: {{ $pdfT['accent'] }}; color: {{ $pdfT['on_accent'] }}; text-align: center; }
         .band-top { height: 17mm; padding-top: 2.2mm; }
         .band-top img { max-height: 7mm; max-width: 30mm; }
-        .company { font-size: 6.6pt; font-weight: bold; letter-spacing: .2pt; margin-top: 0.8mm; padding: 0 2mm; }
+        .logo-chip { display: inline-block; background: {{ $pdfT['paper'] }}; padding: 0.6mm 1.2mm; border-radius: 1mm; }
+        .company { font-family: {!! $headFont !!}; font-size: 6.6pt; font-weight: bold; letter-spacing: .2pt; margin-top: 0.8mm; padding: 0 2mm; }
         .tagline { font-size: 4.6pt; opacity: .85; padding: 0 2mm; }
-        .accent { height: 1.2mm; background: {{ $pc['accent_alt'] }}; }
+        .accent { height: 1.2mm; background: {{ $pdfT['rule_strong'] }}; }
 
         .photo-wrap { text-align: center; margin-top: -1mm; }
-        .photo { width: 21mm; height: 25mm; border: 0.6mm solid {{ $pc['accent'] }}; border-radius: 1.5mm; }
-        .photo-empty { display: inline-block; width: 21mm; height: 25mm; border: 0.6mm solid {{ $pc['accent'] }}; border-radius: 1.5mm;
-                       background: {{ $pc['border'] }}; font-size: 18pt; font-weight: bold; color: {{ $pc['muted'] }}; line-height: 25mm; text-align: center; }
+        .photo { width: 21mm; height: 25mm; border: 0.6mm solid {{ $pdfT['accent'] }}; border-radius: 1.5mm; }
+        .photo-empty { display: inline-block; width: 21mm; border: 0.6mm solid {{ $pdfT['accent'] }}; border-radius: 1.5mm;
+                       background: {{ $pdfT['accent_soft'] }}; font-size: 18pt; font-weight: bold; color: {{ $pdfT['muted'] }}; line-height: 1; height: 17mm; padding-top: 8mm; text-align: center; }
 
-        .name { text-align: center; font-size: 8.4pt; font-weight: bold; margin-top: 1.4mm; padding: 0 2mm; color: {{ $pc['ink'] }}; }
-        .designation { text-align: center; font-size: 6pt; color: {{ $pc['accent'] }}; font-weight: bold; text-transform: uppercase; letter-spacing: .3pt; padding: 0 2mm; }
+        .name { font-family: {!! $headFont !!}; text-align: center; font-size: 8.4pt; font-weight: bold; margin-top: 1.4mm; padding: 0 2mm; color: {{ $pdfT['ink'] }}; }
+        .designation { text-align: center; font-size: 6pt; color: {{ $pdfT['accent'] }}; font-weight: bold; text-transform: uppercase; letter-spacing: .3pt; padding: 0 2mm; }
 
         .info { width: 44mm; margin: 1.8mm auto 0 auto; font-size: 5.6pt; }
         .info td { padding: 0.35mm 0; vertical-align: top; }
-        .info td.k { width: 13mm; color: {{ $pc['muted'] }}; }
-        .info td.c { width: 2mm; color: {{ $pc['muted'] }}; }
+        .info td.k { width: 13mm; color: {{ $pdfT['muted'] }}; }
+        .info td.c { width: 2mm; color: {{ $pdfT['muted'] }}; }
+        .info td.blood { color: {{ $pdfT['danger'] }}; }
         .info td.v { font-weight: bold; }
 
         /* dompdf draws line-height text low, so bands use padding instead */
@@ -43,7 +46,7 @@
         .back-body p { margin-bottom: 1.4mm; text-align: center; }
         .back-info { width: 100%; font-size: 5.4pt; margin-bottom: 1.6mm; }
         .back-info td { padding: 0.4mm 0; vertical-align: top; }
-        .back-info td.k { width: 15mm; color: {{ $pc['muted'] }}; }
+        .back-info td.k { width: 15mm; color: {{ $pdfT['muted'] }}; }
         .back-info td.v { font-weight: bold; }
         .barcode { text-align: center; margin: 1mm 0 0.5mm 0; }
         .barcode img { width: 38mm; height: 7mm; }
@@ -51,8 +54,8 @@
         .sign { text-align: center; margin-top: 2mm; }
         .sign img { max-height: 6mm; max-width: 24mm; }
         .sign-space { height: 6mm; }
-        .sign-line { width: 26mm; margin: 0 auto; border-top: 0.25mm solid {{ $pc['secondary'] }}; font-size: 5pt; color: {{ $pc['secondary'] }}; padding-top: 0.4mm; }
-        .return { font-size: 5pt; color: {{ $pc['secondary'] }}; text-align: center; }
+        .sign-line { width: 26mm; margin: 0 auto; border-top: 0.25mm solid {{ $pdfT['rule_strong'] }}; font-size: 5pt; color: {{ $pdfT['muted'] }}; padding-top: 0.4mm; }
+        .return { font-size: 5pt; color: {{ $pdfT['muted'] }}; text-align: center; }
     </style>
 </head>
 <body>
@@ -60,12 +63,12 @@
     {{-- ===================== FRONT ===================== --}}
     <div class="card page-break">
         <div class="band band-top">
-            @if ($company['logo'])
-                <img src="{{ $company['logo'] }}" alt="">
+            @if ($pdfCo['logo'])
+                <span class="logo-chip"><img src="{{ $pdfCo['logo'] }}" alt=""></span>
             @endif
-            <div class="company">{{ $company['name'] }}</div>
-            @if ($company['tagline'])
-                <div class="tagline">{{ $company['tagline'] }}</div>
+            <div class="company">{{ $pdfCo['name'] }}</div>
+            @if ($pdfCo['tagline'] && $pdfCo['tagline'] !== $pdfCo['name'])
+                <div class="tagline">{{ $pdfCo['tagline'] }}</div>
             @endif
         </div>
         <div class="accent"></div>
@@ -87,7 +90,7 @@
                 <tr><td class="k">Dept.</td><td class="c">:</td><td class="v">{{ $employee->department }}</td></tr>
             @endif
             @if ($employee->blood_group)
-                <tr><td class="k">Blood</td><td class="c">:</td><td class="v" style="color:{{ $pc['danger'] }};">{{ $employee->blood_group }}</td></tr>
+                <tr><td class="k">Blood</td><td class="c">:</td><td class="v blood">{{ $employee->blood_group }}</td></tr>
             @endif
             @if ($employee->phone)
                 <tr><td class="k">Mobile</td><td class="c">:</td><td class="v">{{ $employee->phone }}</td></tr>
@@ -119,7 +122,7 @@
                 @endif
             </table>
 
-            <p>This card is the property of <strong>{{ $company['name'] }}</strong> and must be shown on request. It is not transferable.</p>
+            <p>This card is the property of <strong>{{ $pdfCo['name'] }}</strong> and must be shown on request. It is not transferable.</p>
 
             <div class="barcode"><img src="{{ $barcode }}" alt=""></div>
             <div class="barcode-text">{{ $employee->employee_code }}</div>
@@ -143,12 +146,12 @@
 
             <div class="return" style="margin-top: 2mm;">
                 If found, please return to:<br>
-                @if ($company['address']){{ $company['address'] }}<br>@endif
-                @if ($company['phone'])Phone: {{ $company['phone'] }}@endif
+                @if ($pdfCo['address']){{ $pdfCo['address'] }}<br>@endif
+                @if ($pdfCo['phone'])Phone: {{ $pdfCo['phone'] }}@endif
             </div>
         </div>
 
-        <div class="band band-bottom">{{ $company['website'] ?: $company['email'] }}</div>
+        <div class="band band-bottom">{{ $pdfCo['website'] ?: $pdfCo['email'] }}</div>
     </div>
 
 </body>

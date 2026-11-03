@@ -13,6 +13,13 @@ use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
+    /** Friendly field names for validation messages ("The Role field is required", not "role id"). */
+    private const FIELD_NAMES = [
+        'name' => 'Name', 'email' => 'Email', 'password' => 'Password', 'role_id' => 'Role', 'designation' => 'Designation',
+        'status' => 'Status', 'branch_id' => 'Home Branch', 'all_branches' => 'Can Sign In To', 'branches' => 'Also Works In',
+        'branches.*' => 'Also Works In', 'image' => 'User Image',
+    ];
+
     public function index()
     {
         $roles = Role::where('deleted', 'No')
@@ -102,8 +109,11 @@ class UserController extends Controller
             'branches.*' => 'integer|exists:branches,id',
 
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
+        ], [], self::FIELD_NAMES);
 
+        if ($problem = PermissionController::grantProblem((int) $request->role_id)) {
+            return response()->json(['status' => false, 'message' => $problem, 'errors' => ['role_id' => [$problem]]], 422);
+        }
 
         $user = new User();
 
@@ -136,7 +146,7 @@ class UserController extends Controller
 
             $image = $request->file('image');
 
-            $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $imageName = time() . '_' . uniqid() . '.' . $image->guessExtension();
 
             $image->move($uploadPath, $imageName);
 
@@ -227,7 +237,7 @@ class UserController extends Controller
             'branches.*' => 'integer|exists:branches,id',
 
             'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
+        ], [], self::FIELD_NAMES);
 
 
         if ($request->status !== 'Active' && (int) $user->id === (int) auth()->id()) {
@@ -237,6 +247,9 @@ class UserController extends Controller
         if ($request->status !== 'Active' && $this->isLastActiveUser($user)) {
             return response()->json(['status' => false, 'message' => 'This is the last active user; it must stay active.',
                 'errors' => ['status' => ['This is the last active user; it must stay active.']]], 422);
+        }
+        if ($problem = PermissionController::userChangeProblem((int) $user->id, (int) $request->role_id, $request->status)) {
+            return response()->json(['status' => false, 'message' => $problem, 'errors' => ['role_id' => [$problem]]], 422);
         }
 
         $user->name = $request->name;
@@ -261,7 +274,7 @@ class UserController extends Controller
 
             $request->validate([
                 'password' => 'string|min:6'
-            ]);
+            ], [], self::FIELD_NAMES);
 
             $user->password = Hash::make($request->password);
         }
@@ -295,7 +308,7 @@ class UserController extends Controller
 
             $image = $request->file('image');
 
-            $imageName = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+            $imageName = time() . '_' . uniqid() . '.' . $image->guessExtension();
 
             $image->move($uploadPath, $imageName);
 
@@ -344,6 +357,9 @@ class UserController extends Controller
         }
         if ($this->isLastActiveUser($user)) {
             return response()->json(['status' => false, 'message' => 'This is the last active user. Add another active user before deleting it.'], 422);
+        }
+        if ($problem = PermissionController::userChangeProblem((int) $user->id, null, null)) {
+            return response()->json(['status' => false, 'message' => $problem], 422);
         }
 
         $user->deleted = 'Yes';

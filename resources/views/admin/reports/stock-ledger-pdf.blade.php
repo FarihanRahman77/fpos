@@ -1,148 +1,79 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Stock Ledger</title>
-    @php
-        $q = fn ($v) => $v == 0 ? '-' : rtrim(rtrim(number_format($v, 3), '0'), '.');
-    @endphp
-    <style>
-        @page { margin: 24px 26px 46px 26px; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 8.5px; color: {{ $pc['ink'] }}; }
-        table { width: 100%; border-collapse: collapse; }
-        .muted { color: {{ $pc['muted'] }}; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
+@extends('pdf.layout')
+@php
+    $q = fn ($v) => $v == 0 ? '-' : rtrim(rtrim(number_format($v, 3), '0'), '.');
+    $doc = [
+        'title'     => 'Stock Ledger',
+        'info'      => $filters_text,
+        'printedAt' => $printedAt,
+        'signatures' => ['Prepared by' => auth()->user()->name ?? '', 'Checked by' => '', 'Approved by' => ''],
+    ];
+@endphp
 
-        .company-name { font-size: 15px; font-weight: bold; color: {{ $pc['ink'] }}; }
-        .doc-title { font-size: 16px; font-weight: bold; color: {{ $pc['accent'] }}; letter-spacing: 1px; }
-        .rule { border-top: 2.5px solid {{ $pc['accent'] }}; margin: 6px 0 8px 0; }
-
-        .filters td { padding: 1px 10px 1px 0; vertical-align: top; }
-        .filters .k { color: {{ $pc['muted'] }}; width: 70px; }
-
-        .block { margin-top: 10px; page-break-inside: auto; }
-        .block-head { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; padding: 5px 7px; }
-        .block-head .meta { color: {{ $pc['border_strong'] }}; font-size: 7.5px; }
-        .grid th { background: {{ $pc['border'] }}; padding: 4px 5px; font-size: 7.5px; text-transform: uppercase; text-align: left; border: 1px solid {{ $pc['border_strong'] }}; }
-        .grid td { padding: 3.5px 5px; border: 1px solid {{ $pc['border'] }}; vertical-align: top; }
-        .grid tr.opening td { background: {{ $pc['soft'] }}; font-style: italic; color: {{ $pc['secondary'] }}; }
-        .grid tr.total td { background: {{ $pc['soft'] }}; font-weight: bold; border-top: 1.5px solid {{ $pc['faint'] }}; }
-        .in { color: {{ $pc['success'] }}; }
-        .out { color: {{ $pc['danger'] }}; }
-        .neg { color: {{ $pc['danger'] }}; }
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-
-        .summary { width: 45%; margin-top: 14px; page-break-inside: avoid; }
-        .summary td { padding: 4px 7px; border: 1px solid {{ $pc['border_strong'] }}; }
-        .summary td.k { background: {{ $pc['soft'] }}; font-weight: bold; width: 55%; }
-
-        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7.5px; color: {{ $pc['faint'] }}; }
-    </style>
-</head>
-<body>
-
-    <table>
-        <tr>
-            <td style="width: 62%; vertical-align: top;">
-                <table>
-                    <tr>
-                        @if ($company['logo'])
-                            <td style="width: 52px; vertical-align: middle;"><img src="{{ $company['logo'] }}" style="max-height: 36px; max-width: 48px;" alt=""></td>
-                        @endif
-                        <td style="vertical-align: middle;">
-                            <div class="company-name">{{ $company['name'] }}</div>
-                            @if ($company['address'])<div class="muted">{{ $company['address'] }}</div>@endif
-                            <div class="muted">
-                                @if ($company['phone'])Phone: {{ $company['phone'] }}@endif
-                                @if ($company['email']) &nbsp;|&nbsp; {{ $company['email'] }}@endif
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-            <td class="right" style="vertical-align: top;">
-                <div class="doc-title">STOCK LEDGER</div>
-                <div class="muted" style="margin-top: 2px;">Printed: {{ $printedAt }}</div>
-            </td>
-        </tr>
-    </table>
-
-    <div class="rule"></div>
-
-    <table class="filters">
-        @foreach ($filters_text as $label => $value)
-            <tr><td class="k">{{ $label }}</td><td class="bold">{{ $value }}</td></tr>
-        @endforeach
-    </table>
-
+@section('content')
     @forelse ($items as $item)
-        <div class="block">
-            <div class="block-head">
-                <span class="bold" style="font-size: 9.5px;">{{ $item['product'] }}</span>
-                <span class="meta">
-                    @if ($item['sku']) &nbsp; SKU: {{ $item['sku'] }}@endif
-                    @if ($item['category']) &nbsp;·&nbsp; {{ $item['category'] }}@endif
-                    @if ($item['brand']) &nbsp;·&nbsp; {{ $item['brand'] }}@endif
-                    @if ($item['unit']) &nbsp;·&nbsp; Unit: {{ $item['unit'] }}@endif
-                </span>
-            </div>
-            <table class="grid">
-                <thead>
-                    <tr>
-                        <th style="width: 13%;">Date</th>
-                        <th style="width: 11%;">Type</th>
-                        <th style="width: 11%;">Reference</th>
-                        <th style="width: 18%;">Party</th>
-                        <th>Remarks</th>
-                        <th class="right" style="width: 8%;">In</th>
-                        <th class="right" style="width: 8%;">Out</th>
-                        <th class="right" style="width: 9%;">Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr class="opening">
-                        <td colspan="7">Opening balance (before {{ $from->format('d M Y') }})</td>
-                        <td class="right bold">{{ $q($item['opening']) }}</td>
-                    </tr>
-                    @forelse ($item['rows'] as $r)
-                        <tr>
-                            <td>{{ $r['date']->format('d M Y h:i A') }}</td>
-                            <td>{{ $r['type'] }}</td>
-                            <td>{{ $r['reference'] ?: '-' }}</td>
-                            <td>{{ $r['party'] ?: '-' }}</td>
-                            <td class="muted">{{ $r['remarks'] }}</td>
-                            <td class="right in">{{ $q($r['in']) }}</td>
-                            <td class="right out">{{ $q($r['out']) }}</td>
-                            <td class="right bold {{ $r['balance'] < 0 ? 'neg' : '' }}">{{ $q($r['balance']) }}</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="8" class="muted" style="text-align: center; font-style: italic;">No movement in this period</td></tr>
-                    @endforelse
-                    <tr class="total">
-                        <td colspan="5" class="right">Total / Closing balance</td>
-                        <td class="right in">{{ $q($item['in']) }}</td>
-                        <td class="right out">{{ $q($item['out']) }}</td>
-                        <td class="right {{ $item['closing'] < 0 ? 'neg' : '' }}">{{ $q($item['closing']) }}</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="pdf-h">
+            {{ $item['product'] }}
+            <span class="meta">
+                @if ($item['sku']) &nbsp; SKU: {{ $item['sku'] }} @endif
+                @if ($item['category']) &nbsp;·&nbsp; {{ $item['category'] }} @endif
+                @if ($item['brand']) &nbsp;·&nbsp; {{ $item['brand'] }} @endif
+                @if ($item['unit']) &nbsp;·&nbsp; Unit: {{ $item['unit'] }} @endif
+            </span>
         </div>
+        <table class="pdf-table compact">
+            <thead>
+                <tr>
+                    <th style="width: 13%;">Date</th>
+                    <th style="width: 11%;">Type</th>
+                    <th style="width: 11%;">Reference</th>
+                    <th style="width: 18%;">Party</th>
+                    <th>Remarks</th>
+                    <th class="num" style="width: 8%;">In</th>
+                    <th class="num" style="width: 8%;">Out</th>
+                    <th class="num" style="width: 9%;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="opening">
+                    <td colspan="7">Opening balance (before {{ $from->format('d M Y') }})</td>
+                    <td class="num b">{{ $q($item['opening']) }}</td>
+                </tr>
+                @forelse ($item['rows'] as $r)
+                    <tr>
+                        <td class="nowrap">{{ $r['date']->format('d M Y h:i A') }}</td>
+                        <td>{{ $r['type'] }}</td>
+                        <td>{{ $r['reference'] ?: '-' }}</td>
+                        <td>{{ $r['party'] ?: '-' }}</td>
+                        <td class="muted">{{ $r['remarks'] }}</td>
+                        <td class="num pos">{{ $q($r['in']) }}</td>
+                        <td class="num neg">{{ $q($r['out']) }}</td>
+                        <td class="num b {{ $r['balance'] < 0 ? 'neg' : '' }}">{{ $q($r['balance']) }}</td>
+                    </tr>
+                @empty
+                    <tr class="empty"><td colspan="8">No movement in this period</td></tr>
+                @endforelse
+                <tr class="total">
+                    <td colspan="5" class="r">Total / Closing balance</td>
+                    <td class="num pos">{{ $q($item['in']) }}</td>
+                    <td class="num neg">{{ $q($item['out']) }}</td>
+                    <td class="num {{ $item['closing'] < 0 ? 'neg' : '' }}">{{ $q($item['closing']) }}</td>
+                </tr>
+            </tbody>
+        </table>
     @empty
-        <p class="muted" style="text-align: center; margin-top: 30px;">No stock movement matches these filters.</p>
+        <table class="pdf-table"><tbody><tr class="empty"><td>No stock movement matches these filters.</td></tr></tbody></table>
     @endforelse
 
-    <table class="summary">
-        <tr><td class="k">Products / variants</td><td class="right">{{ $totals['items'] }}</td></tr>
-        <tr><td class="k">Opening balance</td><td class="right">{{ $q($totals['opening']) }}</td></tr>
-        <tr><td class="k">Total in</td><td class="right in">{{ $q($totals['in']) }}</td></tr>
-        <tr><td class="k">Total out</td><td class="right out">{{ $q($totals['out']) }}</td></tr>
-        <tr><td class="k">Closing balance</td><td class="right bold">{{ $q($totals['closing']) }}</td></tr>
+    <div class="avoid">
+    <div class="pdf-h">Summary</div>
+    <table class="pdf-cards avoid">
+        <tr>
+            <td><span class="pdf-label">Products / variants</span><div class="pdf-card-v">{{ $totals['items'] }}</div></td>
+            <td><span class="pdf-label">Opening balance</span><div class="pdf-card-v">{{ $q($totals['opening']) }}</div></td>
+            <td><span class="pdf-label">Total in</span><div class="pdf-card-v">{{ $q($totals['in']) }}</div></td>
+            <td><span class="pdf-label">Total out</span><div class="pdf-card-v">{{ $q($totals['out']) }}</div></td>
+            <td><span class="pdf-label">Closing balance</span><div class="pdf-card-v">{{ $q($totals['closing']) }}</div></td>
+        </tr>
     </table>
-
-    <div class="footer">{{ $company['name'] }} &nbsp;|&nbsp; Stock Ledger &nbsp;|&nbsp; {{ $filters_text['Period'] ?? '' }}</div>
-
-    {{-- Page numbers are drawn by ReportController after rendering. --}}
-</body>
-</html>
+    </div>
+@endsection

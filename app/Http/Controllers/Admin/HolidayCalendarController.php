@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -20,7 +21,7 @@ use Throwable;
  */
 class HolidayCalendarController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public const TYPES = ['Public', 'Festival', 'Company', 'Optional'];
 

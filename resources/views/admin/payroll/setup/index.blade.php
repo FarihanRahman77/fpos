@@ -332,6 +332,7 @@
                                 <label class="form-label" for="basic_salary">Basic Salary <span class="text-danger">*</span></label>
                                 <input type="number" step="0.01" min="0" name="basic_salary" id="basic_salary" class="form-control text-end" placeholder="0.00">
                                 <div class="text-danger small field-error"></div>
+                                <small class="text-muted" id="basic_hint"></small>
                             </div>
                             <div class="col-12 f-steps">
                                 <div class="row g-2 small text-muted" id="step_preview"></div>
@@ -466,6 +467,10 @@
                             const current = $('#stepGradeFilter').val();
                             Setup.fillSelect($('#stepGradeFilter'), response.data, 'All pay grades', current);
                         }
+                        if (type === 'departments') {
+                            const currentDept = $('#stepDepartmentFilter').val();
+                            Setup.fillSelect($('#stepDepartmentFilter'), response.data, 'All departments', currentDept);
+                        }
                     },
                     error: function(xhr) {
                         // alert(JSON.stringify(xhr));
@@ -483,6 +488,7 @@
                 $('#setup_error').text('');
                 $('#setup_id').val('');
                 $('#setup_status').val('Active');
+                $('#basic_hint').text('');
 
                 // Show only this type's fields; hidden inputs are disabled so they are not posted.
                 $form.find('[class*="f-"]').filter(function() {
@@ -605,9 +611,12 @@
                         const grade = Setup.options.grades.find(function(g) { return String(g.id) === String(gradeId); });
 
                         $('#step_no').val(last ? +last.step_no + 1 : 1);
+                        $('#basic_hint').text('');
                         if (last) {
                             const inc = parseFloat(grade ? grade.increment_percent : 0) || 0;
                             $('#basic_salary').val((Math.round(parseFloat(last.basic_salary) * (100 + inc)) / 100).toFixed(2));
+                            $('#basic_hint').text('Suggested: step ' + last.step_no + ' basic ' + Voucher.money(last.basic_salary) +
+                                (inc > 0 ? ' + ' + inc + '% yearly increment' : ' (the grade has no yearly increment %)') + '. You can change it.');
                         }
                         Setup.preview();
                     },

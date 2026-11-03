@@ -2,18 +2,13 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\AppTestCase;
 
-class ExampleTest extends TestCase
+/** Updated: the public home page is the branch-wise login form (needs the settings + branches fixtures). */
+class ExampleTest extends AppTestCase
 {
-    /**
-     * A basic test example.
-     */
     public function test_the_application_returns_a_successful_response(): void
     {
-        $response = $this->get('/');
-
-        $response->assertStatus(200);
+        $this->get('/')->assertStatus(200)->assertSee('Main Branch');
     }
 }

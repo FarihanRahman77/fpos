@@ -13,14 +13,18 @@ use Illuminate\Validation\Rule;
 use Throwable;
 
 /**
- * Branches and the branch the user signed in to.
+ * Branches, the branch the user signed in to (working branch) and the branches the user may see.
  *
- * session(SESSION_KEY) = loggedInBranchId: set once at login (AuthenticatedSessionController), never changed while
- * signed in. Every screen, list and report shows only that branch; to see another branch the user signs out and
- * signs in to it (if allowed). New rows get branch_id from the database trigger (create_branches migration) via
- * @fpos_branch, which the SetBranch middleware sets to the same id on every request.
+ * session(SESSION_KEY) = loggedInBranchId: the WORKING branch, set once at login (AuthenticatedSessionController) and
+ * never changed while signed in. New rows get branch_id from the database trigger (create_branches migration) via
+ * @fpos_branch, which the SetBranch middleware sets to the working branch on every request.
  *
- * Reading: BranchController::scope($query, 'alias.branch_id') limits a query to the logged-in branch.
+ * Visibility: a user permitted in one branch sees that branch; a user permitted in several branches (or all_branches)
+ * sees all of them together in every list, report and dashboard (visibleIds()).
+ *   - READS:   BranchController::scope($query, 'alias.branch_id')    → the visible branches.
+ *   - CHANGES: BranchController::scopeOwn($query, 'alias.branch_id') → the working branch only. Editing, deleting,
+ *     cancelling, returning, delivering, receiving or paying a record is allowed only in its own branch (stock and
+ *     cash reversals must book in that branch); guardOwn() refuses other-branch records with a clear message.
  */
 class BranchController extends Controller
 {
@@ -28,20 +32,41 @@ class BranchController extends Controller
 
     public const SESSION_KEY = 'loggedInBranchId';
 
-    private static ?array $allowedCache = null;
+    /**
+     * Per-request memo: values live on the current request's attributes, so they never outlive the request (no stale
+     * branch data in long-running processes or between tests). Console jobs share the one console request.
+     */
+    public static function memo(string $key, callable $make)
+    {
+        $attrs = app('request')->attributes;
+        $key = 'fpos.branch.' . $key;
+        if (!$attrs->has($key)) {
+            $attrs->set($key, $make());
+        }
+
+        return $attrs->get($key);
+    }
+
+    /** Forget the per-request memo (after branch setup or user access changes). */
+    public static function forget(): void
+    {
+        $attrs = app('request')->attributes;
+        foreach (array_keys($attrs->all()) as $k) {
+            if (str_starts_with($k, 'fpos.branch.')) {
+                $attrs->remove($k);
+            }
+        }
+    }
 
     /** Branch ids the signed-in user may sign in to (used by the login checks and user setup). */
     public static function allowedIds(): array
     {
-        if (self::$allowedCache !== null) {
-            return self::$allowedCache;
-        }
         $user = Auth::user();
         if (!$user) {
-            return DB::table('branches')->where('deleted', 'No')->where('status', 'Active')->pluck('id')->map(fn ($id) => (int) $id)->all();
+            return self::memo('active', fn () => DB::table('branches')->where('deleted', 'No')->where('status', 'Active')->pluck('id')->map(fn ($id) => (int) $id)->all());
         }
 
-        return self::$allowedCache = self::allowedFor($user);
+        return self::memo('allowed.' . $user->id, fn () => self::allowedFor($user));
     }
 
     /** Branch ids a given user may sign in to / work in (no cache; used at login and in user setup). */
@@ -91,9 +116,10 @@ class BranchController extends Controller
             : 'Your account is not allowed in ' . self::name($branchId) . '. Ask an administrator for access.';
     }
 
+    /** The main (head office) branch id, read once per request. */
     public static function mainId(): ?int
     {
-        return DB::table('branches')->where('is_main', 'Yes')->orderBy('id')->value('id');
+        return self::memo('main', fn () => ($id = DB::table('branches')->where('is_main', 'Yes')->orderBy('id')->value('id')) ? (int) $id : null);
     }
 
     /** The branch the user signed in to (null only outside a signed-in request, e.g. the scheduler). */
@@ -104,35 +130,151 @@ class BranchController extends Controller
         return $id ?: null;
     }
 
-    /** Branch whose data is shown — always the logged-in branch. */
+    /** The working branch (kept for older callers; same as loggedInId()). */
     public static function current(): ?int
     {
         return self::loggedInId();
     }
 
-    /** Branch new records are saved to — the logged-in branch (main branch for console / scheduled jobs). */
+    /** Branch new records are saved to — the working branch (main branch for console / scheduled jobs). */
     public static function activeId(): ?int
     {
         return self::loggedInId() ?? self::mainId();
     }
 
-    /** Kept for older callers: there is no "all branches" view any more. */
-    public static function canSeeAll(): bool
+
+    /**
+     * Branch ids whose data the signed-in user sees: every active branch the user is permitted in (all active
+     * branches for all_branches = Yes), always including the working branch. Cached per user + working branch.
+     */
+    public static function visibleIds(): array
     {
-        return false;
+        return self::memo('visible.' . (Auth::id() ?? 0) . ':' . (self::loggedInId() ?? 0), function () {
+            $user = Auth::user();
+            $ids = $user ? self::allowedFor($user) : self::allowedIds();
+            $own = self::loggedInId();
+            if ($own && !in_array($own, $ids, true)) {
+                $ids[] = $own; // SetBranch signs such a session out; keep the working branch visible meanwhile
+            }
+            sort($ids);
+
+            return $ids ?: [0];
+        });
     }
 
+    /** True when the user sees more than one branch (lists then show a Branch column). */
+    public static function multiBranch(): bool
+    {
+        return count(self::visibleIds()) > 1;
+    }
+
+    /** True when the given branch is one the user may see. */
+    public static function sees($branchId): bool
+    {
+        return in_array((int) $branchId, self::visibleIds(), true);
+    }
+
+    /** True when the given branch is the working branch (records the user may change). */
+    public static function owns($branchId): bool
+    {
+        return (int) $branchId === (int) self::activeId();
+    }
+
+    /** True when the main branch is among the visible ones (a party's opening balance belongs to the main branch). */
+    public static function mainVisible(): bool
+    {
+        return self::sees(self::mainId());
+    }
+
+    /** Kept for older callers. */
+    public static function canSeeAll(): bool
+    {
+        return self::multiBranch();
+    }
+
+    /** True when the working branch is the main branch (head-office screens). */
     public static function isMainBranch(): bool
     {
         return self::current() !== null && self::current() === (int) self::mainId();
     }
 
-    /** Limit a query to the logged-in branch (all active branches only outside a signed-in request). */
+    /** READS: limit a query to the branches the user sees. */
     public static function scope($query, string $column = 'branch_id')
     {
-        $id = self::current();
+        $ids = self::visibleIds();
 
-        return $id ? $query->where($column, $id) : $query->whereIn($column, self::allowedIds() ?: [0]);
+        return count($ids) === 1 ? $query->where($column, $ids[0]) : $query->whereIn($column, $ids);
+    }
+
+    /** CHANGES: limit a query to the working branch (records the user may edit, delete, cancel, return, pay...). */
+    public static function scopeOwn($query, string $column = 'branch_id')
+    {
+        return $query->where($column, (int) self::activeId());
+    }
+
+    /** The message shown when a record of another (visible) branch is about to be changed. */
+    public static function otherBranchMessage($branchId): string
+    {
+        $name = self::name((int) $branchId);
+
+        return 'This record belongs to ' . $name . '. Sign in to ' . $name . ' to change it.';
+    }
+
+    /**
+     * Before changing a record: aborts 403 with otherBranchMessage() when the row (or table + id) belongs to a
+     * visible branch other than the working one. A row the user cannot see at all is left to the caller's own
+     * (working-branch) lookup, which answers "not found".
+     */
+    public static function guardOwn($rowOrTable, $id = null, string $column = 'branch_id'): void
+    {
+        if ($problem = self::otherBranchProblem($rowOrTable, $id, $column)) {
+            abort(403, $problem);
+        }
+    }
+
+    /** Same check as guardOwn(), returning the message (null when the record may be changed or is not visible). */
+    public static function otherBranchProblem($rowOrTable, $id = null, string $column = 'branch_id'): ?string
+    {
+        $branchId = is_string($rowOrTable)
+            ? DB::table($rowOrTable)->where('id', (int) $id)->value($column)
+            : ($rowOrTable->{$column} ?? null);
+
+        return $branchId !== null && !self::owns($branchId) && self::sees($branchId) ? self::otherBranchMessage($branchId) : null;
+    }
+
+    /**
+     * Validation rule for an account money is paid from / into: shared ledgers, or the working branch's own ledgers
+     * (never another branch's cash drawer or bank ledger, even one the user can see).
+     */
+    public static function ownLedgerRule()
+    {
+        return Rule::exists('chart_of_accounts', 'id')->where(fn ($q) => $q->where('deleted', 'No')
+            ->where(fn ($b) => $b->whereNull('branch_id')->orWhere('branch_id', (int) self::activeId())));
+    }
+
+
+    /** id => name of the visible branches (Branch columns, badge tooltip). */
+    public static function visibleNames(): array
+    {
+        return self::memo('names.' . implode(',', self::visibleIds()), fn () => DB::table('branches')->whereIn('id', self::visibleIds())
+            ->orderByDesc('is_main')->orderBy('name')->pluck('name', 'id')->map(fn ($n) => (string) $n)->all());
+    }
+
+    /** "Dhanmondi Branch" or "Dhanmondi Branch, Uttara Branch" (report headers); "All branches" when it is every active one. */
+    public static function visibleLabel(): string
+    {
+        $names = self::visibleNames();
+        if (count($names) > 1 && count($names) === DB::table('branches')->where('deleted', 'No')->where('status', 'Active')->count()) {
+            return 'All branches';
+        }
+
+        return implode(', ', $names) ?: self::name(self::current());
+    }
+
+    /** Short label for a Branch column (empty when the user sees one branch only). */
+    public static function label($branchId): string
+    {
+        return self::multiBranch() ? (self::visibleNames()[(int) $branchId] ?? self::name((int) $branchId)) : '';
     }
 
     public static function name(?int $id): string
@@ -199,7 +341,7 @@ class BranchController extends Controller
                 DB::table('branches')->insert($data + ['is_main' => 'No', 'created_by' => Auth::id(), 'created_date' => now(), 'created_at' => now(), 'updated_at' => now()]);
             }
 
-            self::$allowedCache = null;
+            self::forget();
 
             return response()->json(['status' => true, 'message' => 'Branch saved.']);
         } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
@@ -216,6 +358,7 @@ class BranchController extends Controller
         DB::transaction(function () use ($id) {
             DB::table('branches')->update(['is_main' => 'No']);
             DB::table('branches')->where('id', $id)->update(['is_main' => 'Yes', 'status' => 'Active']);
+            self::forget();
         });
 
         return response()->json(['status' => true, 'message' => 'Main branch changed.']);
@@ -262,6 +405,8 @@ class BranchController extends Controller
                 DB::table('branch_user')->insert(['user_id' => $userId, 'branch_id' => (int) $b]);
             }
         });
+
+        self::forget();
 
         return response()->json(['status' => true, 'message' => 'Branch access saved.']);
     }

@@ -255,7 +255,7 @@
 
                                     <td class="text-end">
 
-                                        {{ number_format((float) $item->qty, 2) }}
+                                        {{ rtrim(rtrim(number_format((float) $item->qty, 4, '.', ''), '0'), '.') }}
 
                                     </td>
 

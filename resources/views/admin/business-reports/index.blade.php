@@ -52,7 +52,7 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
             <div>
                 <h4 class="mb-0">Reports Center</h4>
-                <small class="text-muted">Every business report in one place. All figures are for {{ $loggedInBranch->name ?? 'your branch' }}; each report exports to PDF and Excel.</small>
+                <small class="text-muted">Every business report in one place. All figures are for {{ \App\Http\Controllers\Admin\BranchController::visibleLabel() }} (the daily cash closing is for {{ $loggedInBranch->name ?? 'your branch' }}); each report exports to PDF and Excel.</small>
             </div>
             <div class="ms-auto">
                 <input type="search" id="rcSearch" class="form-control rc-search" placeholder="Find a report…" aria-label="Find a report">

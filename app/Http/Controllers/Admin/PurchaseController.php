@@ -29,10 +29,16 @@ class PurchaseController extends Controller
 {
     use PartyDueTrait, PaymentTrait, SequentialCodeTrait;
 
-    /** A purchase of the logged-in branch (null when missing, deleted or another branch's). */
-    private function branchPurchase($id, bool $lock = false): ?Purchase
+    /**
+     * A purchase the user may see (null when missing, deleted or of a branch the user does not see). For changes
+     * ($own, default when locking) only the working branch's; callers run BranchController::guardOwn() first so
+     * another visible branch's purchase is refused with "Sign in to <Branch> to change it".
+     */
+    private function branchPurchase($id, bool $lock = false, ?bool $own = null): ?Purchase
     {
-        return BranchController::scope(Purchase::query(), 'branch_id')
+        $own ??= $lock;
+
+        return ($own ? BranchController::scopeOwn(Purchase::query(), 'branch_id') : BranchController::scope(Purchase::query(), 'branch_id'))
             ->where('id', $id)
             ->where('deleted', 'No')
             ->when($lock, fn ($q) => $q->lockForUpdate())
@@ -42,6 +48,9 @@ class PurchaseController extends Controller
     /** Messages we throw ourselves go to the user; anything else (SQL, PHP errors) is logged and replaced. */
     private function failResponse(\Throwable $e, string $fallback = 'Something went wrong. Please try again.')
     {
+        if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface && $e->getMessage() !== '') {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+        }
         if (get_class($e) === Exception::class) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
         }
@@ -51,7 +60,10 @@ class PurchaseController extends Controller
         return response()->json(['status' => false, 'message' => $fallback], 500);
     }
 
-    /** Products must exist and be active; a product with variants needs one of its own variants on the line. */
+    /**
+     * Products must exist and be active; a product with variants needs one of its own variants on the line;
+     * a batch-tracked product needs its expiry date (a blank batch no. is generated: <purchase no>-<line id>).
+     */
     private function checkItems(array $items): void
     {
         foreach ($items as $item) {
@@ -68,6 +80,9 @@ class PurchaseController extends Controller
             }
             if (!$variantId && $variantIds) {
                 throw new Exception('Choose a variant for "' . $product->name . '".');
+            }
+            if ($product->track_batch === 'Yes' && trim((string) ($item['expiry_date'] ?? '')) === '') {
+                throw new Exception('Enter the expiry date for "' . $product->name . '" (it is batch-tracked).');
             }
         }
     }
@@ -163,7 +178,7 @@ class PurchaseController extends Controller
                 $html .= '
                 <tr>
                     <td>' . ($index + 1) . '</td>
-                    <td>' . e($row->invoice_no) . '</td>
+                    <td>' . e($row->invoice_no) . ($row->supplier_invoice_no ? '<br><small class="text-muted">Supplier ref: ' . e($row->supplier_invoice_no) . '</small>' : '') . branch_tag($row->branch_id) . '</td>
                     <td>' . e($row->purchase_date ?? '') . '</td>
                     <td>' . e($row->supplier_name ?? '') . '</td>
                     <td>' . number_format((float) $row->subtotal, 2, '.', '') . '</td>
@@ -178,7 +193,7 @@ class PurchaseController extends Controller
                         ['label' => 'Purchase Return', 'icon' => 'fas fa-undo', 'href' => url('/admin/purchases/return/' . $row->id)],
                         ['divider' => true],
                         ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteBtn', 'attrs' => ['data-id' => $row->id]],
-                    ]) . '</td>
+                    ], $row->branch_id) . '</td>
                 </tr>';
             }
 
@@ -318,10 +333,11 @@ class PurchaseController extends Controller
 
             'paid_amount' => 'nullable|numeric|min:0',
             'vat_percent' => 'nullable|numeric|min:0|max:100',
+            'supplier_invoice_no' => 'nullable|string|max:100',
 
             // A payment account is needed only when something is paid now (a credit purchase has none).
             'payment_method' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id'],
-            'payment_method_account' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payment_method_account' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id', BranchController::ownLedgerRule()],
 
             'items' => 'required|array|min:1',
 
@@ -355,322 +371,331 @@ class PurchaseController extends Controller
         }
 
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
+            try {
 
-            $this->checkItems($request->input('items', []));
+                $this->checkItems($request->input('items', []));
 
-            $supplier = Party::where('id', $request->supplier_id)
-                ->where('deleted', 'No')
-                ->where('status', 'Active')
-                ->where('type', 'Supplier')
-                ->first();
+                $supplier = Party::where('id', $request->supplier_id)
+                    ->where('deleted', 'No')
+                    ->where('status', 'Active')
+                    ->where('type', 'Supplier')
+                    ->first();
 
-            if (!$supplier) {
+                if (!$supplier) {
 
-                throw new Exception('Invalid supplier.');
-            }
-
-
-            $items = $request->input('items', []);
-
-
-            $subtotal = 0;
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Calculate Items
-            |--------------------------------------------------------------------------
-            */
-            foreach ($items as $item) {
-
-                $qty = (float)$item['qty'];
-                $purchasePrice = (float)$item['purchase_price'];
-
-                $itemSubtotal = $qty * $purchasePrice;
-
-                $discountType = $item['discount_type'] ?? 'Amount';
-                $discountValue = (float)($item['discount_value'] ?? 0);
-
-                $itemDiscount = 0;
-
-
-                if ($discountType == 'Percentage') {
-
-                    $itemDiscount = ($itemSubtotal * $discountValue) / 100;
-                } else {
-
-                    $itemDiscount = $discountValue;
+                    throw new Exception('Invalid supplier.');
                 }
 
 
-                if ($itemDiscount > $itemSubtotal) {
+                $items = $request->input('items', []);
 
-                    $itemDiscount = $itemSubtotal;
-                }
 
+                $subtotal = 0;
 
-                $itemTotal = $itemSubtotal - $itemDiscount;
 
-                $subtotal += $itemTotal;
-            }
+                /*
+                |--------------------------------------------------------------------------
+                | Calculate Items
+                |--------------------------------------------------------------------------
+                */
+                foreach ($items as $item) {
 
+                    $qty = (float)$item['qty'];
+                    $purchasePrice = (float)$item['purchase_price'];
 
-            /*
-            |--------------------------------------------------------------------------
-            | Header Discount
-            |--------------------------------------------------------------------------
-            */
-            $discountType = $request->discount_type ?? 'Amount';
+                    $itemSubtotal = $qty * $purchasePrice;
 
-            $discountValue = (float)($request->discount_value ?? 0);
+                    $discountType = $item['discount_type'] ?? 'Amount';
+                    $discountValue = (float)($item['discount_value'] ?? 0);
 
-            $discountAmount = 0;
+                    $itemDiscount = 0;
 
 
-            if ($discountType == 'Percentage') {
+                    if ($discountType == 'Percentage') {
 
-                $discountAmount = ($subtotal * $discountValue) / 100;
-            } else {
+                        $itemDiscount = ($itemSubtotal * $discountValue) / 100;
+                    } else {
 
-                $discountAmount = $discountValue;
-            }
+                        $itemDiscount = $discountValue;
+                    }
 
 
-            if ($discountAmount > $subtotal) {
+                    if ($itemDiscount > $itemSubtotal) {
 
-                $discountAmount = $subtotal;
-            }
+                        $itemDiscount = $itemSubtotal;
+                    }
 
 
-            $grandTotal = $subtotal - $discountAmount;
+                    $itemTotal = $itemSubtotal - $itemDiscount;
 
-            // Input VAT on the purchase after its discount.
-            $vatPercent = min(100, max(0, (float) $request->input('vat_percent', 0)));
-            $vatAmount = round(($subtotal - $discountAmount) * $vatPercent / 100, 2);
-            $grandTotal += $vatAmount;
-
-
-            $paidAmount = (float)($request->paid_amount ?? 0);
-
-
-            if ($paidAmount > $grandTotal) {
-
-                $paidAmount = $grandTotal;
-            }
-
-
-            $dueAmount = $grandTotal - $paidAmount;
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Invoice Number
-            |--------------------------------------------------------------------------
-            */
-            $invoiceNo = $this->nextSequentialCode(Purchase::class, 'invoice_no', 'PUR');
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Purchase
-            |--------------------------------------------------------------------------
-            */
-            $purchase = new Purchase();
-
-            $purchase->invoice_no = $invoiceNo;
-            $purchase->supplier_id = $request->supplier_id;
-            $purchase->purchase_date = $request->purchase_date;
-
-            $purchase->subtotal = round($subtotal, 2);
-
-            $purchase->discount_type = $discountType;
-            $purchase->discount_value = round($discountValue, 2);
-            $purchase->discount_amount = round($discountAmount, 2);
-
-            $purchase->vat_percent = $vatPercent;
-            $purchase->vat_amount = $vatAmount;
-            $purchase->grand_total = round($grandTotal, 2);
-
-            $purchase->paid_amount = round($paidAmount, 2);
-            $purchase->due_amount = round($dueAmount, 2);
-
-            $purchase->payment_method = $request->payment_method;
-            $purchase->payment_method_account = $request->payment_method_account;
-            $purchase->remarks = $request->remarks;
-
-            $purchase->deleted = 'No';
-            $purchase->status = 'Active';
-
-            $purchase->created_by = auth()->id();
-            $purchase->created_date = Carbon::now();
-
-            $purchase->created_at = Carbon::now();
-            $purchase->updated_at = Carbon::now();
-
-            $purchase->save();
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Purchase Items + Stock
-            |--------------------------------------------------------------------------
-            */
-            foreach ($items as $item) {
-
-                $qty = (float)$item['qty'];
-                $purchasePrice = (float)$item['purchase_price'];
-
-                $itemSubtotal = $qty * $purchasePrice;
-
-                $itemDiscountType = $item['discount_type'] ?? 'Amount';
-                $itemDiscountValue = (float)($item['discount_value'] ?? 0);
-
-                $itemDiscount = 0;
-
-
-                if ($itemDiscountType == 'Percentage') {
-
-                    $itemDiscount =
-                        ($itemSubtotal * $itemDiscountValue) / 100;
-                } else {
-
-                    $itemDiscount = $itemDiscountValue;
-                }
-
-
-                if ($itemDiscount > $itemSubtotal) {
-
-                    $itemDiscount = $itemSubtotal;
-                }
-
-
-                $itemTotal = $itemSubtotal - $itemDiscount;
-
-
-                $purchaseItem = new PurchaseItem();
-
-                $purchaseItem->purchase_id = $purchase->id;
-                $purchaseItem->product_id = $item['product_id'];
-                $purchaseItem->product_variant_id =
-                    !empty($item['product_variant_id'])
-                    ? $item['product_variant_id']
-                    : null;
-
-                $purchaseItem->qty = $qty;
-                $purchaseItem->purchase_price = $purchasePrice;
-
-                $purchaseItem->discount_type = $itemDiscountType;
-                $purchaseItem->discount_value = $itemDiscountValue;
-                $purchaseItem->discount_amount = $itemDiscount;
-
-                $purchaseItem->subtotal = $itemSubtotal;
-                $purchaseItem->total = $itemTotal;
-
-                $purchaseItem->deleted = 'No';
-                $purchaseItem->status = 'Active';
-
-                $purchaseItem->created_by = auth()->id();
-                $purchaseItem->created_date = Carbon::now();
-
-                $purchaseItem->created_at = Carbon::now();
-                $purchaseItem->updated_at = Carbon::now();
-
-                $purchaseItem->save();
-
-                // Batch-tracked products: the batch (blank number = one per purchase line) goes on the item and the stock row.
-                $batchId = null;
-                if (DB::table('products')->where('id', $item['product_id'])->value('track_batch') === 'Yes') {
-                    $batchId = StockController::batchFor(
-                        (int) $item['product_id'],
-                        !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
-                        trim((string) ($item['batch_no'] ?? '')) ?: ($purchase->invoice_no . '-' . $purchaseItem->id),
-                        $item['expiry_date'] ?? null,
-                        null,
-                        (float) $purchasePrice,
-                        (int) $purchase->id
-                    );
-                    $purchaseItem->batch_id = $batchId;
-                    $purchaseItem->save();
+                    $subtotal += $itemTotal;
                 }
 
 
                 /*
                 |--------------------------------------------------------------------------
-                | Stock
+                | Header Discount
                 |--------------------------------------------------------------------------
                 */
-                $stock = new Stock();
+                $discountType = $request->discount_type ?? 'Amount';
 
-                $stock->product_id = $item['product_id'];
+                $discountValue = (float)($request->discount_value ?? 0);
 
-                $stock->product_variant_id =
-                    !empty($item['product_variant_id'])
-                    ? $item['product_variant_id']
-                    : null;
+                $discountAmount = 0;
 
-                $stock->batch_id = $batchId;
 
-                $stock->in_qty = $qty;
-                $stock->out_qty = 0;
+                if ($discountType == 'Percentage') {
 
-                $stock->purchase_id = $purchase->id;
+                    $discountAmount = ($subtotal * $discountValue) / 100;
+                } else {
 
-                $stock->date = $request->purchase_date;
+                    $discountAmount = $discountValue;
+                }
 
-                $stock->reference_type = 'Purchase';
-                $stock->reference_id = $purchase->id;
 
-                $stock->created_at = Carbon::now();
-                $stock->updated_at = Carbon::now();
+                if ($discountAmount > $subtotal) {
 
-                $stock->save();
-            }
+                    $discountAmount = $subtotal;
+                }
 
-            if ($grandTotal > 0) {
-                $this->storeDebitPayment([
-                    'party_id'       => $request->supplier_id,
-                    'party_type'     => 'Supplier',
-                    'payment_type'   => 'Purchase',
-                    'datetime'       => $request->purchase_date,
-                    'debit'          => $grandTotal,
-                    'purchase_id'    => $purchase->id,
-                    'payment_method' => '',
-                    'payment_method_account' => '',
-                ]);
-            }
 
-            if ($paidAmount > 0) {
-                $this->storeCreditPayment([
-                    'party_id'       => $request->supplier_id,
-                    'party_type'     => 'Supplier',
-                    'payment_type'   => 'Purchase Payment',
-                    'datetime'       => $request->purchase_date,
-                    'credit'         => $paidAmount,
-                    'purchase_id'    => $purchase->id,
-                    'payment_method' => $request->payment_method,
-                    'payment_method_account' => $request->payment_method_account,
+                $grandTotal = $subtotal - $discountAmount;
+
+                // Input VAT on the purchase after its discount.
+                $vatPercent = min(100, max(0, (float) $request->input('vat_percent', 0)));
+                $vatAmount = round(($subtotal - $discountAmount) * $vatPercent / 100, 2);
+                $grandTotal += $vatAmount;
+
+
+                $paidAmount = (float)($request->paid_amount ?? 0);
+
+
+                if ($paidAmount > $grandTotal) {
+
+                    $paidAmount = $grandTotal;
+                }
+
+                // paid now from a cash drawer: never more than it holds
+                if ($paidAmount > 0) {
+                    ReportController::ensureCash($request->payment_method_account, round($paidAmount, 2));
+                }
+
+
+                $dueAmount = $grandTotal - $paidAmount;
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Invoice Number
+                |--------------------------------------------------------------------------
+                */
+                $invoiceNo = $this->nextSequentialCode(Purchase::class, 'invoice_no', 'PUR');
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Purchase
+                |--------------------------------------------------------------------------
+                */
+                $purchase = new Purchase();
+
+                $purchase->invoice_no = $invoiceNo;
+                $purchase->supplier_id = $request->supplier_id;
+                $purchase->purchase_date = $request->purchase_date;
+
+                $purchase->subtotal = round($subtotal, 2);
+
+                $purchase->discount_type = $discountType;
+                $purchase->discount_value = round($discountValue, 2);
+                $purchase->discount_amount = round($discountAmount, 2);
+
+                $purchase->vat_percent = $vatPercent;
+                $purchase->vat_amount = $vatAmount;
+                $purchase->grand_total = round($grandTotal, 2);
+
+                $purchase->paid_amount = round($paidAmount, 2);
+                $purchase->due_amount = round($dueAmount, 2);
+
+                $purchase->payment_method = $request->payment_method;
+                $purchase->payment_method_account = $request->payment_method_account;
+                $purchase->remarks = $request->remarks;
+                $purchase->supplier_invoice_no = trim((string) $request->input('supplier_invoice_no')) ?: null;
+
+                $purchase->deleted = 'No';
+                $purchase->status = 'Active';
+
+                $purchase->created_by = auth()->id();
+                $purchase->created_date = Carbon::now();
+
+                $purchase->created_at = Carbon::now();
+                $purchase->updated_at = Carbon::now();
+
+                $purchase->save();
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Purchase Items + Stock
+                |--------------------------------------------------------------------------
+                */
+                foreach ($items as $item) {
+
+                    $qty = (float)$item['qty'];
+                    $purchasePrice = (float)$item['purchase_price'];
+
+                    $itemSubtotal = $qty * $purchasePrice;
+
+                    $itemDiscountType = $item['discount_type'] ?? 'Amount';
+                    $itemDiscountValue = (float)($item['discount_value'] ?? 0);
+
+                    $itemDiscount = 0;
+
+
+                    if ($itemDiscountType == 'Percentage') {
+
+                        $itemDiscount =
+                            ($itemSubtotal * $itemDiscountValue) / 100;
+                    } else {
+
+                        $itemDiscount = $itemDiscountValue;
+                    }
+
+
+                    if ($itemDiscount > $itemSubtotal) {
+
+                        $itemDiscount = $itemSubtotal;
+                    }
+
+
+                    $itemTotal = $itemSubtotal - $itemDiscount;
+
+
+                    $purchaseItem = new PurchaseItem();
+
+                    $purchaseItem->purchase_id = $purchase->id;
+                    $purchaseItem->product_id = $item['product_id'];
+                    $purchaseItem->product_variant_id =
+                        !empty($item['product_variant_id'])
+                        ? $item['product_variant_id']
+                        : null;
+
+                    $purchaseItem->qty = $qty;
+                    $purchaseItem->purchase_price = $purchasePrice;
+
+                    $purchaseItem->discount_type = $itemDiscountType;
+                    $purchaseItem->discount_value = $itemDiscountValue;
+                    $purchaseItem->discount_amount = $itemDiscount;
+
+                    $purchaseItem->subtotal = $itemSubtotal;
+                    $purchaseItem->total = $itemTotal;
+
+                    $purchaseItem->deleted = 'No';
+                    $purchaseItem->status = 'Active';
+
+                    $purchaseItem->created_by = auth()->id();
+                    $purchaseItem->created_date = Carbon::now();
+
+                    $purchaseItem->created_at = Carbon::now();
+                    $purchaseItem->updated_at = Carbon::now();
+
+                    $purchaseItem->save();
+
+                    // Batch-tracked products: the batch (blank number = one per purchase line) goes on the item and the stock row.
+                    $batchId = null;
+                    if (DB::table('products')->where('id', $item['product_id'])->value('track_batch') === 'Yes') {
+                        $batchId = StockController::batchFor(
+                            (int) $item['product_id'],
+                            !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
+                            trim((string) ($item['batch_no'] ?? '')) ?: ($purchase->invoice_no . '-' . $purchaseItem->id),
+                            $item['expiry_date'] ?? null,
+                            null,
+                            (float) $purchasePrice,
+                            (int) $purchase->id
+                        );
+                        $purchaseItem->batch_id = $batchId;
+                        $purchaseItem->save();
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Stock
+                    |--------------------------------------------------------------------------
+                    */
+                    $stock = new Stock();
+
+                    $stock->product_id = $item['product_id'];
+
+                    $stock->product_variant_id =
+                        !empty($item['product_variant_id'])
+                        ? $item['product_variant_id']
+                        : null;
+
+                    $stock->batch_id = $batchId;
+
+                    $stock->in_qty = $qty;
+                    $stock->out_qty = 0;
+
+                    $stock->purchase_id = $purchase->id;
+
+                    $stock->date = $request->purchase_date;
+
+                    $stock->reference_type = 'Purchase';
+                    $stock->reference_id = $purchase->id;
+
+                    $stock->created_at = Carbon::now();
+                    $stock->updated_at = Carbon::now();
+
+                    $stock->save();
+                }
+
+                if ($grandTotal > 0) {
+                    $this->storeDebitPayment([
+                        'party_id'       => $request->supplier_id,
+                        'party_type'     => 'Supplier',
+                        'payment_type'   => 'Purchase',
+                        'datetime'       => $request->purchase_date,
+                        'debit'          => $grandTotal,
+                        'purchase_id'    => $purchase->id,
+                        'payment_method' => '',
+                        'payment_method_account' => '',
+                    ]);
+                }
+
+                if ($paidAmount > 0) {
+                    $this->storeCreditPayment([
+                        'party_id'       => $request->supplier_id,
+                        'party_type'     => 'Supplier',
+                        'payment_type'   => 'Purchase Payment',
+                        'datetime'       => $request->purchase_date,
+                        'credit'         => $paidAmount,
+                        'purchase_id'    => $purchase->id,
+                        'payment_method' => $request->payment_method,
+                        'payment_method_account' => $request->payment_method_account,
                     
+                    ]);
+                }
+
+                DB::commit();
+
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Purchase created successfully.',
+                    'redirect' => route('purchases.index')
                 ]);
+            } catch (Exception $e) {
+
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+
+                return $this->failResponse($e);
             }
-
-            DB::commit();
-
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Purchase created successfully.',
-                'redirect' => route('purchases.index')
-            ]);
-        } catch (Exception $e) {
-
-            DB::rollBack();
-
-
-            return $this->failResponse($e);
-        }
+        });
     }
 
 
@@ -681,9 +706,10 @@ class PurchaseController extends Controller
     */
     public function edit($id)
     {
+        BranchController::guardOwn('purchases', $id);
         try {
 
-            $purchase = $this->branchPurchase($id);
+            $purchase = $this->branchPurchase($id, false, true);
 
             if (!$purchase) {
 
@@ -740,6 +766,7 @@ class PurchaseController extends Controller
     */
     public function update(Request $request, $id)
     {
+        BranchController::guardOwn('purchases', $id);
         $validator = Validator::make($request->all(), [
 
             'supplier_id' => 'required|integer',
@@ -750,9 +777,10 @@ class PurchaseController extends Controller
 
             'paid_amount' => 'nullable|numeric|min:0',
             'vat_percent' => 'nullable|numeric|min:0|max:100',
+            'supplier_invoice_no' => 'nullable|string|max:100',
 
             'payment_method' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id'],
-            'payment_method_account' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payment_method_account' => [Rule::requiredIf(fn () => (float) $request->input('paid_amount') > 0), 'nullable', 'integer', 'exists:chart_of_accounts,id', BranchController::ownLedgerRule()],
 
             'items' => 'required|array|min:1',
 
@@ -781,349 +809,360 @@ class PurchaseController extends Controller
         }
 
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request, $id) {
+            DB::beginTransaction();
 
-        try {
+            try {
 
-            $purchase = $this->branchPurchase($id, true);
+                $purchase = $this->branchPurchase($id, true);
 
-            if (!$purchase) {
+                if (!$purchase) {
 
-                throw new Exception('Purchase not found.');
-            }
-
-            // Return items point at these purchase items; rebuilding them would orphan the return.
-            if (PurchaseReturn::where('purchase_id', $purchase->id)->where('deleted', 'No')->exists()) {
-
-                throw new Exception('This purchase has returns. Delete its returns before editing it.');
-            }
-
-            $this->checkItems($request->input('items', []));
-
-            // Products / batches whose stock this edit changes — checked for negative stock once the new rows are in.
-            $stockKeys = Stock::where('purchase_id', $purchase->id)->whereNull('purchase_return_id')->where('deleted', 'No')
-                ->get(['product_id', 'product_variant_id', 'batch_id'])
-                ->map(fn ($s) => [$s->product_id, $s->product_variant_id, $s->batch_id])->all();
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Reverse Old Stock (purchase rows only, not return rows)
-            |--------------------------------------------------------------------------
-            */
-            Stock::where('purchase_id', $purchase->id)->whereNull('purchase_return_id')->delete();
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Delete Old Items
-            |--------------------------------------------------------------------------
-            */
-            PurchaseItem::where('purchase_id', $purchase->id)->delete();
-
-
-            $items = $request->input('items', []);
-
-
-            $subtotal = 0;
-
-
-            foreach ($items as $item) {
-
-                $qty = (float)$item['qty'];
-                $purchasePrice = (float)$item['purchase_price'];
-
-                $itemSubtotal = $qty * $purchasePrice;
-
-                $discountType = $item['discount_type'] ?? 'Amount';
-                $discountValue = (float)($item['discount_value'] ?? 0);
-
-                $itemDiscount = 0;
-
-
-                if ($discountType == 'Percentage') {
-
-                    $itemDiscount =
-                        ($itemSubtotal * $discountValue) / 100;
-                } else {
-
-                    $itemDiscount = $discountValue;
+                    throw new Exception('Purchase not found.');
                 }
 
+                // Return items point at these purchase items; rebuilding them would orphan the return.
+                if (PurchaseReturn::where('purchase_id', $purchase->id)->where('deleted', 'No')->exists()) {
 
-                if ($itemDiscount > $itemSubtotal) {
-
-                    $itemDiscount = $itemSubtotal;
+                    throw new Exception('This purchase has returns. Delete its returns before editing it.');
                 }
 
+                $this->checkItems($request->input('items', []));
 
-                $itemTotal = $itemSubtotal - $itemDiscount;
-
-                $subtotal += $itemTotal;
-            }
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Overall Discount
-            |--------------------------------------------------------------------------
-            */
-            $discountType = $request->discount_type ?? 'Amount';
-            $discountValue = (float)($request->discount_value ?? 0);
-
-            $discountAmount = 0;
+                // Products / batches whose stock this edit changes — checked for negative stock once the new rows are in.
+                $stockKeys = Stock::where('purchase_id', $purchase->id)->whereNull('purchase_return_id')->where('deleted', 'No')
+                    ->get(['product_id', 'product_variant_id', 'batch_id'])
+                    ->map(fn ($s) => [$s->product_id, $s->product_variant_id, $s->batch_id])->all();
 
 
-            if ($discountType == 'Percentage') {
-
-                $discountAmount =
-                    ($subtotal * $discountValue) / 100;
-            } else {
-
-                $discountAmount = $discountValue;
-            }
+                /*
+                |--------------------------------------------------------------------------
+                | Reverse Old Stock (purchase rows only, not return rows)
+                |--------------------------------------------------------------------------
+                */
+                Stock::where('purchase_id', $purchase->id)->whereNull('purchase_return_id')->delete();
 
 
-            if ($discountAmount > $subtotal) {
-
-                $discountAmount = $subtotal;
-            }
-
-
-            $grandTotal = $subtotal - $discountAmount;
-
-            // Input VAT on the purchase after its discount.
-            $vatPercent = min(100, max(0, (float) $request->input('vat_percent', $purchase->vat_percent ?? 0)));
-            $vatAmount = round(($subtotal - $discountAmount) * $vatPercent / 100, 2);
-            $grandTotal += $vatAmount;
+                /*
+                |--------------------------------------------------------------------------
+                | Delete Old Items
+                |--------------------------------------------------------------------------
+                */
+                PurchaseItem::where('purchase_id', $purchase->id)->delete();
 
 
-            $paidAmount = (float)($request->paid_amount ?? 0);
+                $items = $request->input('items', []);
 
 
-            if ($paidAmount > $grandTotal) {
-
-                $paidAmount = $grandTotal;
-            }
+                $subtotal = 0;
 
 
-            $dueAmount = $grandTotal - $paidAmount;
+                foreach ($items as $item) {
+
+                    $qty = (float)$item['qty'];
+                    $purchasePrice = (float)$item['purchase_price'];
+
+                    $itemSubtotal = $qty * $purchasePrice;
+
+                    $discountType = $item['discount_type'] ?? 'Amount';
+                    $discountValue = (float)($item['discount_value'] ?? 0);
+
+                    $itemDiscount = 0;
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | Update Purchase
-            |--------------------------------------------------------------------------
-            */
-            $purchase->supplier_id = $request->supplier_id;
-            $purchase->purchase_date = $request->purchase_date;
+                    if ($discountType == 'Percentage') {
 
-            $purchase->subtotal = round($subtotal, 2);
+                        $itemDiscount =
+                            ($itemSubtotal * $discountValue) / 100;
+                    } else {
 
-            $purchase->discount_type = $discountType;
-            $purchase->discount_value = round($discountValue, 2);
-            $purchase->discount_amount = round($discountAmount, 2);
-
-            $purchase->vat_percent = $vatPercent;
-            $purchase->vat_amount = $vatAmount;
-            $purchase->grand_total = round($grandTotal, 2);
-
-            $purchase->paid_amount = round($paidAmount, 2);
-            $purchase->due_amount = round($dueAmount, 2);
-
-            $purchase->payment_method = $request->payment_method ?: null;
-            $purchase->payment_method_account = $request->payment_method_account ?: null;
-            $purchase->remarks = $request->remarks;
-
-            $purchase->updated_by = auth()->id();
-            $purchase->updated_date = Carbon::now();
-            $purchase->updated_at = Carbon::now();
-
-            $purchase->save();
+                        $itemDiscount = $discountValue;
+                    }
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | Insert New Items + Stock
-            |--------------------------------------------------------------------------
-            */
-            foreach ($items as $item) {
+                    if ($itemDiscount > $itemSubtotal) {
 
-                $qty = (float)$item['qty'];
-                $purchasePrice = (float)$item['purchase_price'];
-
-                $itemSubtotal = $qty * $purchasePrice;
-
-                $itemDiscountType =
-                    $item['discount_type'] ?? 'Amount';
-
-                $itemDiscountValue =
-                    (float)($item['discount_value'] ?? 0);
-
-                $itemDiscount = 0;
+                        $itemDiscount = $itemSubtotal;
+                    }
 
 
-                if ($itemDiscountType == 'Percentage') {
+                    $itemTotal = $itemSubtotal - $itemDiscount;
 
-                    $itemDiscount =
-                        ($itemSubtotal * $itemDiscountValue) / 100;
-                } else {
-
-                    $itemDiscount = $itemDiscountValue;
-                }
-
-
-                if ($itemDiscount > $itemSubtotal) {
-
-                    $itemDiscount = $itemSubtotal;
-                }
-
-
-                $itemTotal = $itemSubtotal - $itemDiscount;
-
-
-                $purchaseItem = new PurchaseItem();
-
-                $purchaseItem->purchase_id = $purchase->id;
-                $purchaseItem->product_id = $item['product_id'];
-
-                $purchaseItem->product_variant_id =
-                    !empty($item['product_variant_id'])
-                    ? $item['product_variant_id']
-                    : null;
-
-                $purchaseItem->qty = $qty;
-                $purchaseItem->purchase_price = $purchasePrice;
-
-                $purchaseItem->discount_type = $itemDiscountType;
-                $purchaseItem->discount_value = $itemDiscountValue;
-                $purchaseItem->discount_amount = $itemDiscount;
-
-                $purchaseItem->subtotal = $itemSubtotal;
-                $purchaseItem->total = $itemTotal;
-
-                $purchaseItem->deleted = 'No';
-                $purchaseItem->status = 'Active';
-
-                $purchaseItem->created_by = auth()->id();
-                $purchaseItem->created_date = Carbon::now();
-
-                $purchaseItem->created_at = Carbon::now();
-                $purchaseItem->updated_at = Carbon::now();
-
-                $purchaseItem->save();
-
-                // Batch-tracked products: the batch (blank number = one per purchase line) goes on the item and the stock row.
-                $batchId = null;
-                if (DB::table('products')->where('id', $item['product_id'])->value('track_batch') === 'Yes') {
-                    $batchId = StockController::batchFor(
-                        (int) $item['product_id'],
-                        !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
-                        trim((string) ($item['batch_no'] ?? '')) ?: ($purchase->invoice_no . '-' . $purchaseItem->id),
-                        $item['expiry_date'] ?? null,
-                        null,
-                        (float) $purchasePrice,
-                        (int) $purchase->id
-                    );
-                    $purchaseItem->batch_id = $batchId;
-                    $purchaseItem->save();
+                    $subtotal += $itemTotal;
                 }
 
 
                 /*
                 |--------------------------------------------------------------------------
-                | New Stock
+                | Overall Discount
                 |--------------------------------------------------------------------------
                 */
-                $stock = new Stock();
+                $discountType = $request->discount_type ?? 'Amount';
+                $discountValue = (float)($request->discount_value ?? 0);
 
-                $stock->product_id = $item['product_id'];
-
-                $stock->product_variant_id =
-                    !empty($item['product_variant_id'])
-                    ? $item['product_variant_id']
-                    : null;
-
-                $stock->batch_id = $batchId;
-
-                $stock->in_qty = $qty;
-                $stock->out_qty = 0;
-
-                $stock->purchase_id = $purchase->id;
-
-                $stock->date = $request->purchase_date;
-
-                $stock->reference_type = 'Purchase';
-                $stock->reference_id = $purchase->id;
-
-                $stock->created_at = Carbon::now();
-                $stock->updated_at = Carbon::now();
-
-                $stock->save();
-            }
+                $discountAmount = 0;
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | Re-post Supplier Ledger (purchase rows only, not return rows)
-            |--------------------------------------------------------------------------
-            */
-            Payment::where('purchase_id', $purchase->id)
-                ->whereNull('purchase_return_id')
-                ->where('deleted', 'No')
-                ->update([
-                    'deleted'          => 'Yes',
-                    'status'           => 'Inactive',
-                    'deleted_by'       => auth()->id(),
-                    'updated_by'       => auth()->id(),
-                    'updated_datetime' => now(),
-                    'deleted_datetime' => now(),
+                if ($discountType == 'Percentage') {
+
+                    $discountAmount =
+                        ($subtotal * $discountValue) / 100;
+                } else {
+
+                    $discountAmount = $discountValue;
+                }
+
+
+                if ($discountAmount > $subtotal) {
+
+                    $discountAmount = $subtotal;
+                }
+
+
+                $grandTotal = $subtotal - $discountAmount;
+
+                // Input VAT on the purchase after its discount.
+                $vatPercent = min(100, max(0, (float) $request->input('vat_percent', $purchase->vat_percent ?? 0)));
+                $vatAmount = round(($subtotal - $discountAmount) * $vatPercent / 100, 2);
+                $grandTotal += $vatAmount;
+
+
+                $paidAmount = (float)($request->paid_amount ?? 0);
+
+
+                if ($paidAmount > $grandTotal) {
+
+                    $paidAmount = $grandTotal;
+                }
+
+                // paid now from a cash drawer: never more than it holds, giving back what this purchase already paid from it
+                if ($paidAmount > 0) {
+                    ReportController::ensureCash($request->payment_method_account, round($paidAmount, 2), (float) Payment::where('purchase_id', $purchase->id)
+                        ->whereNull('purchase_return_id')->where('payment_type', 'Purchase Payment')->where('deleted', 'No')->where('status', 'Active')
+                        ->where('payment_method_account_id', (int) $request->payment_method_account)->sum('credit'));
+                }
+
+
+                $dueAmount = $grandTotal - $paidAmount;
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Update Purchase
+                |--------------------------------------------------------------------------
+                */
+                $purchase->supplier_id = $request->supplier_id;
+                $purchase->purchase_date = $request->purchase_date;
+
+                $purchase->subtotal = round($subtotal, 2);
+
+                $purchase->discount_type = $discountType;
+                $purchase->discount_value = round($discountValue, 2);
+                $purchase->discount_amount = round($discountAmount, 2);
+
+                $purchase->vat_percent = $vatPercent;
+                $purchase->vat_amount = $vatAmount;
+                $purchase->grand_total = round($grandTotal, 2);
+
+                $purchase->paid_amount = round($paidAmount, 2);
+                $purchase->due_amount = round($dueAmount, 2);
+
+                $purchase->payment_method = $request->payment_method ?: null;
+                $purchase->payment_method_account = $request->payment_method_account ?: null;
+                $purchase->remarks = $request->remarks;
+                $purchase->supplier_invoice_no = trim((string) $request->input('supplier_invoice_no')) ?: null;
+
+                $purchase->updated_by = auth()->id();
+                $purchase->updated_date = Carbon::now();
+                $purchase->updated_at = Carbon::now();
+
+                $purchase->save();
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Insert New Items + Stock
+                |--------------------------------------------------------------------------
+                */
+                foreach ($items as $item) {
+
+                    $qty = (float)$item['qty'];
+                    $purchasePrice = (float)$item['purchase_price'];
+
+                    $itemSubtotal = $qty * $purchasePrice;
+
+                    $itemDiscountType =
+                        $item['discount_type'] ?? 'Amount';
+
+                    $itemDiscountValue =
+                        (float)($item['discount_value'] ?? 0);
+
+                    $itemDiscount = 0;
+
+
+                    if ($itemDiscountType == 'Percentage') {
+
+                        $itemDiscount =
+                            ($itemSubtotal * $itemDiscountValue) / 100;
+                    } else {
+
+                        $itemDiscount = $itemDiscountValue;
+                    }
+
+
+                    if ($itemDiscount > $itemSubtotal) {
+
+                        $itemDiscount = $itemSubtotal;
+                    }
+
+
+                    $itemTotal = $itemSubtotal - $itemDiscount;
+
+
+                    $purchaseItem = new PurchaseItem();
+
+                    $purchaseItem->purchase_id = $purchase->id;
+                    $purchaseItem->product_id = $item['product_id'];
+
+                    $purchaseItem->product_variant_id =
+                        !empty($item['product_variant_id'])
+                        ? $item['product_variant_id']
+                        : null;
+
+                    $purchaseItem->qty = $qty;
+                    $purchaseItem->purchase_price = $purchasePrice;
+
+                    $purchaseItem->discount_type = $itemDiscountType;
+                    $purchaseItem->discount_value = $itemDiscountValue;
+                    $purchaseItem->discount_amount = $itemDiscount;
+
+                    $purchaseItem->subtotal = $itemSubtotal;
+                    $purchaseItem->total = $itemTotal;
+
+                    $purchaseItem->deleted = 'No';
+                    $purchaseItem->status = 'Active';
+
+                    $purchaseItem->created_by = auth()->id();
+                    $purchaseItem->created_date = Carbon::now();
+
+                    $purchaseItem->created_at = Carbon::now();
+                    $purchaseItem->updated_at = Carbon::now();
+
+                    $purchaseItem->save();
+
+                    // Batch-tracked products: the batch (blank number = one per purchase line) goes on the item and the stock row.
+                    $batchId = null;
+                    if (DB::table('products')->where('id', $item['product_id'])->value('track_batch') === 'Yes') {
+                        $batchId = StockController::batchFor(
+                            (int) $item['product_id'],
+                            !empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null,
+                            trim((string) ($item['batch_no'] ?? '')) ?: ($purchase->invoice_no . '-' . $purchaseItem->id),
+                            $item['expiry_date'] ?? null,
+                            null,
+                            (float) $purchasePrice,
+                            (int) $purchase->id
+                        );
+                        $purchaseItem->batch_id = $batchId;
+                        $purchaseItem->save();
+                    }
+
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | New Stock
+                    |--------------------------------------------------------------------------
+                    */
+                    $stock = new Stock();
+
+                    $stock->product_id = $item['product_id'];
+
+                    $stock->product_variant_id =
+                        !empty($item['product_variant_id'])
+                        ? $item['product_variant_id']
+                        : null;
+
+                    $stock->batch_id = $batchId;
+
+                    $stock->in_qty = $qty;
+                    $stock->out_qty = 0;
+
+                    $stock->purchase_id = $purchase->id;
+
+                    $stock->date = $request->purchase_date;
+
+                    $stock->reference_type = 'Purchase';
+                    $stock->reference_id = $purchase->id;
+
+                    $stock->created_at = Carbon::now();
+                    $stock->updated_at = Carbon::now();
+
+                    $stock->save();
+                }
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Re-post Supplier Ledger (purchase rows only, not return rows)
+                |--------------------------------------------------------------------------
+                */
+                Payment::where('purchase_id', $purchase->id)
+                    ->whereNull('purchase_return_id')
+                    ->where('deleted', 'No')
+                    ->update([
+                        'deleted'          => 'Yes',
+                        'status'           => 'Inactive',
+                        'deleted_by'       => auth()->id(),
+                        'updated_by'       => auth()->id(),
+                        'updated_datetime' => now(),
+                        'deleted_datetime' => now(),
+                    ]);
+
+                if ($grandTotal > 0) {
+                    $this->storeDebitPayment([
+                        'party_id'       => $request->supplier_id,
+                        'party_type'     => 'Supplier',
+                        'payment_type'   => 'Purchase',
+                        'datetime'       => $request->purchase_date,
+                        'debit'          => $grandTotal,
+                        'purchase_id'    => $purchase->id,
+                        'payment_method' => '',
+                        'payment_method_account' => '',
+                    ]);
+                }
+
+                if ($paidAmount > 0) {
+                    $this->storeCreditPayment([
+                        'party_id'       => $request->supplier_id,
+                        'party_type'     => 'Supplier',
+                        'payment_type'   => 'Purchase Payment',
+                        'datetime'       => $request->purchase_date,
+                        'credit'         => $paidAmount,
+                        'purchase_id'    => $purchase->id,
+                        'payment_method' => $request->payment_method,
+                        'payment_method_account' => $request->payment_method_account,
+                    ]);
+                }
+
+                $this->assertNoNegativeStock($stockKeys);
+
+
+                DB::commit();
+
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Purchase updated successfully.',
+                    'redirect' => route('purchases.index')
                 ]);
+            } catch (Exception $e) {
 
-            if ($grandTotal > 0) {
-                $this->storeDebitPayment([
-                    'party_id'       => $request->supplier_id,
-                    'party_type'     => 'Supplier',
-                    'payment_type'   => 'Purchase',
-                    'datetime'       => $request->purchase_date,
-                    'debit'          => $grandTotal,
-                    'purchase_id'    => $purchase->id,
-                    'payment_method' => '',
-                    'payment_method_account' => '',
-                ]);
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+
+                return $this->failResponse($e);
             }
-
-            if ($paidAmount > 0) {
-                $this->storeCreditPayment([
-                    'party_id'       => $request->supplier_id,
-                    'party_type'     => 'Supplier',
-                    'payment_type'   => 'Purchase Payment',
-                    'datetime'       => $request->purchase_date,
-                    'credit'         => $paidAmount,
-                    'purchase_id'    => $purchase->id,
-                    'payment_method' => $request->payment_method,
-                    'payment_method_account' => $request->payment_method_account,
-                ]);
-            }
-
-            $this->assertNoNegativeStock($stockKeys);
-
-
-            DB::commit();
-
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Purchase updated successfully.',
-                'redirect' => route('purchases.index')
-            ]);
-        } catch (Exception $e) {
-
-            DB::rollBack();
-
-
-            return $this->failResponse($e);
-        }
+        });
     }
 
 
@@ -1134,117 +1173,122 @@ class PurchaseController extends Controller
 */
     public function delete($id)
     {
-        DB::beginTransaction();
+        BranchController::guardOwn('purchases', $id);
+        abort_unless($this->branchPurchase($id, false, true), 404, 'Purchase not found.');
+        return self::retryOnDeadlock(function () use ($id) {
+            DB::beginTransaction();
 
-        try {
+            try {
 
-            $purchase = $this->branchPurchase($id, true);
+                $purchase = $this->branchPurchase($id, true);
 
-            if (!$purchase) {
+                if (!$purchase) {
 
-                throw new Exception('Purchase not found.');
+                    throw new Exception('Purchase not found.');
+                }
+
+                // Its returns hold stock and supplier-ledger rows of their own; they must go first.
+                if (PurchaseReturn::where('purchase_id', $purchase->id)->where('deleted', 'No')->exists()) {
+
+                    throw new Exception('This purchase has returns. Delete its returns first, then delete the purchase.');
+                }
+
+                $stockKeys = Stock::where('purchase_id', $purchase->id)->where('deleted', 'No')
+                    ->get(['product_id', 'product_variant_id', 'batch_id'])
+                    ->map(fn ($s) => [$s->product_id, $s->product_variant_id, $s->batch_id])->all();
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Delete Purchase Items
+            |--------------------------------------------------------------------------
+            */
+                $purchaseItems = PurchaseItem::where('purchase_id', $purchase->id)
+                    ->where('deleted', 'No')
+                    ->get();
+
+                foreach ($purchaseItems as $purchaseItem) {
+
+                    $purchaseItem->deleted = 'Yes';
+                    $purchaseItem->status = 'Inactive';
+                    $purchaseItem->deleted_by = auth()->id();
+
+                    $purchaseItem->updated_by = auth()->id();
+                    $purchaseItem->updated_date = Carbon::now();
+
+                    $purchaseItem->updated_at = Carbon::now();
+
+                    $purchaseItem->save();
+
+                }
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Delete Purchase Stock
+            |--------------------------------------------------------------------------
+            */
+                $stocks = Stock::where('purchase_id', $purchase->id)
+                    ->get();
+
+                foreach ($stocks as $stock) {
+
+                    $stock->deleted = 'Yes';
+                    $stock->status = 'Inactive';
+                    $stock->deleted_by = auth()->id();
+
+                    $stock->updated_by = auth()->id();
+                    $stock->updated_date = Carbon::now();
+
+                    $stock->updated_at = Carbon::now();
+
+                    $stock->save();
+                }
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Delete Purchase Payments
+            |--------------------------------------------------------------------------
+            */
+                $this->deletePaymentsBy('purchase_id', $purchase->id);
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Delete Purchase
+            |--------------------------------------------------------------------------
+            */
+                $purchase->deleted = 'Yes';
+                $purchase->status = 'Inactive';
+                $purchase->deleted_by = auth()->id();
+
+                $purchase->updated_by = auth()->id();
+                $purchase->updated_date = Carbon::now();
+
+                $purchase->updated_at = Carbon::now();
+
+                $purchase->save();
+
+                // The goods must still be in stock to take them back out.
+                $this->assertNoNegativeStock($stockKeys);
+
+
+                DB::commit();
+
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Purchase deleted successfully.'
+                ]);
+            } catch (Exception $e) {
+
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+                return $this->failResponse($e);
             }
-
-            // Its returns hold stock and supplier-ledger rows of their own; they must go first.
-            if (PurchaseReturn::where('purchase_id', $purchase->id)->where('deleted', 'No')->exists()) {
-
-                throw new Exception('This purchase has returns. Delete its returns first, then delete the purchase.');
-            }
-
-            $stockKeys = Stock::where('purchase_id', $purchase->id)->where('deleted', 'No')
-                ->get(['product_id', 'product_variant_id', 'batch_id'])
-                ->map(fn ($s) => [$s->product_id, $s->product_variant_id, $s->batch_id])->all();
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Delete Purchase Items
-        |--------------------------------------------------------------------------
-        */
-            $purchaseItems = PurchaseItem::where('purchase_id', $purchase->id)
-                ->where('deleted', 'No')
-                ->get();
-
-            foreach ($purchaseItems as $purchaseItem) {
-
-                $purchaseItem->deleted = 'Yes';
-                $purchaseItem->status = 'Inactive';
-                $purchaseItem->deleted_by = auth()->id();
-
-                $purchaseItem->updated_by = auth()->id();
-                $purchaseItem->updated_date = Carbon::now();
-
-                $purchaseItem->updated_at = Carbon::now();
-
-                $purchaseItem->save();
-
-            }
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Delete Purchase Stock
-        |--------------------------------------------------------------------------
-        */
-            $stocks = Stock::where('purchase_id', $purchase->id)
-                ->get();
-
-            foreach ($stocks as $stock) {
-
-                $stock->deleted = 'Yes';
-                $stock->status = 'Inactive';
-                $stock->deleted_by = auth()->id();
-
-                $stock->updated_by = auth()->id();
-                $stock->updated_date = Carbon::now();
-
-                $stock->updated_at = Carbon::now();
-
-                $stock->save();
-            }
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Delete Purchase Payments
-        |--------------------------------------------------------------------------
-        */
-            $this->deletePaymentsBy('purchase_id', $purchase->id);
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Delete Purchase
-        |--------------------------------------------------------------------------
-        */
-            $purchase->deleted = 'Yes';
-            $purchase->status = 'Inactive';
-            $purchase->deleted_by = auth()->id();
-
-            $purchase->updated_by = auth()->id();
-            $purchase->updated_date = Carbon::now();
-
-            $purchase->updated_at = Carbon::now();
-
-            $purchase->save();
-
-            // The goods must still be in stock to take them back out.
-            $this->assertNoNegativeStock($stockKeys);
-
-
-            DB::commit();
-
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Purchase deleted successfully.'
-            ]);
-        } catch (Exception $e) {
-
-            DB::rollBack();
-
-            return $this->failResponse($e);
-        }
+        });
     }
 
 
@@ -1289,10 +1333,10 @@ class PurchaseController extends Controller
 
         //$height = 460 + ($items->count() * 30);
 
-        $pdf = PDF::loadView(
+        $pdf = SettingController::pdf(
             'admin.inventory.purchase.invoice',
             compact('purchase', 'supplier', 'items', 'amountInWords', 'preparedBy', 'paymentLabel')
-        )->setPaper('a4', 'portrait');
+        );
 
         $filename = $purchase->invoice_no . '.pdf';
 
@@ -1311,7 +1355,8 @@ class PurchaseController extends Controller
 */
     public function returnPage($id)
     {
-        $purchase = $this->branchPurchase($id);
+        BranchController::guardOwn('purchases', $id);
+        $purchase = $this->branchPurchase($id, false, true);
 
         if (!$purchase) {
             abort(404, 'Purchase not found.');
@@ -1330,9 +1375,10 @@ class PurchaseController extends Controller
 */
     public function returnData($id)
     {
+        BranchController::guardOwn('purchases', $id);
         try {
 
-            $purchase = $this->branchPurchase($id);
+            $purchase = $this->branchPurchase($id, false, true);
 
             if (!$purchase || $purchase->status !== 'Active') {
                 return response()->json([
@@ -1438,6 +1484,7 @@ class PurchaseController extends Controller
 */
     public function storeReturn(Request $request)
     {
+        BranchController::guardOwn('purchases', $request->input('purchase_id'));
         $validator = Validator::make($request->all(), [
 
             'purchase_id' => 'required|integer',
@@ -1452,6 +1499,8 @@ class PurchaseController extends Controller
             'items.*.qty' =>
             'required|numeric|min:0.0001',
 
+            'remarks' => 'nullable|string|max:2000',
+
         ]);
 
         if ($validator->fails()) {
@@ -1464,578 +1513,581 @@ class PurchaseController extends Controller
         }
 
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
+            try {
 
-            /*
-        |--------------------------------------------------------------------------
-        | Purchase
-        |--------------------------------------------------------------------------
-        */
+                /*
+            |--------------------------------------------------------------------------
+            | Purchase
+            |--------------------------------------------------------------------------
+            */
 
-            $purchase = $this->branchPurchase($request->purchase_id, true);
+                $purchase = $this->branchPurchase($request->purchase_id, true);
 
-            if (!$purchase || $purchase->status !== 'Active') {
-                throw new Exception('Purchase not found.');
-            }
-
-            $ids = array_map(fn ($r) => (int) ($r['purchase_item_id'] ?? 0), $request->input('items', []));
-            if (count($ids) !== count(array_unique($ids))) {
-                throw new Exception('Each purchased line can appear only once in a return.');
-            }
-
-            $branch = (int) BranchController::activeId();
-            $plannedOut = [];   // stock already claimed by earlier lines of this return, per product / variant / batch
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Items
-        |--------------------------------------------------------------------------
-        */
-
-            $requestItems = $request->input('items', []);
-
-            $subtotal = 0;
-
-            $validItems = [];
-
-
-            foreach ($requestItems as $requestItem) {
-
-                $purchaseItem = PurchaseItem::where(
-                    'id',
-                    $requestItem['purchase_item_id']
-                )
-                    ->where('purchase_id', $purchase->id)
-                    ->where('deleted', 'No')
-                    ->where('status', 'Active')
-                    ->lockForUpdate()
-                    ->first();
-
-                if (!$purchaseItem) {
-
-                    throw new Exception(
-                        'Invalid purchase item.'
-                    );
+                if (!$purchase || $purchase->status !== 'Active') {
+                    throw new Exception('Purchase not found.');
                 }
 
+                $ids = array_map(fn ($r) => (int) ($r['purchase_item_id'] ?? 0), $request->input('items', []));
+                if (count($ids) !== count(array_unique($ids))) {
+                    throw new Exception('Each purchased line can appear only once in a return.');
+                }
 
-                $returnQty = (float) $requestItem['qty'];
+                $branch = (int) BranchController::activeId();
+                $plannedOut = [];   // stock already claimed by earlier lines of this return, per product / variant / batch
 
 
                 /*
             |--------------------------------------------------------------------------
-            | Already Returned
+            | Items
             |--------------------------------------------------------------------------
             */
 
-                $alreadyReturned = PurchaseReturnItem::where(
-                    'purchase_item_id',
-                    $purchaseItem->id
-                )
-                    ->where('deleted', 'No')
-                    ->where('status', 'Active')
-                    ->sum('qty');
+                $requestItems = $request->input('items', []);
+
+                $subtotal = 0;
+
+                $validItems = [];
 
 
-                $remainingQty =
-                    (float) $purchaseItem->qty -
-                    (float) $alreadyReturned;
+                foreach ($requestItems as $requestItem) {
 
-
-                if ($returnQty > $remainingQty) {
-
-                    throw new Exception(
-                        'Return quantity for "' .
-                            Product::find($purchaseItem->product_id)->name .
-                            '" cannot exceed remaining quantity ' .
-                            $remainingQty . '.'
-                    );
-                }
-
-
-                /*
-            |--------------------------------------------------------------------------
-            | Check Actual Stock
-            |--------------------------------------------------------------------------
-            */
-
-                // What the branch still holds of this product (of this batch, for batch-tracked lines):
-                // goods already sold cannot be sent back. Earlier lines of this return are counted too.
-                $variantId = $purchaseItem->product_variant_id ? (int) $purchaseItem->product_variant_id : null;
-                $batchId = $purchaseItem->batch_id ? (int) $purchaseItem->batch_id : null;
-                $key = $purchaseItem->product_id . ':' . ($variantId ?: 0) . ':' . ($batchId ?: 0);
-
-                $availableStock =
-                    StockController::onHand((int) $purchaseItem->product_id, $variantId, $branch, $batchId)
-                    - ($plannedOut[$key] ?? 0);
-
-                $plannedOut[$key] = ($plannedOut[$key] ?? 0) + $returnQty;
-
-
-                /*
-            |--------------------------------------------------------------------------
-            | Return Cannot Exceed Available Stock
-            |--------------------------------------------------------------------------
-            */
-
-                if ($returnQty > $availableStock + 0.0005) {
-
-                    throw new Exception(
-                        'Not enough "' . Product::where('id', $purchaseItem->product_id)->value('name') . '" in stock to return. ' .
-                            'In stock: ' . rtrim(rtrim(number_format(max(0, $availableStock), 4, '.', ''), '0'), '.') .
-                            ', return qty: ' . $returnQty . '.'
-                    );
-                }
-
-
-                /*
-            |--------------------------------------------------------------------------
-            | Calculate Item Amount
-            |--------------------------------------------------------------------------
-            */
-
-                $itemSubtotal =
-                    $returnQty *
-                    (float) $purchaseItem->purchase_price;
-
-
-                $originalQty =
-                    (float) $purchaseItem->qty;
-
-
-                $originalItemDiscount =
-                    (float) $purchaseItem->discount_amount;
-
-
-                /*
-            |--------------------------------------------------------------------------
-            | Proportional Discount
-            |--------------------------------------------------------------------------
-            */
-
-                $itemDiscount = 0;
-
-                if ($originalQty > 0) {
-
-                    $itemDiscount =
-                        ($originalItemDiscount / $originalQty)
-                        * $returnQty;
-                }
-
-
-                if ($itemDiscount > $itemSubtotal) {
-
-                    $itemDiscount = $itemSubtotal;
-                }
-
-
-                $itemTotal =
-                    $itemSubtotal -
-                    $itemDiscount;
-
-
-                $subtotal += $itemTotal;
-
-
-                $validItems[] = [
-                    'purchase_item' => $purchaseItem,
-                    'qty' => $returnQty,
-                    'subtotal' => $itemSubtotal,
-                    'discount_amount' => $itemDiscount,
-                    'total' => $itemTotal
-                ];
-            }
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Header Discount
-        |--------------------------------------------------------------------------
-        */
-
-            $discountAmount = 0;
-
-
-
-            if ((float) $purchase->subtotal > 0) {
-
-                $discountAmount =
-                    (
-                        (float) $purchase->discount_amount
-                        /
-                        (float) $purchase->subtotal
+                    $purchaseItem = PurchaseItem::where(
+                        'id',
+                        $requestItem['purchase_item_id']
                     )
-                    *
-                    $subtotal;
-            }
+                        ->where('purchase_id', $purchase->id)
+                        ->where('deleted', 'No')
+                        ->where('status', 'Active')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$purchaseItem) {
+
+                        throw new Exception(
+                            'Invalid purchase item.'
+                        );
+                    }
 
 
-            if ($discountAmount > $subtotal) {
-
-                $discountAmount = $subtotal;
-            }
+                    $returnQty = (float) $requestItem['qty'];
 
 
-            // Input VAT paid on the goods comes back with them, at the purchase's VAT rate.
-            $vatAmount = round(($subtotal - $discountAmount) * (float) $purchase->vat_percent / 100, 2);
+                    /*
+                |--------------------------------------------------------------------------
+                | Already Returned
+                |--------------------------------------------------------------------------
+                */
 
-            $grandTotal =
-                $subtotal -
-                $discountAmount +
-                $vatAmount;
-
-
-            /*
-        |--------------------------------------------------------------------------
-        | Return Number
-        |--------------------------------------------------------------------------
-        */
-
-            $returnNo = $this->nextSequentialCode(PurchaseReturn::class, 'return_no', 'PRE');
+                    $alreadyReturned = PurchaseReturnItem::where(
+                        'purchase_item_id',
+                        $purchaseItem->id
+                    )
+                        ->where('deleted', 'No')
+                        ->where('status', 'Active')
+                        ->sum('qty');
 
 
-            /*
-        |--------------------------------------------------------------------------
-        | Create Return
-        |--------------------------------------------------------------------------
-        */
-
-            $purchaseReturn =
-                new PurchaseReturn();
-
-            $purchaseReturn->return_no =
-                $returnNo;
-
-            $purchaseReturn->purchase_id =
-                $purchase->id;
-
-            $purchaseReturn->supplier_id =
-                $purchase->supplier_id;
-
-            $purchaseReturn->datetime =
-                $request->return_date;
-
-            $purchaseReturn->subtotal =
-                round($subtotal, 2);
-
-            $purchaseReturn->discount_type =
-                $purchase->discount_type;
-
-            $purchaseReturn->discount_value =
-                round($purchase->discount_value, 2);
-
-            $purchaseReturn->discount_amount =
-                round($discountAmount, 2);
-
-            $purchaseReturn->grand_total =
-                round($grandTotal, 2);
-
-            $purchaseReturn->remarks =
-                $request->remarks;
-
-            $purchaseReturn->deleted =
-                'No';
-
-            $purchaseReturn->status =
-                'Active';
-
-            $purchaseReturn->created_by =
-                auth()->id();
-
-            $purchaseReturn->created_datetime =
-                Carbon::now();
-
-            $purchaseReturn->created_at =
-                Carbon::now();
-
-            $purchaseReturn->updated_at =
-                Carbon::now();
-
-            $purchaseReturn->save();
+                    $remainingQty =
+                        (float) $purchaseItem->qty -
+                        (float) $alreadyReturned;
 
 
+                    if ($returnQty > $remainingQty) {
+
+                        throw new Exception(
+                            'Return quantity for "' .
+                                Product::find($purchaseItem->product_id)->name .
+                                '" cannot exceed remaining quantity ' .
+                                $remainingQty . '.'
+                        );
+                    }
 
 
-            foreach ($validItems as $returnItem) {
+                    /*
+                |--------------------------------------------------------------------------
+                | Check Actual Stock
+                |--------------------------------------------------------------------------
+                */
 
-                $purchaseItem =
-                    $returnItem['purchase_item'];
+                    // What the branch still holds of this product (of this batch, for batch-tracked lines):
+                    // goods already sold cannot be sent back. Earlier lines of this return are counted too.
+                    $variantId = $purchaseItem->product_variant_id ? (int) $purchaseItem->product_variant_id : null;
+                    $batchId = $purchaseItem->batch_id ? (int) $purchaseItem->batch_id : null;
+                    $key = $purchaseItem->product_id . ':' . ($variantId ?: 0) . ':' . ($batchId ?: 0);
 
-                $returnQty =
-                    $returnItem['qty'];
+                    $availableStock =
+                        StockController::onHand((int) $purchaseItem->product_id, $variantId, $branch, $batchId)
+                        - ($plannedOut[$key] ?? 0);
 
-
-                /*
-            |--------------------------------------------------------------------------
-            | Return Item
-            |--------------------------------------------------------------------------
-            */
-
-                $item =
-                    new PurchaseReturnItem();
-
-                $item->purchase_return_id =
-                    $purchaseReturn->id;
-
-                $item->purchase_id =
-                    $purchase->id;
-
-                $item->purchase_item_id =
-                    $purchaseItem->id;
-
-                $item->product_id =
-                    $purchaseItem->product_id;
-
-                $item->product_variant_id =
-                    $purchaseItem->product_variant_id;
-
-                $item->qty =
-                    $returnQty;
-
-                $item->purchase_price =
-                    $purchaseItem->purchase_price;
-
-                $item->subtotal =
-                    round(
-                        $returnItem['subtotal'],
-                        2
-                    );
+                    $plannedOut[$key] = ($plannedOut[$key] ?? 0) + $returnQty;
 
 
-                $item->discount_value =
-                    $purchaseItem->discount_value;
+                    /*
+                |--------------------------------------------------------------------------
+                | Return Cannot Exceed Available Stock
+                |--------------------------------------------------------------------------
+                */
 
-                $item->discount_amount =
-                    round(
-                        $returnItem['discount_amount'],
-                        2
-                    );
+                    if ($returnQty > $availableStock + 0.0005) {
 
-                $item->total =
-                    round(
-                        $returnItem['total'],
-                        2
-                    );
+                        throw new Exception(
+                            'Not enough "' . Product::where('id', $purchaseItem->product_id)->value('name') . '" in stock to return. ' .
+                                'In stock: ' . rtrim(rtrim(number_format(max(0, $availableStock), 4, '.', ''), '0'), '.') .
+                                ', return qty: ' . $returnQty . '.'
+                        );
+                    }
 
-                $item->deleted =
-                    'No';
 
-                $item->status =
-                    'Active';
+                    /*
+                |--------------------------------------------------------------------------
+                | Calculate Item Amount
+                |--------------------------------------------------------------------------
+                */
 
-                $item->created_by =
-                    auth()->id();
+                    $itemSubtotal =
+                        $returnQty *
+                        (float) $purchaseItem->purchase_price;
 
-                $item->created_datetime =
-                    Carbon::now();
 
-                $item->created_at =
-                    Carbon::now();
+                    $originalQty =
+                        (float) $purchaseItem->qty;
 
-                $item->updated_at =
-                    Carbon::now();
 
-                $item->save();
+                    $originalItemDiscount =
+                        (float) $purchaseItem->discount_amount;
+
+
+                    /*
+                |--------------------------------------------------------------------------
+                | Proportional Discount
+                |--------------------------------------------------------------------------
+                */
+
+                    $itemDiscount = 0;
+
+                    if ($originalQty > 0) {
+
+                        $itemDiscount =
+                            ($originalItemDiscount / $originalQty)
+                            * $returnQty;
+                    }
+
+
+                    if ($itemDiscount > $itemSubtotal) {
+
+                        $itemDiscount = $itemSubtotal;
+                    }
+
+
+                    $itemTotal =
+                        $itemSubtotal -
+                        $itemDiscount;
+
+
+                    $subtotal += $itemTotal;
+
+
+                    $validItems[] = [
+                        'purchase_item' => $purchaseItem,
+                        'qty' => $returnQty,
+                        'subtotal' => $itemSubtotal,
+                        'discount_amount' => $itemDiscount,
+                        'total' => $itemTotal
+                    ];
+                }
 
 
                 /*
             |--------------------------------------------------------------------------
-            | Stock Out
+            | Header Discount
             |--------------------------------------------------------------------------
             */
 
-                $stock =
-                    new Stock();
+                $discountAmount = 0;
 
-                $stock->product_id =
-                    $purchaseItem->product_id;
 
-                $stock->product_variant_id =
-                    $purchaseItem->product_variant_id;
 
-                // Batch-tracked goods leave from the batch they came in with.
-                $stock->batch_id =
-                    $purchaseItem->batch_id;
+                if ((float) $purchase->subtotal > 0) {
 
-                $stock->in_qty = 0;
+                    $discountAmount =
+                        (
+                            (float) $purchase->discount_amount
+                            /
+                            (float) $purchase->subtotal
+                        )
+                        *
+                        $subtotal;
+                }
 
-                $stock->out_qty =
-                    $returnQty;
 
-                $stock->purchase_id =
+                if ($discountAmount > $subtotal) {
+
+                    $discountAmount = $subtotal;
+                }
+
+
+                // Input VAT paid on the goods comes back with them, at the purchase's VAT rate.
+                $vatAmount = round(($subtotal - $discountAmount) * (float) $purchase->vat_percent / 100, 2);
+
+                $grandTotal =
+                    $subtotal -
+                    $discountAmount +
+                    $vatAmount;
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Return Number
+            |--------------------------------------------------------------------------
+            */
+
+                $returnNo = $this->nextSequentialCode(PurchaseReturn::class, 'return_no', 'PRE');
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Create Return
+            |--------------------------------------------------------------------------
+            */
+
+                $purchaseReturn =
+                    new PurchaseReturn();
+
+                $purchaseReturn->return_no =
+                    $returnNo;
+
+                $purchaseReturn->purchase_id =
                     $purchase->id;
 
-                $stock->purchase_return_id =
-                    $purchaseReturn->id;
+                $purchaseReturn->supplier_id =
+                    $purchase->supplier_id;
 
-                $stock->date =
+                $purchaseReturn->datetime =
                     $request->return_date;
 
-                $stock->reference_type = 'Purchase Return';
-                $stock->reference_id = $purchaseReturn->id;
+                $purchaseReturn->subtotal =
+                    round($subtotal, 2);
 
-                $stock->created_by =
+                $purchaseReturn->discount_type =
+                    $purchase->discount_type;
+
+                $purchaseReturn->discount_value =
+                    round($purchase->discount_value, 2);
+
+                $purchaseReturn->discount_amount =
+                    round($discountAmount, 2);
+
+                $purchaseReturn->grand_total =
+                    round($grandTotal, 2);
+
+                $purchaseReturn->remarks =
+                    trim((string) $request->input('remarks')) ?: null;
+
+                $purchaseReturn->deleted =
+                    'No';
+
+                $purchaseReturn->status =
+                    'Active';
+
+                $purchaseReturn->created_by =
                     auth()->id();
 
-                $stock->created_at =
+                $purchaseReturn->created_datetime =
                     Carbon::now();
 
-                $stock->updated_at =
+                $purchaseReturn->created_at =
                     Carbon::now();
 
-                $stock->save();
-            }
+                $purchaseReturn->updated_at =
+                    Carbon::now();
+
+                $purchaseReturn->save();
 
 
-            /*
-        |--------------------------------------------------------------------------
-        | Update Purchase Financials
-        |--------------------------------------------------------------------------
-        */
-
-            $oldGrandTotal =
-                (float) $purchase->grand_total;
 
 
-            $oldPaidAmount =
-                (float) $purchase->paid_amount;
+                foreach ($validItems as $returnItem) {
+
+                    $purchaseItem =
+                        $returnItem['purchase_item'];
+
+                    $returnQty =
+                        $returnItem['qty'];
 
 
-            $newGrandTotal =
-                max(
-                    0,
-                    $oldGrandTotal -
-                        $grandTotal
-                );
+                    /*
+                |--------------------------------------------------------------------------
+                | Return Item
+                |--------------------------------------------------------------------------
+                */
+
+                    $item =
+                        new PurchaseReturnItem();
+
+                    $item->purchase_return_id =
+                        $purchaseReturn->id;
+
+                    $item->purchase_id =
+                        $purchase->id;
+
+                    $item->purchase_item_id =
+                        $purchaseItem->id;
+
+                    $item->product_id =
+                        $purchaseItem->product_id;
+
+                    $item->product_variant_id =
+                        $purchaseItem->product_variant_id;
+
+                    $item->qty =
+                        $returnQty;
+
+                    $item->purchase_price =
+                        $purchaseItem->purchase_price;
+
+                    $item->subtotal =
+                        round(
+                            $returnItem['subtotal'],
+                            2
+                        );
 
 
-            /*
-        |--------------------------------------------------------------------------
-        | Paid Amount
-        |--------------------------------------------------------------------------
-        |
-        | If purchase was already paid and the return makes
-        | the new grand total lower than paid amount,
-        | the difference becomes supplier refund.
-        |
-        */
+                    $item->discount_value =
+                        $purchaseItem->discount_value;
 
-            $newPaidAmount =
-                min(
-                    $oldPaidAmount,
-                    $newGrandTotal
-                );
+                    $item->discount_amount =
+                        round(
+                            $returnItem['discount_amount'],
+                            2
+                        );
 
+                    $item->total =
+                        round(
+                            $returnItem['total'],
+                            2
+                        );
 
-            $refundAmount =
-                max(
-                    0,
-                    $oldPaidAmount -
-                        $newPaidAmount
-                );
+                    $item->deleted =
+                        'No';
 
+                    $item->status =
+                        'Active';
 
-            $newDueAmount =
-                max(
-                    0,
-                    $newGrandTotal -
-                        $newPaidAmount
-                );
+                    $item->created_by =
+                        auth()->id();
 
+                    $item->created_datetime =
+                        Carbon::now();
 
-            $purchase->grand_total =
-                round($newGrandTotal, 2);
+                    $item->created_at =
+                        Carbon::now();
 
-            $purchase->paid_amount =
-                round($newPaidAmount, 2);
+                    $item->updated_at =
+                        Carbon::now();
 
-            $purchase->due_amount =
-                round($newDueAmount, 2);
-
-            $purchase->updated_by =
-                auth()->id();
-
-            $purchase->updated_date =
-                Carbon::now();
-
-            $purchase->updated_at =
-                Carbon::now();
-
-            $purchase->save();
+                    $item->save();
 
 
-            /*
-        |--------------------------------------------------------------------------
-        | Accounting Entry
-        |--------------------------------------------------------------------------
-        */
+                    /*
+                |--------------------------------------------------------------------------
+                | Stock Out
+                |--------------------------------------------------------------------------
+                */
 
-            /*
-         * Purchase return reduces the payable. Supplier due is opening + debit - credit
-         * (PartyDueTrait, payable aging, dashboard), so the reduction is a CREDIT and the
-         * supplier's cash refund, which settles that credit, is a DEBIT. The party ledger and
-         * cash book read these rows by payment_type, so they show the same either way.
-         */
+                    $stock =
+                        new Stock();
 
-            if ($grandTotal > 0) {
-                $this->storeCreditPayment([
-                    'party_id'           => $purchase->supplier_id,
-                    'party_type'         => 'Supplier',
-                    'payment_type'       => 'Purchase Payment',
-                    'datetime'           => $request->return_date,
-                    'credit'             => round($grandTotal, 2),
-                    'purchase_id'        => $purchase->id,
-                    'purchase_return_id' => $purchaseReturn->id,
-                    'payment_method'     => '',
-                ]);
-            }
+                    $stock->product_id =
+                        $purchaseItem->product_id;
 
-            /*
+                    $stock->product_variant_id =
+                        $purchaseItem->product_variant_id;
+
+                    // Batch-tracked goods leave from the batch they came in with.
+                    $stock->batch_id =
+                        $purchaseItem->batch_id;
+
+                    $stock->in_qty = 0;
+
+                    $stock->out_qty =
+                        $returnQty;
+
+                    $stock->purchase_id =
+                        $purchase->id;
+
+                    $stock->purchase_return_id =
+                        $purchaseReturn->id;
+
+                    $stock->date =
+                        $request->return_date;
+
+                    $stock->reference_type = 'Purchase Return';
+                    $stock->reference_id = $purchaseReturn->id;
+
+                    $stock->created_by =
+                        auth()->id();
+
+                    $stock->created_at =
+                        Carbon::now();
+
+                    $stock->updated_at =
+                        Carbon::now();
+
+                    $stock->save();
+                }
+
+
+                /*
             |--------------------------------------------------------------------------
-            | Supplier Refund
+            | Update Purchase Financials
             |--------------------------------------------------------------------------
             */
-            if ($refundAmount > 0) {
-                $this->storeDebitPayment([
-                    'party_id'           => $purchase->supplier_id,
-                    'party_type'         => 'Supplier',
-                    'payment_type'       => 'Payment',
-                    'datetime'           => $request->return_date,
-                    'debit'              => round($refundAmount, 2),
-                    'purchase_id'        => $purchase->id,
-                    'purchase_return_id' => $purchaseReturn->id,
-                    // The refund comes back to the account the purchase was paid from (so the cash book can place it).
-                    'payment_method'         => $purchase->payment_method ?: '',
-                    'payment_method_account' => $purchase->payment_method_account ?: '',
+
+                $oldGrandTotal =
+                    (float) $purchase->grand_total;
+
+
+                $oldPaidAmount =
+                    (float) $purchase->paid_amount;
+
+
+                $newGrandTotal =
+                    max(
+                        0,
+                        $oldGrandTotal -
+                            $grandTotal
+                    );
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Paid Amount
+            |--------------------------------------------------------------------------
+            |
+            | If purchase was already paid and the return makes
+            | the new grand total lower than paid amount,
+            | the difference becomes supplier refund.
+            |
+            */
+
+                $newPaidAmount =
+                    min(
+                        $oldPaidAmount,
+                        $newGrandTotal
+                    );
+
+
+                $refundAmount =
+                    max(
+                        0,
+                        $oldPaidAmount -
+                            $newPaidAmount
+                    );
+
+
+                $newDueAmount =
+                    max(
+                        0,
+                        $newGrandTotal -
+                            $newPaidAmount
+                    );
+
+
+                $purchase->grand_total =
+                    round($newGrandTotal, 2);
+
+                $purchase->paid_amount =
+                    round($newPaidAmount, 2);
+
+                $purchase->due_amount =
+                    round($newDueAmount, 2);
+
+                $purchase->updated_by =
+                    auth()->id();
+
+                $purchase->updated_date =
+                    Carbon::now();
+
+                $purchase->updated_at =
+                    Carbon::now();
+
+                $purchase->save();
+
+
+                /*
+            |--------------------------------------------------------------------------
+            | Accounting Entry
+            |--------------------------------------------------------------------------
+            */
+
+                /*
+             * Purchase return reduces the payable. Supplier due is opening + debit - credit
+             * (PartyDueTrait, payable aging, dashboard), so the reduction is a CREDIT and the
+             * supplier's cash refund, which settles that credit, is a DEBIT. The party ledger and
+             * cash book read these rows by payment_type, so they show the same either way.
+             */
+
+                if ($grandTotal > 0) {
+                    $this->storeCreditPayment([
+                        'party_id'           => $purchase->supplier_id,
+                        'party_type'         => 'Supplier',
+                        'payment_type'       => 'Purchase Payment',
+                        'datetime'           => $request->return_date,
+                        'credit'             => round($grandTotal, 2),
+                        'purchase_id'        => $purchase->id,
+                        'purchase_return_id' => $purchaseReturn->id,
+                        'payment_method'     => '',
+                    ]);
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Supplier Refund
+                |--------------------------------------------------------------------------
+                */
+                if ($refundAmount > 0) {
+                    $this->storeDebitPayment([
+                        'party_id'           => $purchase->supplier_id,
+                        'party_type'         => 'Supplier',
+                        'payment_type'       => 'Payment',
+                        'datetime'           => $request->return_date,
+                        'debit'              => round($refundAmount, 2),
+                        'purchase_id'        => $purchase->id,
+                        'purchase_return_id' => $purchaseReturn->id,
+                        // The refund comes back to the account the purchase was paid from (so the cash book can place it).
+                        'payment_method'         => $purchase->payment_method ?: '',
+                        'payment_method_account' => $purchase->payment_method_account ?: '',
+                    ]);
+                }
+
+
+                DB::commit();
+
+
+                return response()->json([
+
+                    'status' => true,
+
+                    'message' =>
+                    'Purchase return created successfully.',
+
+                    'return_no' =>
+                    $purchaseReturn->return_no,
+
+                    'redirect' =>
+                    route('purchases.return.index')
                 ]);
+            } catch (Exception $e) {
+
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+                return $this->failResponse($e, 'Unable to save the purchase return.');
             }
-
-
-            DB::commit();
-
-
-            return response()->json([
-
-                'status' => true,
-
-                'message' =>
-                'Purchase return created successfully.',
-
-                'return_no' =>
-                $purchaseReturn->return_no,
-
-                'redirect' =>
-                route('purchases.return.index')
-            ]);
-        } catch (Exception $e) {
-
-            DB::rollBack();
-
-            return $this->failResponse($e, 'Unable to save the purchase return.');
-        }
+        });
     }
 
 
@@ -2148,7 +2200,7 @@ class PurchaseController extends Controller
                     ['label' => 'Invoice', 'icon' => 'fas fa-file-pdf', 'href' => route('purchases.return.view', $row->id)],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteReturnBtn', 'attrs' => ['data-id' => $row->id]],
-                ]);
+                ], $row->branch_id);
 
 
                 $html .= '
@@ -2161,6 +2213,8 @@ class PurchaseController extends Controller
 
                         <td>' .
                     e($row->return_no) .
+                    (!empty($row->remarks) ? '<br><small class="text-muted">' . e(\Illuminate\Support\Str::limit($row->remarks, 60)) . '</small>' : '') .
+                    branch_tag($row->branch_id) .
                     '</td>
 
                         <td>' .
@@ -2339,89 +2393,93 @@ class PurchaseController extends Controller
 
     public function returnDelete($id)
     {
-        DB::beginTransaction();
+        BranchController::guardOwn('purchase_returns', $id);
+        return self::retryOnDeadlock(function () use ($id) {
+            DB::beginTransaction();
 
-        try {
+            try {
 
-            $purchaseReturn = BranchController::scope(PurchaseReturn::query(), 'branch_id')
-                ->where('id', $id)
-                ->where('deleted', 'No')
-                ->lockForUpdate()
-                ->first();
+                $purchaseReturn = BranchController::scopeOwn(PurchaseReturn::query(), 'branch_id')
+                    ->where('id', $id)
+                    ->where('deleted', 'No')
+                    ->lockForUpdate()
+                    ->first();
 
-            if (!$purchaseReturn) {
-                throw new Exception('Purchase return not found.');
-            }
+                if (!$purchaseReturn) {
+                    throw new Exception('Purchase return not found.');
+                }
 
-            if ($purchaseReturn->status != 'Active') {
-                throw new Exception('Only active purchase returns can be deleted.');
-            }
+                if ($purchaseReturn->status != 'Active') {
+                    throw new Exception('Only active purchase returns can be deleted.');
+                }
 
-            $purchase = Purchase::where('id', $purchaseReturn->purchase_id)->lockForUpdate()->first();
+                $purchase = Purchase::where('id', $purchaseReturn->purchase_id)->lockForUpdate()->first();
 
-            // The supplier refund recorded with the return (row type "Payment"; old rows stored it as a credit, new ones as a debit).
-            $refund = (float) Payment::where('purchase_return_id', $purchaseReturn->id)
-                ->where('payment_type', 'Payment')
-                ->where('deleted', 'No')
-                ->sum(DB::raw('COALESCE(debit, 0) + COALESCE(credit, 0)'));
+                // The supplier refund recorded with the return (row type "Payment"; old rows stored it as a credit, new ones as a debit).
+                $refund = (float) Payment::where('purchase_return_id', $purchaseReturn->id)
+                    ->where('payment_type', 'Payment')
+                    ->where('deleted', 'No')
+                    ->sum(DB::raw('COALESCE(debit, 0) + COALESCE(credit, 0)'));
 
-            $now = now();
-            $userId = auth()->id();
+                $now = now();
+                $userId = auth()->id();
 
-            PurchaseReturnItem::where('purchase_return_id', $purchaseReturn->id)->update([
-                'deleted'          => 'Yes',
-                'deleted_by'       => $userId,
-                'updated_by'       => $userId,
-                'deleted_datetime' => $now,
-                'updated_at'       => $now,
-            ]);
-
-            // The returned goods come back into stock.
-            DB::table('stocks')
-                ->where('purchase_return_id', $purchaseReturn->id)
-                ->update([
-                    'deleted'      => 'Yes',
-                    'deleted_by'   => $userId,
-                    'deleted_date' => $now,
-                    'updated_by'   => $userId,
-                    'updated_date' => $now,
-                    'updated_at'   => $now,
+                PurchaseReturnItem::where('purchase_return_id', $purchaseReturn->id)->update([
+                    'deleted'          => 'Yes',
+                    'deleted_by'       => $userId,
+                    'updated_by'       => $userId,
+                    'deleted_datetime' => $now,
+                    'updated_at'       => $now,
                 ]);
 
-            $this->deletePaymentsBy('purchase_return_id', $purchaseReturn->id);
+                // The returned goods come back into stock.
+                DB::table('stocks')
+                    ->where('purchase_return_id', $purchaseReturn->id)
+                    ->update([
+                        'deleted'      => 'Yes',
+                        'deleted_by'   => $userId,
+                        'deleted_date' => $now,
+                        'updated_by'   => $userId,
+                        'updated_date' => $now,
+                        'updated_at'   => $now,
+                    ]);
 
-            // Undo what the return did to the purchase: its total went down by the return and its paid amount by the refund.
-            if ($purchase && $purchase->deleted === 'No') {
-                $grand = round((float) $purchase->grand_total + (float) $purchaseReturn->grand_total, 2);
-                $paid = round(min($grand, (float) $purchase->paid_amount + $refund), 2);
+                $this->deletePaymentsBy('purchase_return_id', $purchaseReturn->id);
 
-                $purchase->grand_total = $grand;
-                $purchase->paid_amount = $paid;
-                $purchase->due_amount = round(max(0, $grand - $paid), 2);
-                $purchase->updated_by = $userId;
-                $purchase->updated_date = $now;
-                $purchase->updated_at = $now;
-                $purchase->save();
+                // Undo what the return did to the purchase: its total went down by the return and its paid amount by the refund.
+                if ($purchase && $purchase->deleted === 'No') {
+                    $grand = round((float) $purchase->grand_total + (float) $purchaseReturn->grand_total, 2);
+                    $paid = round(min($grand, (float) $purchase->paid_amount + $refund), 2);
+
+                    $purchase->grand_total = $grand;
+                    $purchase->paid_amount = $paid;
+                    $purchase->due_amount = round(max(0, $grand - $paid), 2);
+                    $purchase->updated_by = $userId;
+                    $purchase->updated_date = $now;
+                    $purchase->updated_at = $now;
+                    $purchase->save();
+                }
+
+                $purchaseReturn->deleted = 'Yes';
+                $purchaseReturn->deleted_by = $userId;
+                $purchaseReturn->updated_by = $userId;
+                $purchaseReturn->deleted_datetime = $now;
+                $purchaseReturn->updated_at = $now;
+                $purchaseReturn->save();
+
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Purchase return deleted. Its goods are back in stock and the purchase due is restored.',
+                ]);
+            } catch (Exception $e) {
+
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+
+                return $this->failResponse($e, 'Unable to delete the purchase return.');
             }
-
-            $purchaseReturn->deleted = 'Yes';
-            $purchaseReturn->deleted_by = $userId;
-            $purchaseReturn->updated_by = $userId;
-            $purchaseReturn->deleted_datetime = $now;
-            $purchaseReturn->updated_at = $now;
-            $purchaseReturn->save();
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Purchase return deleted. Its goods are back in stock and the purchase due is restored.',
-            ]);
-        } catch (Exception $e) {
-
-            DB::rollBack();
-
-            return $this->failResponse($e, 'Unable to delete the purchase return.');
-        }
+        });
     }
 }

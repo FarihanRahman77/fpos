@@ -343,6 +343,9 @@
                                         ) }}
 
                                     </strong>
+                                    <div class="small {{ (float) ($item->in_stock ?? 0) + 0.0005 < $remainingQty ? 'text-danger' : 'text-muted' }}">
+                                        in stock {{ rtrim(rtrim(number_format((float) ($item->in_stock ?? 0), 4, '.', ''), '0'), '.') }}
+                                    </div>
 
                                 </td>
 
@@ -526,7 +529,12 @@
                                 </div>
 
 
-                                <div class="d-flex justify-content-between">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Advance not used yet</span>
+                                    <strong class="text-success">{{ number_format((float) $advanceLeft, 2, '.', '') }}</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-2">
 
                                     <span>
                                         Current Delivery Total
@@ -540,6 +548,26 @@
                                     </strong>
 
                                 </div>
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span>Paid from advance</span>
+                                    <strong id="summaryAdvanceUsed">0.00</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <span>Added to customer due</span>
+                                    <strong class="text-danger" id="summaryDueAdded">0.00</strong>
+                                </div>
+
+                                <p class="text-muted small mt-2 mb-0">
+                                    Each delivery is saved as a sale invoice for the delivered items (VAT, if any, is added on the invoice).
+                                    @if ($invoices->isNotEmpty())
+                                        Earlier delivery invoices:
+                                        @foreach ($invoices as $inv)
+                                            <a href="{{ route('sales.invoice.pdf', $inv->id) }}" target="_blank">{{ $inv->invoice_no }}</a>{{ $loop->last ? '.' : ',' }}
+                                        @endforeach
+                                    @endif
+                                </p>
 
                             </div>
 
@@ -823,7 +851,7 @@ $(document).ready(function () {
                     'Confirm Delivery?',
 
                 text:
-                    'Only the entered delivery quantities will be delivered and stock will be deducted.',
+                    'A sale invoice is created for the entered quantities, the stock is deducted and the customer is charged for what is delivered.',
 
                 icon:
                     'question',
@@ -1064,6 +1092,14 @@ function calculateDeliveryTotals()
         .text(
             grandTotal.toFixed(2)
         );
+
+    let advanceUsed = Math.min(
+        parseFloat("{{ (float) $advanceLeft }}") || 0,
+        grandTotal
+    );
+
+    $('#summaryAdvanceUsed').text(advanceUsed.toFixed(2));
+    $('#summaryDueAdded').text((grandTotal - advanceUsed).toFixed(2));
 }
 
 

@@ -26,9 +26,11 @@ class AttributeController extends Controller
         $output = ['data' => []];
 
         $i = 1;
+        // One lookup for all type names instead of one query per attribute row.
+        $typeNames = AttributeType::where('deleted', 'No')->pluck('name', 'id');
 
         foreach ($attributes as $attribute) {
-            $attributeType = AttributeType::where('deleted', 'No')->where('id', $attribute->attribute_type_id)->first();
+            $typeName = $typeNames[$attribute->attribute_type_id] ?? null;
 
             $status = $attribute->status == 'Active'
 
@@ -55,7 +57,7 @@ class AttributeController extends Controller
 
                 e($attribute->slug),
 
-                e($attributeType->name ?? '-'),
+                e($typeName ?? '-'),
 
                 $status,
 
@@ -77,10 +79,10 @@ class AttributeController extends Controller
             'attribute_type_id' => 'required|integer|exists:attribute_types,id',
             'status' => 'nullable|in:Active,Inactive',
         ], [
-            'attribute_type_id.required' => 'Choose the attribute category.',
+            'attribute_type_id.required' => 'Choose the attribute type.',
         ]);
 
-        // One name per attribute category (e.g. "Red" only once under "Color").
+        // One name per attribute type (e.g. "Red" only once under "Color").
         $duplicate = Attribute::where('deleted', 'No')
             ->where('attribute_type_id', $request->attribute_type_id)
             ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($request->name))])
@@ -90,8 +92,8 @@ class AttributeController extends Controller
         if ($duplicate) {
             return response()->json([
                 'status' => false,
-                'message' => 'This attribute already exists in that category.',
-                'errors' => ['name' => ['This attribute already exists in that category.']],
+                'message' => 'This attribute already exists under that attribute type.',
+                'errors' => ['name' => ['This attribute already exists under that attribute type.']],
             ], 422);
         }
 

@@ -567,9 +567,10 @@
  * Standard DataTable "Action" cell: a cog button opening a dropdown menu.
  * PHP twin: action_dropdown() in app/Helpers/helpers.php - keep them in step.
  *
- * items: [{ label, icon, onclick | href, target, class, attrs: { 'data-id': 5 } } | { divider: true }]
+ * items: [{ label, icon, onclick | href, target, class, attrs: { 'data-id': 5 }, disabled, title, change } | { divider: true }]
+ * lockedTip: when given (row of another branch), change items (edit, delete, pay...) are disabled with this tooltip.
  */
-window.actionDropdown = function (items) {
+window.actionDropdown = function (items, lockedTip) {
   function esc(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -587,6 +588,17 @@ window.actionDropdown = function (items) {
   (items || []).forEach(function (item) {
     if (item.divider) {
       html += '<li><hr class="dropdown-divider"></li>';
+      return;
+    }
+
+    var change = item.change !== undefined ? item.change
+      : /\b(edit|delete|remove|cancel|return|deliver|delivery|receive|pay|payment|refund|settle|repay|repayment|change|reschedule|discard|continue|re-price|send|share|mark|reverse|approve|reject|post|process|adjust|convert|revise|reopen|close|status|activate|deactivate|recover)\b/i
+          .test((item.label || "") + " " + (item.class || ""));
+    if (item.disabled || (lockedTip && change)) {
+      var tip = item.title || lockedTip || "";
+      html += '<li><span class="dropdown-item disabled" aria-disabled="true" title="' + esc(tip) + '">' +
+        (item.icon ? '<i class="' + esc(item.icon) + ' me-2"></i>' : "") + esc(item.label) +
+        (tip ? '<small class="d-block text-muted">' + esc(tip) + "</small>" : "") + "</span></li>";
       return;
     }
 

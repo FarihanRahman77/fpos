@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
-use PDF;
 
 /**
  * Sale quotations: priced product offers sent to customers.
@@ -31,7 +30,9 @@ class SaleQuotationController extends Controller
 {
     use VoucherHelperTrait;
 
-    public const STATUSES = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
+    public const STATUSES = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired', 'Converted'];
+    /** Statuses a user can set by hand ('Converted' is set by converting to a sale / order). */
+    public const MANUAL_STATUSES = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired'];
     private const CUSTOMER_TYPES = ['Customer', 'Walk-In Customer'];
 
     /* ------------------------------------------------------------------ */
@@ -77,28 +78,35 @@ class SaleQuotationController extends Controller
                     ['label' => 'Send by Email', 'icon' => 'fas fa-paper-plane', 'onclick' => "Quote.send($id)"],
                     ['label' => 'Share on WhatsApp', 'icon' => 'fab fa-whatsapp', 'onclick' => "Quote.share($id)"],
                     ['label' => 'Duplicate', 'icon' => 'fas fa-copy', 'onclick' => "Quote.duplicate($id)"],
+                ];
+                if ($q->quotation_status === 'Accepted') {
+                    $actions[] = ['label' => 'Convert to Sale', 'icon' => 'fas fa-receipt', 'class' => 'text-success', 'href' => route('admin.quotations.show', [$id, 'convert' => 'sale'])];
+                    $actions[] = ['label' => 'Convert to Sale Order', 'icon' => 'fas fa-truck', 'class' => 'text-success', 'href' => route('admin.quotations.show', [$id, 'convert' => 'order'])];
+                }
+                $actions = array_merge($actions, [
                     ['label' => 'Customer Quotation Log', 'icon' => 'fas fa-stream', 'href' => route('admin.quotations.customer', $q->customer_id)],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => "Quote.remove($id)"],
-                ];
+                ]);
 
                 return [
                     $i + 1,
                     '<a href="' . route('admin.quotations.show', $id) . '" class="fw-semibold">' . e($q->quotation_no) . '</a>'
                         . ($q->revision_no > 1 ? ' <span class="badge bg-primary-subtle text-primary-emphasis" title="Re-priced ' . ($q->revision_no - 1) . ' time(s)">Rev ' . (int) $q->revision_no . '</span>' : '')
-                        . ($q->title ? '<div class="text-muted small">' . e($q->title) . '</div>' : ''),
+                        . ($q->title ? '<div class="text-muted small">' . e($q->title) . '</div>' : '') . branch_tag($q->branch_id),
                     '<a href="' . route('admin.quotations.customer', $q->customer_id) . '" class="fw-semibold">' . e($q->customer_name) . '</a>'
                         . '<div class="text-muted small">' . e($q->customer_code ?: '') . ($q->customer_phone ? ' · ' . e($q->customer_phone) : '') . '</div>',
                     '<span class="d-none">' . $q->quotation_date . '</span>' . e(Carbon::parse($q->quotation_date)->format('d M Y'))
                         . ($q->valid_until ? '<div class="text-muted small">valid till ' . e(Carbon::parse($q->valid_until)->format('d M Y')) . '</div>' : ''),
                     '<span class="d-block text-center">' . (int) ($items[$id] ?? 0) . '</span>',
                     '<span class="d-block text-end fw-semibold">' . number_format((float) $q->grand_total, 2) . '</span>',
-                    self::statusBadge($q->quotation_status) . ($q->sent_count ? '<div class="text-muted small">sent ' . (int) $q->sent_count . '×</div>' : ''),
-                    action_dropdown($actions),
+                    self::statusBadge($q->quotation_status) . ($q->sent_count ? '<div class="text-muted small">sent ' . (int) $q->sent_count . '×</div>' : '')
+                        . self::convertedLink($q),
+                    action_dropdown($actions, $q->branch_id),
                 ];
             });
 
-            $all = DB::table('sale_quotations')->where('deleted', 'No');
+            $all = BranchController::scope(DB::table('sale_quotations'), 'branch_id')->where('deleted', 'No');
 
             return response()->json([
                 'data'    => $data,
@@ -140,7 +148,7 @@ class SaleQuotationController extends Controller
 
     public function edit(int $id)
     {
-        $quotation = $this->findQuotation($id);
+        $quotation = $this->findQuotation($id, false, true);
         abort_unless($quotation, 404, 'Quotation not found.');
 
         return view('admin.sales.quotations.form', [
@@ -228,7 +236,8 @@ class SaleQuotationController extends Controller
                     return ['quotation' => $quotation, 'repriced' => false];
                 }
 
-                $current = BranchController::scope(DB::table('sale_quotations'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('sale_quotations', $id);
+                $current = BranchController::scopeOwn(DB::table('sale_quotations'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
                 abort_unless($current, 404, 'Quotation not found.');
 
                 // A re-price = items, prices, discounts, VAT or validity changed.
@@ -300,7 +309,11 @@ class SaleQuotationController extends Controller
             'history'   => $this->revisionHistory($revisions),
             'logs'      => DB::table('sale_quotation_logs as l')->leftJoin('users as u', 'u.id', '=', 'l.created_by')
                 ->where('l.sale_quotation_id', $id)->orderByDesc('l.id')->get(['l.*', 'u.name as user_name']),
-            'statuses'  => self::STATUSES,
+            'statuses'  => self::MANUAL_STATUSES,
+            'convertedLink' => self::convertedLink($quotation),
+            'payMethods' => ($liquid = DB::table('chart_of_accounts')->where('slug', 'liquid-asset')->where('deleted', 'No')->value('id'))
+                ? DB::table('chart_of_accounts')->where('deleted', 'No')->where('status', 'Active')->where('parent_id', $liquid)->orderBy('account_code')->get(['id', 'account_name'])
+                : collect(),
         ]);
     }
 
@@ -330,7 +343,7 @@ class SaleQuotationController extends Controller
     /** Data for the Send dialog (customer email, default subject and message). */
     public function sendInfo(int $id)
     {
-        $q = $this->findQuotation($id, true);
+        $q = $this->findQuotation($id, true, true);
         abort_unless($q, 404, 'Quotation not found.');
         $company = $this->companyName();
 
@@ -361,7 +374,7 @@ class SaleQuotationController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
         }
 
-        $q = $this->findQuotation($id, true);
+        $q = $this->findQuotation($id, true, true);
         if (!$q) {
             return response()->json(['status' => false, 'message' => 'Quotation not found.'], 404);
         }
@@ -401,7 +414,7 @@ class SaleQuotationController extends Controller
     /** Logs a WhatsApp share (the browser opens the chat). */
     public function share(int $id)
     {
-        $q = $this->findQuotation($id, true);
+        $q = $this->findQuotation($id, true, true);
         if (!$q) {
             return response()->json(['status' => false, 'message' => 'Quotation not found.'], 404);
         }
@@ -415,7 +428,7 @@ class SaleQuotationController extends Controller
     public function status(Request $request, int $id)
     {
         $validator = Validator::make($request->all(), [
-            'quotation_status' => ['required', Rule::in(self::STATUSES)],
+            'quotation_status' => ['required', Rule::in(self::MANUAL_STATUSES)],
             'note'             => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -423,13 +436,19 @@ class SaleQuotationController extends Controller
             return response()->json(['status' => false, 'message' => $validator->errors()->first()], 422);
         }
 
-        $q = $this->findQuotation($id, true);
+        $q = $this->findQuotation($id, true, true);
         if (!$q) {
             return response()->json(['status' => false, 'message' => 'Quotation not found.'], 404);
         }
 
+        if ($q->quotation_status === 'Converted') {
+            return response()->json(['status' => false, 'message' => $q->quotation_no . ' is already converted, so its status cannot change.'], 422);
+        }
+
         $new = $request->input('quotation_status');
-        DB::table('sale_quotations')->where('id', $id)->update(['quotation_status' => $new, 'updated_by' => Auth::id(), 'updated_date' => now(), 'updated_at' => now()]);
+        DB::table('sale_quotations')->where('id', $id)->update(['quotation_status' => $new, 'updated_by' => Auth::id(), 'updated_date' => now(), 'updated_at' => now()]
+            // Marking it Sent by hand counts as a send, so "Sent" on the quotation shows it.
+            + ($new === 'Sent' ? ['sent_at' => now(), 'sent_count' => DB::raw('sent_count + 1')] : []));
         $this->log($q, 'status', 'Status ' . $q->quotation_status . ' → ' . $new . ($request->filled('note') ? ' — ' . trim($request->input('note')) : '') . '.', ['from' => $q->quotation_status, 'to' => $new]);
 
         return response()->json(['status' => true, 'message' => $q->quotation_no . ' marked ' . $new . '.']);
@@ -495,7 +514,7 @@ class SaleQuotationController extends Controller
 
     public function delete(int $id)
     {
-        $q = $this->findQuotation($id);
+        $q = $this->findQuotation($id, false, true);
         if (!$q) {
             return response()->json(['status' => false, 'message' => 'Quotation not found.'], 404);
         }
@@ -505,6 +524,134 @@ class SaleQuotationController extends Controller
 
         return response()->json(['status' => true, 'message' => $q->quotation_no . ' deleted.']);
     }
+
+    /* ------------------------------------------------------------------ */
+    /*  Convert an accepted quotation to a sale or a sale order           */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * kind=sale: a Wholesale sale now (stock leaves now, optional payment); kind=order: a sale order (optional
+     * advance), delivered later. Both are created by SaleController (store / orderStore) with the quotation's lines,
+     * prices, line discounts, overall discount and VAT rate, so the totals match the quotation; the quotation is
+     * then marked Converted with a link to what it became.
+     */
+    public function convert(Request $request, int $id)
+    {
+        $kind = $request->input('kind') === 'order' ? 'order' : 'sale';
+        if (!PermissionController::allows($kind === 'order' ? 'sale_orders.create' : 'sales.create')) {
+            return response()->json(['status' => false, 'message' => 'You do not have permission to create ' . ($kind === 'order' ? 'sale orders.' : 'sales.')], 403);
+        }
+
+        $q = $this->findQuotation($id);
+        if (!$q) {
+            return response()->json(['status' => false, 'message' => 'Quotation not found.'], 404);
+        }
+        if ($q->quotation_status !== 'Accepted') {
+            return response()->json(['status' => false, 'message' => $q->quotation_status === 'Converted'
+                ? $q->quotation_no . ' is already converted.' : 'Only an accepted quotation can be converted. Mark it Accepted first.'], 422);
+        }
+
+        $items = $this->itemsOf($id)->map(fn ($l) => [
+            'product_id'         => (int) $l->product_id,
+            'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+            'qty'                => (float) $l->qty,
+            'sale_price'         => (float) $l->unit_price,
+            'discount_type'      => 'Amount',
+            'discount_value'     => (float) $l->discount,
+        ])->values()->all();
+
+        $paid = (float) $request->input('paid_amount', 0);
+        if ($paid > 0 && (!$request->filled('payment_method') || !$request->filled('payment_method_account'))) {
+            return response()->json(['status' => false, 'message' => 'Choose the payment method and account for the amount received.'], 422);
+        }
+
+        $data = [
+            'customer_id'            => (int) $q->customer_id,
+            'discount_type'          => 'Amount',
+            'discount_value'         => (float) $q->discount_amount,
+            'payment_method'         => $paid > 0 ? $request->input('payment_method') : null,
+            'payment_method_account' => $paid > 0 ? $request->input('payment_method_account') : null,
+            'remarks'                => trim('From quotation ' . $q->quotation_no . '. ' . (string) $request->input('remarks')),
+            'sale_quotation_id'      => $q->id,
+            'items'                  => json_encode($items),
+        ];
+        if ($kind === 'sale') {
+            $data += ['sale_type' => 'Wholesale', 'sale_date' => $request->input('date') ?: today()->toDateString(), 'paid_amount' => $paid];
+        } else {
+            $data += ['order_date' => $request->input('date') ?: today()->toDateString(), 'delivery_date' => $request->input('delivery_date') ?: null,
+                'advance_paid' => $paid];
+        }
+
+        $sales = app(SaleController::class);
+        $response = $kind === 'sale'
+            ? $sales->store(Request::create('', 'POST', $data))
+            : $sales->orderStore(Request::create('', 'POST', $data));
+        $body = $response->getData(true);
+
+        if (empty($body['status'])) {
+            return response()->json(['status' => false, 'message' => $body['message'] ?? 'Unable to convert the quotation.'],
+                $response->getStatusCode() >= 400 ? $response->getStatusCode() : 422);
+        }
+
+        return response()->json([
+            'status'   => true,
+            'message'  => $q->quotation_no . ' converted to ' . ($kind === 'sale' ? 'a sale.' : 'a sale order.'),
+            'redirect' => route('admin.quotations.show', $q->id),
+            'pdf_url'  => $body['invoice_url'] ?? $body['order_url'] ?? null,
+            'sale_id'  => $body['sale_id'] ?? null,
+            'order_id' => $body['order_id'] ?? null,
+        ]);
+    }
+
+    /**
+     * The accepted, not yet converted quotation of the logged-in branch, locked (called inside the sale / order
+     * save, so a quotation cannot be converted twice). Refuses anything else.
+     */
+    public static function convertible(int $id, ?int $customerId = null): object
+    {
+        BranchController::guardOwn('sale_quotations', $id);
+        $q = BranchController::scopeOwn(DB::table('sale_quotations'), 'branch_id')->where('id', $id)->where('deleted', 'No')->lockForUpdate()->first();
+        abort_unless($q, 422, 'The quotation was not found in this branch.');
+        abort_if($q->quotation_status === 'Converted', 422, $q->quotation_no . ' is already converted.');
+        abort_unless($q->quotation_status === 'Accepted', 422, 'Only an accepted quotation can be converted.');
+        abort_if($customerId && (int) $q->customer_id !== $customerId, 422, 'The customer is not the quotation\'s customer.');
+
+        return $q;
+    }
+
+    /** $kind 'sale' | 'order'. Marks the quotation Converted and logs it. */
+    public static function markConverted(object $q, string $kind, int $docId, string $docNo): void
+    {
+        DB::table('sale_quotations')->where('id', $q->id)->update([
+            'quotation_status' => 'Converted',
+            ($kind === 'order' ? 'converted_order_id' : 'converted_sale_id') => $docId,
+            'updated_by' => Auth::id(), 'updated_date' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('sale_quotation_logs')->insert([
+            'sale_quotation_id' => $q->id, 'customer_id' => $q->customer_id, 'action' => 'status',
+            'message' => 'Converted to ' . ($kind === 'order' ? 'sale order ' : 'sale ') . $docNo . '.',
+            'meta' => json_encode(['from' => $q->quotation_status, 'to' => 'Converted', $kind => $docId]),
+            'created_by' => Auth::id(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /** "→ INV-…" / "→ SO-…" link under a converted quotation's status. */
+    public static function convertedLink(object $q): string
+    {
+        if (!empty($q->converted_sale_id)) {
+            $no = DB::table('sales')->where('id', $q->converted_sale_id)->value('invoice_no');
+
+            return $no ? '<div class="small"><a href="' . route('sales.invoice.pdf', $q->converted_sale_id) . '" target="_blank">→ Sale ' . e($no) . '</a></div>' : '';
+        }
+        if (!empty($q->converted_order_id)) {
+            $no = DB::table('sale_orders')->where('id', $q->converted_order_id)->value('order_no');
+
+            return $no ? '<div class="small"><a href="' . route('sales.order.invoice.pdf', $q->converted_order_id) . '" target="_blank">→ Order ' . e($no) . '</a></div>' : '';
+        }
+
+        return '';
+    }
+
 
     /* ------------------------------------------------------------------ */
     /*  Customer quotation log                                            */
@@ -560,7 +707,7 @@ class SaleQuotationController extends Controller
 
     public static function statusBadge(string $status): string
     {
-        $cls = ['Draft' => 'bg-secondary', 'Sent' => 'bg-info', 'Accepted' => 'bg-success', 'Rejected' => 'bg-danger', 'Expired' => 'bg-warning'][$status] ?? 'bg-secondary';
+        $cls = ['Draft' => 'bg-secondary', 'Sent' => 'bg-info', 'Accepted' => 'bg-success', 'Rejected' => 'bg-danger', 'Expired' => 'bg-warning', 'Converted' => 'bg-primary'][$status] ?? 'bg-secondary';
 
         return '<span class="badge ' . $cls . '">' . e($status) . '</span>';
     }
@@ -581,10 +728,18 @@ class SaleQuotationController extends Controller
         }
     }
 
-    private function findQuotation(int $id, bool $withCustomer = false): ?object
+    /**
+     * A quotation of a branch the user sees (show, PDF, copy). $own = true for changes (edit, send, share, status,
+     * delete): the working branch's only; another visible branch's is refused with "Sign in to <Branch> ...".
+     */
+    private function findQuotation(int $id, bool $withCustomer = false, bool $own = false): ?object
     {
-        // Only the logged-in branch's quotations (show, edit, PDF, send, status, copy, delete all come through here).
-        $q = BranchController::scope(DB::table('sale_quotations as q'), 'q.branch_id')->where('q.id', $id)->where('q.deleted', 'No');
+        if ($own) {
+            BranchController::guardOwn('sale_quotations', $id);
+        }
+        $q = DB::table('sale_quotations as q');
+        $own ? BranchController::scopeOwn($q, 'q.branch_id') : BranchController::scope($q, 'q.branch_id');
+        $q->where('q.id', $id)->where('q.deleted', 'No');
         if ($withCustomer) {
             $q->join('parties as c', 'c.id', '=', 'q.customer_id')->leftJoin('users as u', 'u.id', '=', 'q.created_by')
                 ->select('q.*', 'c.name as customer_name', 'c.code as customer_code', 'c.phone as customer_phone',
@@ -781,7 +936,7 @@ class SaleQuotationController extends Controller
             $totals = $revision;
         }
 
-        return PDF::loadView('admin.sales.quotations.pdf', [
+        return SettingController::pdf('admin.sales.quotations.pdf', [
             'quotation' => $q,
             'items'     => $items->map(function ($l) {
                 $l->thumb = $this->imageData($l->image ? 'uploads/products/' . $l->image : null, 160);
@@ -791,9 +946,7 @@ class SaleQuotationController extends Controller
             'totals'    => $totals,
             'revisionNo' => $revisionNo ?: (int) $q->revision_no,
             'isOld'     => (bool) $revision,
-            'company'   => $this->company(),
-            'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'portrait')->setOption('isFontSubsettingEnabled', true);
+        ]);
     }
 
     private function pdfName(object $q, ?int $revisionNo): string
@@ -826,22 +979,6 @@ class SaleQuotationController extends Controller
     private function companyName(): string
     {
         return Setting::where('deleted', 'No')->value('company_name') ?: config('app.name');
-    }
-
-    private function company(): array
-    {
-        $s = Setting::where('deleted', 'No')->where('status', 'Active')->first();
-
-        return [
-            'name'    => $s->company_name ?? 'Company Name',
-            'tagline' => $s->company_tagline ?? null,
-            'address' => trim(implode(', ', array_filter([$s->address ?? null, $s->city ?? null, $s->country ?? null]))),
-            'phone'   => $s->phone ?? null,
-            'email'   => $s->email ?? null,
-            'website' => $s->website ?? null,
-            'logo'    => $this->imageData($s->logo ?? null),
-            'signature' => $this->imageData($s->signature ?? null),
-        ];
     }
 
     /**

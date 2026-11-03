@@ -58,6 +58,9 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Every read in a save sees what other saves have committed (no stale snapshot after waiting on a lock),
+            // so the cash-drawer check after lockForUpdate() reads the drawer's latest balance; also fewer gap-lock deadlocks.
+            'isolation_level' => 'READ COMMITTED',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

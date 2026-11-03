@@ -88,7 +88,7 @@
                             </div>
                         </div>
                         <p class="adj-help count-only">Enter what you count on the shelf. Leave blank to skip a line. Difference = counted − system; posting adds or removes the difference.</p>
-                        <p class="adj-help adj-only">“Found” adds stock; Damage, Expired, Lost and Correction remove it (batch products leave earliest expiry first).</p>
+                        <p class="adj-help adj-only">“Found” adds stock; Damage, Expired, Lost and Correction remove it. For batch-tracked products choose the batch the stock leaves (or is found in).</p>
                         <div class="table-responsive">
                             <table class="table table-bordered line-table mb-0">
                                 <thead id="linesHead"></thead>
@@ -156,7 +156,18 @@
                     '<td><input type="number" class="form-control form-control-sm num counted" name="items[' + n + '][counted_qty]" min="0" step="any" value="' + (values.counted ?? '') + '"></td>' +
                     '<td class="text-end diff">-</td><td>' + note + '</td></tr>';
             }
-            return '<tr><td>' + esc(p.label) + hidden + '</td><td class="text-end">' + q(p.qty) + '</td>' +
+            let batch = '';
+            if (p.track_batch === 'Yes') {
+                const found = $('#adjustment_type').val() === 'Found';
+                batch = '<div class="mt-1"><label class="form-label small mb-0" for="batch_' + n + '">Batch' + (found ? '' : ' <span class="text-danger">*</span>') + '</label>' +
+                    '<select class="form-select form-select-sm batch-pick" id="batch_' + n + '" name="items[' + n + '][batch_id]">' +
+                    '<option value="">' + (found ? 'No batch (new stock)' : 'Choose batch') + '</option>' +
+                    (p.batches || []).map(function(b) {
+                        return '<option value="' + b.id + '" data-qty="' + b.qty + '"' + (values.batch_id == b.id ? ' selected' : '') + '>' + esc(b.batch_no) +
+                            (b.expiry_date ? ' · exp ' + esc(b.expiry_date) : '') + ' · ' + q(b.qty) + ' in stock</option>';
+                    }).join('') + '</select></div>';
+            }
+            return '<tr data-total="' + p.qty + '"><td>' + esc(p.label) + hidden + batch + '</td><td class="text-end in-stock">' + q(p.qty) + '</td>' +
                 '<td><input type="number" class="form-control form-control-sm num" name="items[' + n + '][qty]" min="0" step="any" value="' + (values.qty ?? 1) + '"></td>' +
                 '<td>' + note + '</td><td><button type="button" class="btn btn-sm btn-outline-danger rm" aria-label="Remove"><i class="bi bi-x"></i></button></td></tr>';
         }
@@ -193,6 +204,14 @@
         }
 
         function submit(post) {
+            if (!isCount() && $('#adjustment_type').val() !== 'Found') {
+                const missing = $('#lines .batch-pick').filter(function() { return !$(this).val(); });
+                if (missing.length) {
+                    $('#adj_error').text('Choose the batch for every batch-tracked product.');
+                    missing.first().trigger('focus');
+                    return;
+                }
+            }
             const $btns = $('#saveDraft, #postAdj').prop('disabled', true);
             $('#adj_error').text('');
             // Count sheet: send only lines with a count.
@@ -241,7 +260,7 @@
                             '<table class="table table-sm table-bordered line-table"><thead><tr><th>Product</th><th class="text-end">System</th><th class="text-end">Counted</th><th class="text-end">Difference</th><th class="text-end">Value</th><th>Note</th></tr></thead><tbody>' +
                             response.items.map(function(i) {
                                 const d = parseFloat(i.difference);
-                                return '<tr><td>' + esc(i.name) + (i.variant ? ' (' + esc(i.variant) + ')' : '') + '</td><td class="text-end">' + q(i.system_qty) + '</td><td class="text-end">' +
+                                return '<tr><td>' + esc(i.name) + (i.variant ? ' (' + esc(i.variant) + ')' : '') + (i.batch_no ? '<div class="text-muted small">Batch ' + esc(i.batch_no) + '</div>' : '') + '</td><td class="text-end">' + q(i.system_qty) + '</td><td class="text-end">' +
                                     (i.counted_qty === null ? '-' : q(i.counted_qty)) + '</td><td class="text-end ' + (d > 0 ? 'diff-up' : (d < 0 ? 'diff-down' : '')) + '">' + (d > 0 ? '+' : '') + q(d) +
                                     '</td><td class="text-end">' + money(d * parseFloat(i.unit_cost)) + '</td><td>' + esc(i.note || '') + '</td></tr>';
                             }).join('') + '</tbody></table>');
@@ -269,7 +288,7 @@
                             $('#lines').html(response.items.map(function(i, n) {
                                 const p = catalogue.find(function(c) { return c.id == i.product_id && (c.variant_id || null) == (i.product_variant_id || null); })
                                     || { id: i.product_id, variant_id: i.product_variant_id, label: i.name, qty: i.system_qty };
-                                return line(p, n, { counted: i.counted_qty, qty: Math.abs(i.difference), note: i.note });
+                                return line(p, n, { counted: i.counted_qty, qty: Math.abs(i.difference), note: i.note, batch_id: i.batch_id });
                             }).join(''));
                             diffs();
                         });
@@ -327,6 +346,10 @@
                 $(this).val('').trigger('change.select2');
             });
             $(document).on('click', '#lines .rm', function() { $(this).closest('tr').remove(); });
+            $(document).on('change', '#lines .batch-pick', function() {
+                const $tr = $(this).closest('tr'), $o = $(this).find('option:selected');
+                $tr.find('.in-stock').text(q($(this).val() ? $o.data('qty') : $tr.data('total')));
+            });
 
             $('#saveDraft').on('click', function() { submit(false); });
             $('#postAdj').on('click', function() { submit(true); });

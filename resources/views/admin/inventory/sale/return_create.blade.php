@@ -280,6 +280,35 @@ function renderReturnData(response) {
 
                         </div>
 
+                        <div class="mt-3">
+                            <div class="form-label mb-1">Refund <span class="text-danger">*</span></div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="refund_mode" id="refundCredit" value="Credit" checked>
+                                <label class="form-check-label" for="refundCredit">Keep as customer credit</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="refund_mode" id="refundCash" value="Cash">
+                                <label class="form-check-label" for="refundCash">Cash refund now</label>
+                            </div>
+                            <div class="form-text">Customer balance now: {{ number_format(abs((float) $customerBalance), 2) }} {{ (float) $customerBalance < 0 ? '(credit)' : '(due)' }}. Credit is taken off what the customer owes, or can be paid back later from Payment.</div>
+                        </div>
+
+                        <div id="cashRefundFields" class="mt-2 d-none">
+                            <label class="form-label" for="refundMethod">Pay from method <span class="text-danger">*</span></label>
+                            <select id="refundMethod" class="form-select form-select-sm mb-2">
+                                <option value="">Select method</option>
+                                @foreach ($payMethods as $pm)
+                                    <option value="{{ $pm->id }}">{{ $pm->account_name }}</option>
+                                @endforeach
+                            </select>
+                            <label class="form-label" for="refundAccount">Pay from account <span class="text-danger">*</span></label>
+                            <select id="refundAccount" class="form-select form-select-sm mb-2">
+                                <option value="">Select method first</option>
+                            </select>
+                            <label class="form-label" for="refundAmount">Cash refund amount</label>
+                            <input type="number" step="0.01" min="0" id="refundAmount" class="form-control form-control-sm" placeholder="Return total">
+                        </div>
+
                         <button type="button"
                                 class="btn btn-primary w-100 mt-3"
                                 id="saveReturnBtn">
@@ -346,6 +375,32 @@ $(document).on('input', '.returnQty', function () {
 });
 
 
+$(document).on('change', 'input[name=refund_mode]', function () {
+    $('#cashRefundFields').toggleClass('d-none', $('input[name=refund_mode]:checked').val() !== 'Cash');
+});
+
+$(document).on('change', '#refundMethod', function () {
+    let $account = $('#refundAccount');
+    if (!$(this).val()) {
+        $account.html('<option value="">Select method first</option>');
+        return;
+    }
+    $.ajax({
+        url: "{{ route('admin.getCoaChilds') }}",
+        type: 'GET',
+        dataType: 'html',
+        data: { parent_id: $(this).val() },
+        success: function(response) {
+            // alert(JSON.stringify(response));
+            $account.html(response);
+        },
+        error: function(xhr) {
+            // alert(JSON.stringify(xhr));
+            toastr.error('Could not load payment accounts.');
+        }
+    });
+});
+
 function calculateReturnTotal() {
 
     let total = 0;
@@ -403,6 +458,11 @@ $(document).on('click', '#saveReturnBtn', function () {
 
     }
 
+    if ($('input[name=refund_mode]:checked').val() === 'Cash' && !$('#refundAccount').val()) {
+        toastr.error('Choose the method and account the cash refund is paid from.');
+        return;
+    }
+
 
     Swal.fire({
 
@@ -447,6 +507,14 @@ $(document).on('click', '#saveReturnBtn', function () {
                 datetime: $('#datetime').val(),
 
                 remarks: $('#returnRemarks').val(),
+
+                refund_mode: $('input[name=refund_mode]:checked').val() || 'Credit',
+
+                payment_method: $('#refundMethod').val() || '',
+
+                payment_method_account: $('#refundAccount').val() || '',
+
+                refund_amount: $('#refundAmount').val() || '',
 
                 items: selectedItems
 
@@ -507,12 +575,9 @@ $(document).on('click', '#saveReturnBtn', function () {
 
 
 function escapeHtml(value) {
-
-    return $('<div>')
-        .text(value ?? '')
-        .html();
-
-}
+        // Escapes quotes too: the output also goes into attribute values.
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
 
 </script>
 

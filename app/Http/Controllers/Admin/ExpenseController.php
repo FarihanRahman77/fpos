@@ -15,7 +15,6 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
-use PDF;
 use App\Traits\PaymentTrait;
 use App\Traits\AccountBalanceTrait;
 
@@ -36,7 +35,7 @@ class ExpenseController extends Controller
     {
         // $this->groups(self::PAYMENT_TYPE);
         return view('admin.accounts.expense.index', [
-            'employees' => DB::table('employees')
+            'employees' => BranchController::scope(DB::table('employees'), 'branch_id')
                 ->where('deleted', 'No')->where('status', 'Active')
                 ->orderBy('name')
                 ->get(['id', 'employee_code', 'name']),
@@ -177,11 +176,11 @@ class ExpenseController extends Controller
                     ['label' => 'Print PDF', 'icon' => 'fas fa-file-pdf', 'onclick' => 'pdf(' . $id . ')'],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteExpense(' . $id . ')'],
-                ]);
+                ], $expense->branch_id);
 
                 $output['data'][] = [
                     $i++,
-                    '<span class="fw-semibold">' . e($expense->expense_no) . '</span>',
+                    '<span class="fw-semibold">' . e($expense->expense_no) . '</span>' . branch_tag($expense->branch_id),
                     // hidden ISO prefix / zero-padded value keep column sorting correct
                     '<span class="d-none">' . $date->format('Y-m-d') . '</span>' . e($date->format('d M Y')),
                     e($expense->employee_name ?: '-')
@@ -347,81 +346,89 @@ class ExpenseController extends Controller
         ]);
         $total = round($lines->sum('amount'), 2);
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request, $lines, $total) {
+            DB::beginTransaction();
 
-        try {
-            if ($request->filled('id')) {
-                $expense = BranchController::scope(Expense::where('id', (int) $request->input('id')))
-                    ->where('deleted', 'No')->lockForUpdate()->first();
+            try {
+                if ($request->filled('id')) {
+                    BranchController::guardOwn('expenses', $request->input('id'));
+                    $expense = BranchController::scopeOwn(Expense::where('id', (int) $request->input('id')))
+                        ->where('deleted', 'No')->lockForUpdate()->first();
 
-                if (!$expense) {
-                    abort(404, 'Expense not found.');
+                    if (!$expense) {
+                        abort(404, 'Expense not found.');
+                    }
+
+                    if ($closed = AccountingReportController::closedDateMessage($expense->expense_date)) {
+                        abort(422, $closed);
+                    }
+
+                    // the cash drawer may give back what this expense already took from it
+                    ReportController::ensureCash($request->input('payment_account_id'), $total,
+                        (int) $expense->payment_account_id === (int) $request->input('payment_account_id') ? (float) $expense->total_amount : 0);
+                    $this->reverseExpense($expense);
+                } else {
+                    ReportController::ensureCash($request->input('payment_account_id'), $total);
+                    // Deleted rows are included (expense_no is unique, so a number is never reused);
+                    // the locked read stops two simultaneous saves getting the same number.
+                    $expenseCode = (int) Expense::lockForUpdate()->max('expense_no') + 1;
+
+                    $expense = new Expense();
+                    $expense->expense_no = str_pad((string) $expenseCode, 6, '0', STR_PAD_LEFT);
+                    $expense->created_by = Auth::id();
                 }
 
-                if ($closed = AccountingReportController::closedDateMessage($expense->expense_date)) {
-                    abort(422, $closed);
+                $expense->expense_date       = $request->input('expense_date');
+                $expense->employee_id        = $request->input('employee_id') ?: null;
+                $expense->payment_group_id   = (int) $request->input('payment_group_id');
+                $expense->payment_account_id = (int) $request->input('payment_account_id');
+                $expense->reference_no       = $this->nullIfBlank($request->input('reference_no'));
+                $expense->remarks            = $this->nullIfBlank($request->input('note'));
+                $expense->total_amount       = $total;
+                $expense->updated_by         = Auth::id();
+                $expense->save();
+
+                foreach ($lines as $line) {
+                    $expenseDetail = new ExpenseDetail();
+                    $expenseDetail->expense_id         = $expense->id;
+                    $expenseDetail->expense_group_id   = $line['expense_group_id'];
+                    $expenseDetail->expense_account_id = $line['expense_account_id'];
+                    $expenseDetail->description        = $line['description'];
+                    $expenseDetail->amount             = $line['amount'];
+                    $expenseDetail->save();
                 }
 
-                $this->reverseExpense($expense);
-            } else {
-                // Deleted rows are included (expense_no is unique, so a number is never reused);
-                // the locked read stops two simultaneous saves getting the same number.
-                $expenseCode = (int) Expense::lockForUpdate()->max('expense_no') + 1;
+                $this->storeCreditPayment([
+                    'party_id'       => $expense->employee_id,
+                    'party_type'     => 'Employee',
+                    'payment_type'   => 'Expense',
+                    'datetime'       => $expense->expense_date,
+                    'credit'         => $total,
+                    'expense_id'     => $expense->id,
+                    'payment_method' => '',
+                ]);
 
-                $expense = new Expense();
-                $expense->expense_no = str_pad((string) $expenseCode, 6, '0', STR_PAD_LEFT);
-                $expense->created_by = Auth::id();
+                // Dr expense heads / Cr the payment account.
+                $this->postBalances($this->sumByAccount($lines), [(int) $expense->payment_account_id => $total], 1);
+
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Expense ' . $expense->expense_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
+                ]);
+            } catch (HttpExceptionInterface $e) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+            } catch (Throwable $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                Log::error('Expense store error', $this->ctx($e));
+
+                return response()->json(['status' => false, 'message' => 'Unable to save the expense. Please try again.'], 500);
             }
-
-            $expense->expense_date       = $request->input('expense_date');
-            $expense->employee_id        = $request->input('employee_id') ?: null;
-            $expense->payment_group_id   = (int) $request->input('payment_group_id');
-            $expense->payment_account_id = (int) $request->input('payment_account_id');
-            $expense->reference_no       = $this->nullIfBlank($request->input('reference_no'));
-            $expense->remarks            = $this->nullIfBlank($request->input('note'));
-            $expense->total_amount       = $total;
-            $expense->updated_by         = Auth::id();
-            $expense->save();
-
-            foreach ($lines as $line) {
-                $expenseDetail = new ExpenseDetail();
-                $expenseDetail->expense_id         = $expense->id;
-                $expenseDetail->expense_group_id   = $line['expense_group_id'];
-                $expenseDetail->expense_account_id = $line['expense_account_id'];
-                $expenseDetail->description        = $line['description'];
-                $expenseDetail->amount             = $line['amount'];
-                $expenseDetail->save();
-            }
-
-            $this->storeCreditPayment([
-                'party_id'       => $expense->employee_id,
-                'party_type'     => 'Employee',
-                'payment_type'   => 'Expense',
-                'datetime'       => $expense->expense_date,
-                'credit'         => $total,
-                'expense_id'     => $expense->id,
-                'payment_method' => '',
-            ]);
-
-            // Dr expense heads / Cr the payment account.
-            $this->postBalances($this->sumByAccount($lines), [(int) $expense->payment_account_id => $total], 1);
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Expense ' . $expense->expense_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
-            ]);
-        } catch (HttpExceptionInterface $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Expense store error', $this->ctx($e));
-
-            return response()->json(['status' => false, 'message' => 'Unable to save the expense. Please try again.'], 500);
-        }
+        });
     }
 
     /** Takes a saved expense back out of the balances and soft-deletes its lines and its ledger row. */
@@ -462,7 +469,8 @@ class ExpenseController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $expense = BranchController::scope(DB::table('expenses'))
+                BranchController::guardOwn('expenses', $request->input('id'));
+                $expense = BranchController::scopeOwn(DB::table('expenses'))
                     ->where('id', (int) $request->input('id'))->where('deleted', 'No')
                     ->lockForUpdate()->first();
 
@@ -606,26 +614,15 @@ class ExpenseController extends Controller
                 'c.account_code as account_code', 'c.account_name as account_name',
             ]);
 
-        // Company details come from the same $generalSetting your layout uses (if it is shared globally).
-        $settings = view()->shared('generalSetting', []);
-
-        $company = [
-            'name'    => data_get($settings, 'company_name', 'Company Name'),
-            'address' => data_get($settings, 'company_address'),
-            'phone'   => data_get($settings, 'company_phone'),
-            'email'   => data_get($settings, 'company_email'),
-        ];
-
         $total = (float) $expense->total_amount;
 
-        $pdf = PDF::loadView('admin.accounts.expense.pdf', [
-            'expense'  => $expense,
-            'details'  => $details,
-            'company'  => $company,
-            'total'    => $total,
-            'words'    => amount_in_words($total),
-            'printedAt' => now()->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'portrait');
+        // The company header / footer come from the shared PDF layout (SettingController::pdf()).
+        $pdf = SettingController::pdf('admin.accounts.expense.pdf', [
+            'expense'    => $expense,
+            'details'    => $details,
+            'total'      => $total,
+            'preparedBy' => DB::table('users')->where('id', $expense->created_by)->value('name') ?? '',
+        ]);
 
         $fileName = 'Expense-' . $expense->expense_no . '.pdf';
 

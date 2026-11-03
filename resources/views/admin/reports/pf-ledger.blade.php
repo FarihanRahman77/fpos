@@ -25,7 +25,7 @@
             <div>
                 <h4 class="mb-0">PF Ledger</h4>
                 <small class="text-muted">
-                    Monthly provident fund of an employee, grouped by joining / increment / salary change, with running balance.
+                    Monthly provident fund of an employee, grouped by joining / increment / salary change. The balance counts PF deducted in processed salary only; months not processed are shown as projected.
                     @if ($payroll->pf_enabled !== 'Yes')
                         <span class="text-danger">PF deduction is currently off in Payroll Setup.</span>
                     @endif
@@ -85,7 +85,8 @@
             <div class="col-6 col-lg-3">
                 <div class="card acc-stat"><div class="card-body d-flex align-items-center gap-3">
                     <div class="icon i4"><i class="fas fa-piggy-bank"></i></div>
-                    <div><div class="text-muted small">PF in Period</div><h5 class="mb-0" id="sumTotal">0.00</h5></div>
+                    <div><div class="text-muted small">Deducted in Period</div><h5 class="mb-0" id="sumTotal">0.00</h5>
+                        <div class="text-muted small">Projected (not processed): <span id="sumProjected">0.00</span></div></div>
                 </div></div>
             </div>
             <div class="col-6 col-lg-3">
@@ -151,6 +152,7 @@
                     $('#reportBody').html(response.html);
                     $('#sumOpening').text(response.summary.opening);
                     $('#sumTotal').text(response.summary.total);
+                    $('#sumProjected').text(response.summary.projected || '0.00');
                     $('#sumClosing').text(response.summary.closing);
                     $('#sumIncrements').text(response.summary.increments);
                 },

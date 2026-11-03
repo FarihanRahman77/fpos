@@ -140,6 +140,24 @@ class StockController extends Controller
                 return $r;
             });
 
+        // Batch-tracked products: their batches with stock in the branch, earliest expiry first (the adjustment picker asks which one).
+        $batches = DB::table('stocks as s')->join('product_batches as b', 'b.id', '=', 's.batch_id')
+            ->where('s.deleted', 'No')->where('s.branch_id', $branch)
+            ->groupBy('b.id', 'b.batch_no', 'b.expiry_date', 's.product_id', 's.product_variant_id')
+            ->havingRaw('SUM(s.in_qty - s.out_qty) > 0')
+            ->orderByRaw('b.expiry_date IS NULL')->orderBy('b.expiry_date')->orderBy('b.id')
+            ->selectRaw('b.id, b.batch_no, b.expiry_date, s.product_id, s.product_variant_id, SUM(s.in_qty - s.out_qty) AS qty')->get()
+            ->groupBy(fn ($b) => $b->product_id . ':' . ($b->product_variant_id ?: 0));
+        $rows = $rows->map(function ($r) use ($batches) {
+            $r->batches = $r->track_batch === 'Yes'
+                ? ($batches[$r->id . ':' . ($r->variant_id ?: 0)] ?? collect())->map(fn ($b) => [
+                    'id' => (int) $b->id, 'batch_no' => $b->batch_no, 'expiry_date' => $b->expiry_date, 'qty' => round((float) $b->qty, 3),
+                ])->values()
+                : [];
+
+            return $r;
+        });
+
         return response()->json(['status' => true, 'data' => $rows]);
     }
 
@@ -160,11 +178,11 @@ class StockController extends Controller
     public function transferList(Request $request)
     {
         try {
-            $branch = BranchController::current();
+            $visible = BranchController::visibleIds();
             $rows = DB::table('stock_transfers as t')
                 ->join('branches as f', 'f.id', '=', 't.from_branch_id')->join('branches as d', 'd.id', '=', 't.to_branch_id')
                 ->where('t.deleted', 'No')
-                ->where(fn ($q) => $q->where('t.from_branch_id', $branch)->orWhere('t.to_branch_id', $branch))
+                ->where(fn ($q) => $q->whereIn('t.from_branch_id', $visible)->orWhereIn('t.to_branch_id', $visible))
                 ->orderByDesc('t.transfer_date')->orderByDesc('t.id')
                 ->get(['t.*', 'f.name as from_name', 'd.name as to_name']);
 
@@ -176,9 +194,13 @@ class StockController extends Controller
                 if ($t->transfer_status === 'In Transit') {
                     if ((int) $t->to_branch_id === (int) BranchController::activeId()) {
                         $items[] = ['label' => 'Receive', 'icon' => 'fas fa-check', 'onclick' => "Transfer.receive($id)"];
+                    } elseif (BranchController::multiBranch() && (int) $t->from_branch_id !== (int) BranchController::activeId()) {
+                        $items[] = ['label' => 'Receive', 'icon' => 'fas fa-check', 'disabled' => true, 'title' => 'Sign in to ' . $t->to_name . ' to receive this'];
                     }
                     $items[] = ['divider' => true];
-                    $items[] = ['label' => 'Cancel', 'icon' => 'fas fa-ban', 'class' => 'text-danger', 'onclick' => "Transfer.cancel($id)"];
+                    $items[] = (int) $t->from_branch_id === (int) BranchController::activeId()
+                        ? ['label' => 'Cancel', 'icon' => 'fas fa-ban', 'class' => 'text-danger', 'onclick' => "Transfer.cancel($id)"]
+                        : ['label' => 'Cancel', 'icon' => 'fas fa-ban', 'disabled' => true, 'title' => 'Sign in to ' . $t->from_name . ' to change this'];
                 }
 
                 return [
@@ -204,9 +226,8 @@ class StockController extends Controller
         $t = DB::table('stock_transfers as t')->join('branches as f', 'f.id', '=', 't.from_branch_id')->join('branches as d', 'd.id', '=', 't.to_branch_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')->where('t.id', $id)
             ->first(['t.*', 'f.name as from_name', 'd.name as to_name', 'u.name as created_by_name']);
-        // Only the sending or receiving branch may open a transfer.
-        $branch = (int) BranchController::current();
-        abort_unless($t && ((int) $t->from_branch_id === $branch || (int) $t->to_branch_id === $branch), 404);
+        // Only a user who sees the sending or receiving branch may open a transfer.
+        abort_unless($t && (BranchController::sees($t->from_branch_id) || BranchController::sees($t->to_branch_id)), 404);
 
         $items = DB::table('stock_transfer_items as i')->join('products as p', 'p.id', '=', 'i.product_id')
             ->leftJoin('product_variants as v', 'v.id', '=', 'i.product_variant_id')->leftJoin('attributes as a', 'a.id', '=', 'v.attribute_id')
@@ -280,7 +301,7 @@ class StockController extends Controller
                 DB::table('stock_transfers')->where('id', $id)->update(['total_qty' => $totalQty, 'total_value' => round($totalValue, 2)]);
 
                 return DB::table('stock_transfers')->where('id', $id)->first();
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => $transfer->transfer_no . ' sent. The receiving branch confirms it on arrival.']);
         } catch (HttpExceptionInterface $e) {
@@ -297,8 +318,10 @@ class StockController extends Controller
         try {
             $t = DB::transaction(function () use ($request, $id) {
                 $t = DB::table('stock_transfers')->where('id', $id)->lockForUpdate()->first();
-                abort_unless($t && $t->transfer_status === 'In Transit', 422, 'Only a transfer in transit can be received.');
-                abort_unless((int) $t->to_branch_id === (int) BranchController::activeId(), 403, 'Only the receiving branch can confirm this transfer. Sign in to that branch to receive it.');
+                abort_unless($t && (BranchController::sees($t->from_branch_id) || BranchController::sees($t->to_branch_id)), 404, 'Transfer not found.');
+                abort_unless($t->transfer_status === 'In Transit', 422, 'Only a transfer in transit can be received.');
+                abort_unless((int) $t->to_branch_id === (int) BranchController::activeId(), 403, 'Only the receiving branch can confirm this transfer. Sign in to '
+                    . BranchController::name((int) $t->to_branch_id) . ' to receive it.');
                 $date = $request->input('received_date') ?: now()->toDateString();
 
                 foreach (DB::table('stock_transfer_items')->where('stock_transfer_id', $id)->get() as $i) {
@@ -311,7 +334,7 @@ class StockController extends Controller
                 ]);
 
                 return $t;
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => $t->transfer_no . ' received into stock.']);
         } catch (HttpExceptionInterface $e) {
@@ -329,12 +352,14 @@ class StockController extends Controller
         try {
             DB::transaction(function () use ($id) {
                 $t = DB::table('stock_transfers')->where('id', $id)->lockForUpdate()->first();
-                abort_unless($t && $t->transfer_status === 'In Transit', 422, 'Only a transfer in transit can be cancelled.');
-                abort_unless((int) $t->from_branch_id === (int) BranchController::activeId(), 403, 'Only the sending branch can cancel this transfer.');
+                abort_unless($t && (BranchController::sees($t->from_branch_id) || BranchController::sees($t->to_branch_id)), 404, 'Transfer not found.');
+                abort_unless($t->transfer_status === 'In Transit', 422, 'Only a transfer in transit can be cancelled.');
+                abort_unless((int) $t->from_branch_id === (int) BranchController::activeId(), 403,
+                    'Only the sending branch can cancel this transfer. Sign in to ' . BranchController::name((int) $t->from_branch_id) . ' to cancel it.');
                 DB::table('stocks')->where('reference_type', 'Transfer Out')->where('reference_id', $id)
                     ->update(['deleted' => 'Yes', 'deleted_by' => Auth::id(), 'deleted_date' => now()]);
                 DB::table('stock_transfers')->where('id', $id)->update(['transfer_status' => 'Cancelled', 'updated_by' => Auth::id(), 'updated_at' => now()]);
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Transfer cancelled; the stock is back at the sending branch.']);
         } catch (HttpExceptionInterface $e) {
@@ -387,7 +412,7 @@ class StockController extends Controller
                     '<span class="d-block text-end text-danger">' . ((float) $a->total_out ? '−' . rtrim(rtrim(number_format((float) $a->total_out, 3), '0'), '.') : '-') . '</span>',
                     '<span class="d-block text-end">' . number_format((float) $a->value_change, 2) . '</span>',
                     '<span class="badge ' . ($badge[$a->adjustment_status] ?? 'bg-secondary') . '">' . e($a->adjustment_status) . '</span>',
-                    action_dropdown($items),
+                    action_dropdown($items, $a->branch_id),
                 ];
             })]);
         } catch (Throwable $e) {
@@ -426,6 +451,7 @@ class StockController extends Controller
             'items'                      => ['required', 'array', 'min:1'],
             'items.*.product_id'         => ['required', 'integer', Rule::exists('products', 'id')],
             'items.*.product_variant_id' => ['nullable', 'integer'],
+            'items.*.batch_id'           => ['nullable', 'integer'],
             'items.*.counted_qty'        => [$type === 'Stock Count' ? 'nullable' : 'prohibited', 'numeric', 'min:0'],
             'items.*.qty'                => [$type === 'Stock Count' ? 'prohibited' : 'required', 'numeric', 'gt:0'],
             'items.*.note'               => ['nullable', 'string', 'max:255'],
@@ -443,6 +469,9 @@ class StockController extends Controller
 
                 if ($id) {
                     $old = DB::table('stock_adjustments')->where('id', $id)->lockForUpdate()->first();
+                    if ($old) {
+                        BranchController::guardOwn($old);
+                    }
                     abort_unless($old && (int) $old->branch_id === (int) $branch, 404, 'Adjustment not found.');
                     abort_unless($old->adjustment_status === 'Draft', 422, 'Only a draft can be changed.');
                     $branch = (int) $old->branch_id;
@@ -464,7 +493,19 @@ class StockController extends Controller
                 foreach ($request->input('items') as $line) {
                     $pid = (int) $line['product_id'];
                     $vid = !empty($line['product_variant_id']) ? (int) $line['product_variant_id'] : null;
-                    $system = self::onHand($pid, $vid, $branch);
+                    $product = DB::table('products')->where('id', $pid)->first(['name', 'track_batch']);
+                    // Batch-tracked products: an adjustment says which batch it touches (a stock count stays per product).
+                    $batchId = null;
+                    if ($type !== 'Stock Count' && ($product->track_batch ?? 'No') === 'Yes') {
+                        $batchId = !empty($line['batch_id']) ? (int) $line['batch_id'] : null;
+                        abort_if(!$batchId && $type !== 'Found', 422, 'Choose the batch for "' . $product->name . '".');
+                        if ($batchId) {
+                            $ok = DB::table('product_batches')->where('id', $batchId)->where('product_id', $pid)
+                                ->when($vid, fn ($q) => $q->where('product_variant_id', $vid), fn ($q) => $q->whereNull('product_variant_id'))->exists();
+                            abort_unless($ok, 422, 'The batch chosen for "' . $product->name . '" belongs to another product.');
+                        }
+                    }
+                    $system = self::onHand($pid, $vid, $branch, $batchId);
                     if ($type === 'Stock Count') {
                         $counted = isset($line['counted_qty']) && $line['counted_qty'] !== '' ? round((float) $line['counted_qty'], 3) : null;
                         $diff = $counted === null ? 0 : round($counted - $system, 3);
@@ -473,7 +514,7 @@ class StockController extends Controller
                         $diff = round((float) $line['qty'], 3) * ($type === 'Found' ? 1 : -1);
                     }
                     DB::table('stock_adjustment_items')->insert([
-                        'stock_adjustment_id' => $id, 'product_id' => $pid, 'product_variant_id' => $vid,
+                        'stock_adjustment_id' => $id, 'product_id' => $pid, 'product_variant_id' => $vid, 'batch_id' => $batchId,
                         'system_qty' => $system, 'counted_qty' => $counted, 'difference' => $diff,
                         'unit_cost' => (float) DB::table('products')->where('id', $pid)->value('purchase_price'),
                         'note' => $this->nullIfBlank($line['note'] ?? null), 'created_at' => now(), 'updated_at' => now(),
@@ -485,7 +526,7 @@ class StockController extends Controller
                 }
 
                 return DB::table('stock_adjustments')->where('id', $id)->first();
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => $adj->adjustment_no . ($adj->adjustment_status === 'Posted' ? ' posted to stock.' : ' saved as draft.')]);
         } catch (HttpExceptionInterface $e) {
@@ -509,11 +550,17 @@ class StockController extends Controller
             }
             if ($diff < 0) {
                 // Damage / lost / expired / correction cannot take out more than the branch holds.
-                $have = self::onHand((int) $i->product_id, $i->product_variant_id ? (int) $i->product_variant_id : null, (int) $a->branch_id);
+                // With a chosen batch, the limit is that batch's stock.
+                $have = self::onHand((int) $i->product_id, $i->product_variant_id ? (int) $i->product_variant_id : null, (int) $a->branch_id, $i->batch_id ? (int) $i->batch_id : null);
                 abort_if(-$diff > $have + 0.0005, 422, DB::table('products')->where('id', $i->product_id)->value('name')
+                    . ($i->batch_id ? ' (batch ' . DB::table('product_batches')->where('id', $i->batch_id)->value('batch_no') . ')' : '')
                     . ': only ' . rtrim(rtrim(number_format(max(0, $have), 3), '0'), '.') . ' in stock, cannot take out ' . rtrim(rtrim(number_format(-$diff, 3), '0'), '.') . '.');
             }
-            $parts =$diff < 0 ? self::allocate((int) $i->product_id, $i->product_variant_id ? (int) $i->product_variant_id : null, (int) $a->branch_id, -$diff) : [[null, $diff]];
+            if ($i->batch_id) {
+                $parts = [[(int) $i->batch_id, abs($diff)]];
+            } else {
+                $parts = $diff < 0 ? self::allocate((int) $i->product_id, $i->product_variant_id ? (int) $i->product_variant_id : null, (int) $a->branch_id, -$diff) : [[null, $diff]];
+            }
             foreach ($parts as [$batchId, $qty]) {
                 self::move(['branch_id' => $a->branch_id, 'product_id' => $i->product_id, 'product_variant_id' => $i->product_variant_id,
                     'batch_id' => $batchId, 'qty' => $diff < 0 ? -$qty : $qty, 'adjustment_id' => $id, 'reference_type' => 'Adjustment',
@@ -534,6 +581,9 @@ class StockController extends Controller
         try {
             DB::transaction(function () use ($id) {
                 $a = DB::table('stock_adjustments')->where('id', $id)->lockForUpdate()->first();
+                if ($a) {
+                    BranchController::guardOwn($a);
+                }
                 abort_unless($a && (int) $a->branch_id === (int) BranchController::activeId(), 404, 'Adjustment not found.');
                 abort_unless($a->adjustment_status !== 'Cancelled', 422, 'Already cancelled.');
                 // Reversing stock that came IN (Found / count surplus) needs that stock still to be here.
@@ -547,7 +597,7 @@ class StockController extends Controller
                         . ': the stock this adjustment added has already been used, so it cannot be reversed.');
                 }
                 DB::table('stock_adjustments')->where('id', $id)->update(['adjustment_status' => 'Cancelled', 'updated_by' => Auth::id(), 'updated_at' => now()]);
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Adjustment cancelled.']);
         } catch (HttpExceptionInterface $e) {
@@ -566,6 +616,35 @@ class StockController extends Controller
     public function batches()
     {
         return view('admin.stock.batches');
+    }
+
+    /** Correct a batch's expiry (and manufacture) date later - only a batch this branch holds or held. */
+    public function batchExpiry(Request $request, int $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'expiry_date'      => ['required', 'date'],
+            'manufacture_date' => ['nullable', 'date', 'before_or_equal:expiry_date'],
+        ], [
+            'expiry_date.required' => 'Enter the expiry date.',
+            'manufacture_date.before_or_equal' => 'The manufacture date cannot be after the expiry date.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['status' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+
+        $batch = DB::table('product_batches')->where('id', $id)->first();
+        $inBranch = $batch && BranchController::scopeOwn(DB::table('stocks'), 'branch_id')->where('batch_id', $id)->where('deleted', 'No')->exists();
+        if (!$inBranch) {
+            return response()->json(['status' => false, 'message' => 'Batch not found in this branch.'], 404);
+        }
+
+        $update = ['expiry_date' => $request->input('expiry_date'), 'updated_at' => now()];
+        if ($request->has('manufacture_date')) {
+            $update['manufacture_date'] = $request->input('manufacture_date') ?: null;
+        }
+        DB::table('product_batches')->where('id', $id)->update($update);
+
+        return response()->json(['status' => true, 'message' => 'Batch ' . $batch->batch_no . ' now expires on ' . Carbon::parse($request->input('expiry_date'))->format('d M Y') . '.']);
     }
 
     public function batchList(Request $request)

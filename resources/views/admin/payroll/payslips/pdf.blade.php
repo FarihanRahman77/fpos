@@ -1,45 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Payslip</title>
-    @include('admin.inventory.partials.invoice-style')
+@extends('pdf.layout')
+@php
+    $m = fn ($v) => number_format((float) $v, 2);
+    // the header is printed once per slip (each slip has its own number and status)
+    $doc = ['title' => count($slips) === 1 ? 'Payslip' : 'Payslips', 'header' => false];
+@endphp
+
+@section('styles')
     <style>
         .slip { page-break-after: always; }
         .slip.last { page-break-after: auto; }
-        .ps-grid { margin-top: 22px; }
-        .ps-grid th { font-weight: bold; font-size: 9px; text-align: left; padding: 8px 6px; border-bottom: 1px solid {{ $pc['border_strong'] }}; }
-        .ps-grid th.r { text-align: right; }
-        .ps-grid td { padding: 6px 6px; font-size: 9px; }
-        .ps-grid td.gap, .ps-grid th.gap { width: 4%; border-bottom: none; }
-        .ps-grid .sub { font-size: 7.5px; color: {{ $pc['muted'] }}; margin-top: 1px; }
-        .ps-grid .sum td { border-top: 1px solid {{ $pc['border'] }}; font-weight: bold; padding-top: 9px; }
-        .ps-grid .sum td.gap { border-top: none; }
-        .ps-ded { color: {{ $pc['danger'] }}; }
-        .ps-att { margin-top: 10px; font-size: 8.5px; color: {{ $pc['secondary'] }}; }
-        .ps-att b { color: {{ $pc['ink'] }}; }
-        .ps-words { font-size: 9px; color: {{ $pc['ink'] }}; margin-bottom: 14px; }
-        .ps-pay th { font-weight: bold; font-size: 8px; text-align: left; padding: 4px 4px; border-bottom: 1px solid {{ $pc['border'] }}; color: {{ $pc['secondary'] }}; }
-        .ps-pay th.r { text-align: right; }
-        .ps-pay td { font-size: 8.5px; padding: 4px 4px; border-bottom: 1px solid {{ $pc['soft'] }}; }
+        .ps-att { margin: 0 0 10px 0; font-size: 8.2px; color: {{ $pdfT['muted'] }}; }
+        .ps-att b { color: {{ $pdfT['ink'] }}; }
+        .pdf-table.ps-grid th.gap, .pdf-table.ps-grid tbody tr td.gap { width: 4%; background: {{ $pdfT['paper'] }}; border: 0; }
+        .pdf-table.ps-grid .sub { margin-top: 1px; }
+        .ps-pay { margin-top: 3px; }
+        .ps-pay-none { font-size: 8px; color: {{ $pdfT['muted'] }}; margin-top: 2px; }
+        .ps-foot { margin-top: 14px; text-align: center; font-size: 7.2px; color: {{ $pdfT['faint'] }}; }
+        .pdf-sign { margin-top: 30px; }
     </style>
-</head>
-<body>
-    @php $m = fn ($v) => number_format((float) $v, 2); @endphp
+@endsection
 
-    <div class="inv-footer">
-        <table><tr>
-            <td>This is a computer-generated payslip. Please keep it for your records.</td>
-            <td class="r">{{ $generalSetting['company_name'] ?? config('app.name') }}</td>
-        </tr></table>
-    </div>
-
+@section('content')
     @foreach ($slips as $slip)
         @php
             $it = $slip['item'];
-            $state = $slip['due'] <= 0 && $slip['net'] > 0
-                ? ['PAID', $pc['success'], $pc['success_soft']]
-                : ($slip['paid'] > 0 ? ['PARTLY PAID', $pc['warning'], $pc['warning_soft']] : ['UNPAID', $pc['danger'], $pc['danger_soft']]);
+            $status = $slip['due'] <= 0 && $slip['net'] > 0
+                ? ['Paid', 'success']
+                : ($slip['paid'] > 0 ? ['Partly paid', 'warning'] : ['Unpaid', 'danger']);
             $rows = max(count($slip['earnings']), count($slip['deductions']));
             $payTo = match ($it->salary_payment_mode) {
                 'Bank' => trim(($it->bank_name ?: 'Bank') . ($it->bank_account_no ? ' · A/C ' . $it->bank_account_no : '')),
@@ -47,43 +34,32 @@
                 default => $it->salary_payment_mode ?: 'Cash',
             };
             $att = $slip['attendance'];
+            $paidFrom = collect($slip['payments'])->pluck('account_name')->filter()->unique()->values();
+            $grade = $it->grade_step ? 'Grade / Step: ' . $it->grade_step : null;
+            // the account(s) the salary was actually paid from, else where it will be paid
+            $payParty = $paidFrom->isNotEmpty()
+                ? ['label' => 'Paid from', 'name' => $paidFrom->implode(', '), 'lines' => ['To: ' . $payTo, $grade]]
+                : ['label' => 'Pay to', 'name' => $it->salary_payment_mode ?: 'Cash',
+                   'lines' => [$payTo !== ($it->salary_payment_mode ?: 'Cash') ? $payTo : null, 'Not paid yet', $grade]];
+            $cur = $pdfCo['currency'];
         @endphp
         <div class="slip {{ $loop->last ? 'last' : '' }}">
-            @include('admin.inventory.partials.invoice-header', [
+            @include('pdf.partials.header', ['doc' => [
                 'title'  => 'Payslip',
                 'number' => $slip['month']->format('F Y') . ' · ' . $it->run_no,
-                'state'  => $state,
-            ])
+                'status' => $status,
+            ]])
 
-            <table class="inv-band">
-                <tr>
-                    <td class="col" style="width: 36%;">
-                        <div class="lbl">Employee</div>
-                        <div class="name">{{ $it->name }}</div>
-                        <div class="line">ID: {{ $it->employee_code }}</div>
-                        @if ($it->designation)<div class="line">{{ $it->designation }}</div>@endif
-                        @if ($it->department)<div class="line">{{ $it->department }}</div>@endif
-                    </td>
-                    <td class="col" style="width: 26%;">
-                        <div class="lbl">Paid to</div>
-                        <div class="name">{{ $it->salary_payment_mode ?: 'Cash' }}</div>
-                        @if ($payTo !== ($it->salary_payment_mode ?: 'Cash'))<div class="line">{{ $payTo }}</div>@endif
-                        @if ($it->grade_step)
-                            <div class="lbl" style="margin-top: 8px;">Grade / Step</div>
-                            <div class="line">{{ $it->grade_step }}</div>
-                        @endif
-                    </td>
-                    <td class="col" style="width: 38%;">
-                        <div class="lbl">Details</div>
-                        <table class="inv-kv">
-                            <tr><td class="k">Pay period</td><td>{{ $slip['month']->format('01 M Y') }} – {{ $slip['month']->copy()->endOfMonth()->format('d M Y') }}</td></tr>
-                            <tr><td class="k">Salary run</td><td>{{ $it->run_no }}</td></tr>
-                            <tr><td class="k">Processed</td><td>{{ \Carbon\Carbon::parse($it->run_date)->format('d-m-Y') }}</td></tr>
-                            @if ($it->joining_date)<tr><td class="k">Joined</td><td>{{ \Carbon\Carbon::parse($it->joining_date)->format('d-m-Y') }}</td></tr>@endif
-                        </table>
-                    </td>
-                </tr>
-            </table>
+            @include('pdf.partials.party', ['parties' => [
+                ['label' => 'Employee', 'name' => $it->name, 'lines' => ['ID: ' . $it->employee_code, $it->designation, $it->department]],
+                $payParty,
+                ['label' => 'Details', 'kv' => [
+                    'Pay period' => $slip['month']->format('01 M Y') . ' – ' . $slip['month']->copy()->endOfMonth()->format('d M Y'),
+                    'Salary run' => $it->run_no,
+                    'Processed'  => \Carbon\Carbon::parse($it->run_date)->format('d-m-Y'),
+                    'Joined'     => $it->joining_date ? \Carbon\Carbon::parse($it->joining_date)->format('d-m-Y') : null,
+                ]],
+            ]])
 
             @if ($att)
                 <div class="ps-att">
@@ -95,14 +71,14 @@
                 </div>
             @endif
 
-            <table class="ps-grid">
+            <table class="pdf-table ps-grid">
                 <thead>
                     <tr>
                         <th style="width: 30%;">Earnings</th>
-                        <th class="r" style="width: 18%;">Amount</th>
+                        <th class="num" style="width: 18%;">Amount</th>
                         <th class="gap"></th>
                         <th style="width: 30%;">Deductions</th>
-                        <th class="r" style="width: 18%;">Amount</th>
+                        <th class="num" style="width: 18%;">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -110,70 +86,64 @@
                         @php $e = $slip['earnings'][$i] ?? null; $d = $slip['deductions'][$i] ?? null; @endphp
                         <tr>
                             <td>@if ($e){{ $e[0] }}@if ($e[2])<div class="sub">{{ $e[2] }}</div>@endif @endif</td>
-                            <td class="r">{{ $e ? $m($e[1]) : '' }}</td>
+                            <td class="num">{{ $e ? $m($e[1]) : '' }}</td>
                             <td class="gap"></td>
                             <td>@if ($d){{ $d[0] }}@if ($d[2])<div class="sub">{{ $d[2] }}</div>@endif @endif</td>
-                            <td class="r ps-ded">{{ $d ? $m($d[1]) : '' }}</td>
+                            <td class="num neg">{{ $d ? $m($d[1]) : '' }}</td>
                         </tr>
                     @endfor
                     @if (!$slip['deductions'])
-                        <tr><td colspan="3"></td><td class="muted" colspan="2">No deductions</td></tr>
+                        <tr><td colspan="2"></td><td class="gap"></td><td class="muted" colspan="2">No deductions</td></tr>
                     @endif
-                    <tr class="sum">
+                    <tr class="total">
                         <td>Total earnings</td>
-                        <td class="r">{{ $m($slip['total_earn']) }}</td>
+                        <td class="num">{{ $m($slip['total_earn']) }}</td>
                         <td class="gap"></td>
                         <td>Total deductions</td>
-                        <td class="r ps-ded">{{ $m($slip['total_ded']) }}</td>
+                        <td class="num neg">{{ $m($slip['total_ded']) }}</td>
                     </tr>
                 </tbody>
             </table>
 
-            <table class="inv-bottom">
+            <table class="pdf-bottom">
                 <tr>
-                    <td style="width: 55%; padding-right: 30px;" class="inv-msg">
-                        <div class="lbl">Net pay in words</div>
-                        <div class="ps-words">Taka {{ $slip['net_words'] }} only</div>
+                    <td class="pdf-bottom-left">
+                        @include('pdf.partials.words', ['w' => ['text' => $slip['net_words']]])
 
-                        <div class="lbl">Payments</div>
+                        <div class="pdf-label">Payments</div>
                         @if ($slip['payments']->isNotEmpty())
-                            <table class="ps-pay">
-                                <thead><tr><th>Date</th><th>Payment #</th><th>Paid from</th><th class="r">Amount</th></tr></thead>
+                            <table class="pdf-table compact ps-pay">
+                                <thead><tr><th>Date</th><th>Payment #</th><th>Paid from</th><th class="num">Amount</th></tr></thead>
                                 <tbody>
                                     @foreach ($slip['payments'] as $p)
                                         <tr>
                                             <td>{{ \Carbon\Carbon::parse($p->payment_date)->format('d-m-Y') }}</td>
                                             <td>{{ $p->payment_no }}</td>
                                             <td>{{ $p->account_name ?: '-' }}</td>
-                                            <td class="r">{{ $m($p->amount) }}</td>
+                                            <td class="num">{{ $m($p->amount) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         @else
-                            <div class="txt">Not paid yet.</div>
+                            <div class="ps-pay-none">Not paid yet.</div>
                         @endif
                     </td>
-                    <td style="width: 45%;">
-                        <table class="inv-totals">
-                            <tr><td class="k">Total earnings</td><td class="r">{{ $m($slip['total_earn']) }}</td></tr>
-                            <tr><td class="k">Total deductions</td><td class="r">{{ $m($slip['total_ded']) }}</td></tr>
-                            <tr class="total"><td>Net Payable</td><td class="r">{{ $m($slip['net']) }}</td></tr>
-                            <tr class="after"><td class="k">Paid</td><td class="r">{{ $m($slip['paid']) }}</td></tr>
-                            <tr class="due {{ $slip['due'] <= 0 ? 'clear' : '' }}"><td>Due</td><td class="r">{{ $m($slip['due']) }}</td></tr>
+                    <td class="pdf-bottom-right">
+                        <table class="pdf-totals">
+                            <tr><td class="k">Total earnings</td><td class="num">{{ $m($slip['total_earn']) }}</td></tr>
+                            <tr><td class="k">Total deductions</td><td class="num">{{ $m($slip['total_ded']) }}</td></tr>
+                            <tr class="grand"><td class="k">Net Payable</td><td class="num">{{ $cur ? $cur . ' ' : '' }}{{ $m($slip['net']) }}</td></tr>
+                            <tr class="after"><td class="k">Paid</td><td class="num">{{ $m($slip['paid']) }}</td></tr>
+                            <tr class="after due {{ $slip['due'] <= 0 ? 'clear' : '' }}"><td class="k">Due</td><td class="num">{{ $m($slip['due']) }}</td></tr>
                         </table>
                     </td>
                 </tr>
             </table>
 
-            <table class="inv-sign">
-                <tr>
-                    <td style="width: 35%;"><div class="line">Authorised Signature</div></td>
-                    <td style="width: 30%;"></td>
-                    <td style="width: 35%;"><div class="line">Employee Signature</div></td>
-                </tr>
-            </table>
+            @include('pdf.partials.signatures', ['signatures' => ['Employee signature' => '', 'Authorised signature' => '']])
+
+            <div class="ps-foot">This is a computer-generated payslip. Please keep it for your records.</div>
         </div>
     @endforeach
-</body>
-</html>
+@endsection

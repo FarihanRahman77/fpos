@@ -238,13 +238,13 @@ class SmsController extends Controller
             ->when($ids !== null, fn ($q) => $q->whereIn('p.id', $ids ?: [0]))
             ->leftJoin('payments as pm', function ($j) {
                 $j->on('pm.party_id', '=', 'p.id')->where('pm.deleted', 'No')->where('pm.status', 'Active')
-                    ->where('pm.branch_id', BranchController::current())
+                    ->whereIn('pm.branch_id', BranchController::visibleIds())
                     // party_id also holds employee ids on employee expense rows
                     ->where(fn ($q) => $q->whereNull('pm.party_type')->orWhere('pm.party_type', '<>', 'Employee'));
             })
             ->groupBy('p.id', 'p.code', 'p.name', 'p.phone', 'p.type', 'p.opening_balance', 'p.opening_balance_type')
             ->selectRaw('p.id, p.code, p.name, p.phone, p.type,
-                ' . (BranchController::isMainBranch() ? "CASE WHEN p.opening_balance_type = 'Advance' THEN -1 ELSE 1 END * COALESCE(p.opening_balance, 0)" : '0') . ' + COALESCE(SUM(pm.credit), 0) - COALESCE(SUM(pm.debit), 0) AS due')
+                ' . (BranchController::mainVisible() ? "CASE WHEN p.opening_balance_type = 'Advance' THEN -1 ELSE 1 END * COALESCE(p.opening_balance, 0)" : '0') . ' + COALESCE(SUM(pm.credit), 0) - COALESCE(SUM(pm.debit), 0) AS due')
             ->havingRaw('due > 0.004')
             ->orderByDesc('due')
             ->get();

@@ -23,7 +23,8 @@ trait VoucherHelperTrait
      * View / Edit / Delete dropdown calling view{Label}(id), edit{Label}(id), delete{Label}(id).
      * $extra = more action_dropdown() items, placed before Delete.
      */
-    protected function actionButtons(string $label, int $id, array $extra = []): string
+    /** $branchId: the row's branch — another branch's row gets its Edit / Delete disabled (action_dropdown()). */
+    protected function actionButtons(string $label, int $id, array $extra = [], $branchId = null): string
     {
         return action_dropdown(array_merge(
             [
@@ -35,7 +36,7 @@ trait VoucherHelperTrait
                 ['divider' => true],
                 ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'delete' . $label . '(' . $id . ')'],
             ]
-        ));
+        ), $branchId);
     }
 
     protected function nullIfBlank($value): ?string

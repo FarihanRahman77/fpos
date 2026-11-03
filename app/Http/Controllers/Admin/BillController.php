@@ -119,7 +119,7 @@ class BillController extends Controller
                 $output['data'][] = [
                     $i++,
                     '<span class="fw-semibold">' . e($bill->bill_no) . '</span>'
-                        . ($bill->reference_no ? '<div class="text-muted small">Ref: ' . e($bill->reference_no) . '</div>' : ''),
+                        . ($bill->reference_no ? '<div class="text-muted small">Ref: ' . e($bill->reference_no) . '</div>' : '') . branch_tag($bill->branch_id),
                     '<span class="d-none">' . $date->format('Y-m-d') . '</span>' . e($date->format('d M Y')),
                     e($bill->party_name ?: '-') . ($bill->party_code ? ' <span class="text-muted small">(' . e($bill->party_code) . ')</span>' : ''),
                     $due
@@ -129,7 +129,7 @@ class BillController extends Controller
                     $money($bill->paid_amount),
                     $money($bill->due_amount),
                     '<span class="badge ' . ($badge[$bill->payment_status] ?? 'bg-secondary') . '">' . e($bill->payment_status) . '</span>',
-                    $this->actionButtons('Bill', $id, $payButton),
+                    $this->actionButtons('Bill', $id, $payButton, $bill->branch_id),
                 ];
             }
 
@@ -211,6 +211,8 @@ class BillController extends Controller
                     'payment_status'  => $bill->payment_status,
                     'details'         => $details,
                     'payments'        => $this->paymentsOf($bill->id),
+                    // another branch's bill: shown, but payments can be added / changed only in its own branch
+                    'locked_tip'      => BranchController::owns($bill->branch_id) ? null : 'Sign in to ' . BranchController::name((int) $bill->branch_id) . ' to change this',
                 ],
             ]);
         } catch (Throwable $e) {
@@ -288,111 +290,115 @@ class BillController extends Controller
             return response()->json(['status' => false, 'message' => 'The Accounts Payable account is missing. Run the database migrations.'], 422);
         }
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request, $payableId) {
+            DB::beginTransaction();
 
-        try {
-            $lines = collect($request->input('details'))->map(fn ($d) => [
-                'account_group_id' => (int) $d['account_group_id'],
-                'account_id'       => (int) $d['account_id'],
-                'description'      => $this->nullIfBlank($d['description'] ?? null),
-                'qty'              => round((float) $d['qty'], 2),
-                'rate'             => round((float) $d['rate'], 2),
-                'amount'           => round((float) $d['qty'] * (float) $d['rate'], 2),
-            ]);
+            try {
+                $lines = collect($request->input('details'))->map(fn ($d) => [
+                    'account_group_id' => (int) $d['account_group_id'],
+                    'account_id'       => (int) $d['account_id'],
+                    'description'      => $this->nullIfBlank($d['description'] ?? null),
+                    'qty'              => round((float) $d['qty'], 2),
+                    'rate'             => round((float) $d['rate'], 2),
+                    'amount'           => round((float) $d['qty'] * (float) $d['rate'], 2),
+                ]);
 
-            $subtotal   = round($lines->sum('amount'), 2);
-            $discount   = round((float) $request->input('discount_amount', 0), 2);
-            $grandTotal = round($subtotal - $discount, 2);
-            $partyId    = (int) $request->input('party_id');
+                $subtotal   = round($lines->sum('amount'), 2);
+                $discount   = round((float) $request->input('discount_amount', 0), 2);
+                $grandTotal = round($subtotal - $discount, 2);
+                $partyId    = (int) $request->input('party_id');
 
-            if ($request->filled('id')) {
-                $bill = BranchController::scope(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
+                if ($request->filled('id')) {
+                    BranchController::guardOwn('bills', $request->input('id'));
+                    $bill = BranchController::scopeOwn(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
-                if (!$bill) {
-                    abort(404, 'Bill not found.');
+                    if (!$bill) {
+                        abort(404, 'Bill not found.');
+                    }
+
+                    if ($closed = AccountingReportController::closedDateMessage($bill->bill_date)) {
+                        abort(422, $closed);
+                    }
+
+                    $paid = $this->paidTotal($bill->id);
+
+                    if ($paid > 0 && (int) $bill->party_id !== $partyId) {
+                        abort(422, 'This bill has payments, so its supplier cannot be changed.');
+                    }
+
+                    if ($grandTotal + 0.005 < $paid) {
+                        abort(422, 'The new total (' . number_format($grandTotal, 2) . ') is less than the amount already paid (' . number_format($paid, 2) . ').');
+                    }
+
+                    $this->reverseBill($bill, $payableId);
+
+                    $bill->updated_by   = Auth::id();
+                    $bill->updated_date = now();
+                } else {
+                    $bill = new Bill();
+                    $bill->bill_no      = $this->nextSequentialCode(Bill::class, 'bill_no', 'BILL');
+                    $bill->created_by   = Auth::id();
+                    $bill->created_date = now();
                 }
 
-                if ($closed = AccountingReportController::closedDateMessage($bill->bill_date)) {
-                    abort(422, $closed);
+                $bill->bill_date       = $request->input('bill_date');
+                $bill->due_date        = $request->input('due_date') ?: null;
+                $bill->party_id        = $partyId;
+                $bill->reference_no    = $this->nullIfBlank($request->input('reference_no'));
+                $bill->remarks         = $this->nullIfBlank($request->input('remarks'));
+                $bill->subtotal        = $subtotal;
+                $bill->discount_amount = $discount;
+                $bill->grand_total     = $grandTotal;
+                $bill->save();
+
+                foreach ($lines as $line) {
+                    $detail = new BillDetail();
+                    $detail->bill_id          = $bill->id;
+                    $detail->account_group_id = $line['account_group_id'];
+                    $detail->account_id       = $line['account_id'];
+                    $detail->description      = $line['description'];
+                    $detail->qty              = $line['qty'];
+                    $detail->rate             = $line['rate'];
+                    $detail->amount           = $line['amount'];
+                    $detail->created_by       = Auth::id();
+                    $detail->created_date     = now();
+                    $detail->save();
                 }
 
-                $paid = $this->paidTotal($bill->id);
+                // Supplier ledger: the bill raises what we owe.
+                $this->storeDebitPayment([
+                    'party_id'     => $partyId,
+                    'party_type'   => 'Supplier',
+                    'payment_type' => 'Bill',
+                    'date'         => $bill->bill_date,
+                    'debit'        => $grandTotal,
+                    'bill_id'      => $bill->id,
+                    'remarks'      => 'Bill ' . $bill->bill_no,
+                ]);
 
-                if ($paid > 0 && (int) $bill->party_id !== $partyId) {
-                    abort(422, 'This bill has payments, so its supplier cannot be changed.');
-                }
+                $this->postBalances($this->expenseDebits($lines, $subtotal, $grandTotal), [$payableId => $grandTotal], 1);
 
-                if ($grandTotal + 0.005 < $paid) {
-                    abort(422, 'The new total (' . number_format($grandTotal, 2) . ') is less than the amount already paid (' . number_format($paid, 2) . ').');
-                }
+                $this->refreshBillTotals($bill->id);
 
-                $this->reverseBill($bill, $payableId);
+                DB::commit();
 
-                $bill->updated_by   = Auth::id();
-                $bill->updated_date = now();
-            } else {
-                $bill = new Bill();
-                $bill->bill_no      = $this->nextSequentialCode(Bill::class, 'bill_no', 'BILL');
-                $bill->created_by   = Auth::id();
-                $bill->created_date = now();
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Bill ' . $bill->bill_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
+                    'id'      => $bill->id,
+                ]);
+            } catch (HttpExceptionInterface $e) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+            } catch (Throwable $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                Log::error('Bill store error', $this->ctx($e));
+
+                return response()->json(['status' => false, 'message' => 'Unable to save the bill. Please try again.'], 500);
             }
-
-            $bill->bill_date       = $request->input('bill_date');
-            $bill->due_date        = $request->input('due_date') ?: null;
-            $bill->party_id        = $partyId;
-            $bill->reference_no    = $this->nullIfBlank($request->input('reference_no'));
-            $bill->remarks         = $this->nullIfBlank($request->input('remarks'));
-            $bill->subtotal        = $subtotal;
-            $bill->discount_amount = $discount;
-            $bill->grand_total     = $grandTotal;
-            $bill->save();
-
-            foreach ($lines as $line) {
-                $detail = new BillDetail();
-                $detail->bill_id          = $bill->id;
-                $detail->account_group_id = $line['account_group_id'];
-                $detail->account_id       = $line['account_id'];
-                $detail->description      = $line['description'];
-                $detail->qty              = $line['qty'];
-                $detail->rate             = $line['rate'];
-                $detail->amount           = $line['amount'];
-                $detail->created_by       = Auth::id();
-                $detail->created_date     = now();
-                $detail->save();
-            }
-
-            // Supplier ledger: the bill raises what we owe.
-            $this->storeDebitPayment([
-                'party_id'     => $partyId,
-                'party_type'   => 'Supplier',
-                'payment_type' => 'Bill',
-                'date'         => $bill->bill_date,
-                'debit'        => $grandTotal,
-                'bill_id'      => $bill->id,
-                'remarks'      => 'Bill ' . $bill->bill_no,
-            ]);
-
-            $this->postBalances($this->expenseDebits($lines, $subtotal, $grandTotal), [$payableId => $grandTotal], 1);
-
-            $this->refreshBillTotals($bill->id);
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Bill ' . $bill->bill_no . ($request->filled('id') ? ' updated' : ' created') . ' successfully.',
-                'id'      => $bill->id,
-            ]);
-        } catch (HttpExceptionInterface $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Bill store error', $this->ctx($e));
-
-            return response()->json(['status' => false, 'message' => 'Unable to save the bill. Please try again.'], 500);
-        }
+        });
     }
 
     /* ------------------------------------------------------------------ */
@@ -409,7 +415,8 @@ class BillController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $bill = BranchController::scope(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('bills', $request->input('id'));
+                $bill = BranchController::scopeOwn(Bill::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$bill) {
                     abort(404, 'Bill not found.');
@@ -444,6 +451,7 @@ class BillController extends Controller
 
     public function paymentStore(Request $request)
     {
+        BranchController::guardOwn('bills', $request->input('bill_id'));   // payments are made in the bill's own branch
         $validator = Validator::make($request->all(), [
             'id'                 => ['nullable', 'integer'],
             'bill_id'            => ['required', 'integer'],
@@ -474,92 +482,100 @@ class BillController extends Controller
             return response()->json(['status' => false, 'message' => 'The Accounts Payable account is missing. Run the database migrations.'], 422);
         }
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request, $payableId) {
+            DB::beginTransaction();
 
-        try {
-            $bill = BranchController::scope(Bill::where('id', (int) $request->input('bill_id')))->where('deleted', 'No')->lockForUpdate()->first();
+            try {
+                BranchController::guardOwn('bills', $request->input('bill_id'));
+                $bill = BranchController::scopeOwn(Bill::where('id', (int) $request->input('bill_id')))->where('deleted', 'No')->lockForUpdate()->first();
 
-            if (!$bill) {
-                abort(404, 'Bill not found.');
-            }
-
-            $amount = round((float) $request->input('amount'), 2);
-            $oldAmount = 0;
-
-            if ($request->filled('id')) {
-                $payment = BillPayment::where('id', (int) $request->input('id'))
-                    ->where('bill_id', $bill->id)->where('deleted', 'No')->lockForUpdate()->first();
-
-                if (!$payment) {
-                    abort(404, 'Payment not found.');
+                if (!$bill) {
+                    abort(404, 'Bill not found.');
                 }
 
-                if ($closed = AccountingReportController::closedDateMessage($payment->payment_date)) {
-                    abort(422, $closed);
+                $amount = round((float) $request->input('amount'), 2);
+                $oldAmount = 0;
+
+                if ($request->filled('id')) {
+                    $payment = BillPayment::where('id', (int) $request->input('id'))
+                        ->where('bill_id', $bill->id)->where('deleted', 'No')->lockForUpdate()->first();
+
+                    if (!$payment) {
+                        abort(404, 'Payment not found.');
+                    }
+
+                    if ($closed = AccountingReportController::closedDateMessage($payment->payment_date)) {
+                        abort(422, $closed);
+                    }
+
+                    $oldAmount = (float) $payment->amount;
+                    // checked before the old payment leaves the books: the drawer may give back what it already paid
+                    ReportController::ensureCash($request->input('payment_account_id'), $amount,
+                        (int) $payment->payment_account_id === (int) $request->input('payment_account_id') ? $oldAmount : 0);
+                    $this->reverseBillPayment($payment, $payableId);
+
+                    $payment->updated_by   = Auth::id();
+                    $payment->updated_date = now();
+                } else {
+                    ReportController::ensureCash($request->input('payment_account_id'), $amount);
+                    $payment = new BillPayment();
+                    $payment->payment_no   = $this->nextSequentialCode(BillPayment::class, 'payment_no', 'BP');
+                    $payment->bill_id      = $bill->id;
+                    $payment->party_id     = $bill->party_id;
+                    $payment->created_by   = Auth::id();
+                    $payment->created_date = now();
                 }
 
-                $oldAmount = (float) $payment->amount;
-                $this->reverseBillPayment($payment, $payableId);
+                $payable = round($this->dueOf($bill) + $oldAmount, 2);
 
-                $payment->updated_by   = Auth::id();
-                $payment->updated_date = now();
-            } else {
-                $payment = new BillPayment();
-                $payment->payment_no   = $this->nextSequentialCode(BillPayment::class, 'payment_no', 'BP');
-                $payment->bill_id      = $bill->id;
-                $payment->party_id     = $bill->party_id;
-                $payment->created_by   = Auth::id();
-                $payment->created_date = now();
+                if ($amount > $payable + 0.005) {
+                    abort(422, 'Amount cannot be more than the bill due (' . number_format($payable, 2) . ').');
+                }
+
+                $payment->payment_date       = $request->input('payment_date');
+                $payment->payment_group_id   = (int) $request->input('payment_group_id');
+                $payment->payment_account_id = (int) $request->input('payment_account_id');
+                $payment->amount             = $amount;
+                $payment->reference_no       = $this->nullIfBlank($request->input('reference_no'));
+                $payment->remarks            = $this->nullIfBlank($request->input('remarks'));
+                $payment->save();
+
+                // Supplier ledger: paying lowers what we owe.
+                $this->storeCreditPayment([
+                    'party_id'               => $bill->party_id,
+                    'party_type'             => 'Supplier',
+                    'payment_type'           => 'Bill Payment',
+                    'date'                   => $payment->payment_date,
+                    'credit'                 => $amount,
+                    'bill_id'                => $bill->id,
+                    'bill_payment_id'        => $payment->id,
+                    'payment_method'         => $payment->payment_group_id,
+                    'payment_method_account' => $payment->payment_account_id,
+                    'remarks'                => 'Payment ' . $payment->payment_no . ' for bill ' . $bill->bill_no,
+                ]);
+
+                $this->postBalances([$payableId => $amount], [(int) $payment->payment_account_id => $amount], 1);
+
+                $this->refreshBillTotals($bill->id);
+
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Payment ' . $payment->payment_no . ($request->filled('id') ? ' updated' : ' saved') . ' successfully.',
+                ]);
+            } catch (HttpExceptionInterface $e) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+            } catch (Throwable $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                Log::error('Bill payment store error', $this->ctx($e));
+
+                return response()->json(['status' => false, 'message' => 'Unable to save the payment. Please try again.'], 500);
             }
-
-            $payable = round($this->dueOf($bill) + $oldAmount, 2);
-
-            if ($amount > $payable + 0.005) {
-                abort(422, 'Amount cannot be more than the bill due (' . number_format($payable, 2) . ').');
-            }
-
-            $payment->payment_date       = $request->input('payment_date');
-            $payment->payment_group_id   = (int) $request->input('payment_group_id');
-            $payment->payment_account_id = (int) $request->input('payment_account_id');
-            $payment->amount             = $amount;
-            $payment->reference_no       = $this->nullIfBlank($request->input('reference_no'));
-            $payment->remarks            = $this->nullIfBlank($request->input('remarks'));
-            $payment->save();
-
-            // Supplier ledger: paying lowers what we owe.
-            $this->storeCreditPayment([
-                'party_id'               => $bill->party_id,
-                'party_type'             => 'Supplier',
-                'payment_type'           => 'Bill Payment',
-                'date'                   => $payment->payment_date,
-                'credit'                 => $amount,
-                'bill_id'                => $bill->id,
-                'bill_payment_id'        => $payment->id,
-                'payment_method'         => $payment->payment_group_id,
-                'payment_method_account' => $payment->payment_account_id,
-                'remarks'                => 'Payment ' . $payment->payment_no . ' for bill ' . $bill->bill_no,
-            ]);
-
-            $this->postBalances([$payableId => $amount], [(int) $payment->payment_account_id => $amount], 1);
-
-            $this->refreshBillTotals($bill->id);
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Payment ' . $payment->payment_no . ($request->filled('id') ? ' updated' : ' saved') . ' successfully.',
-            ]);
-        } catch (HttpExceptionInterface $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Bill payment store error', $this->ctx($e));
-
-            return response()->json(['status' => false, 'message' => 'Unable to save the payment. Please try again.'], 500);
-        }
+        });
     }
 
     public function paymentDelete(Request $request)
@@ -572,7 +588,8 @@ class BillController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $payment = BranchController::scope(BillPayment::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('bill_payments', $request->input('id'));
+                $payment = BranchController::scopeOwn(BillPayment::where('id', (int) $request->input('id')))->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$payment) {
                     abort(404, 'Payment not found.');

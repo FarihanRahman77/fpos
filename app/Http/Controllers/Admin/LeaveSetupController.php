@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +19,7 @@ use Throwable;
  */
 class LeaveSetupController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     private const TABLES = [
         'types'  => ['table' => 'leave_types', 'label' => 'Leave type'],

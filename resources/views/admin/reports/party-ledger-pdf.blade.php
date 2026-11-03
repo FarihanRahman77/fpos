@@ -1,150 +1,80 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>{{ $config['title'] }}</title>
-    @php
-        $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
-        $bal = $balance_text;
-    @endphp
-    <style>
-        @page { margin: 24px 26px 46px 26px; }
-        body { font-family: 'DejaVu Sans', sans-serif; font-size: 8px; color: {{ $pc['ink'] }}; }
-        table { width: 100%; border-collapse: collapse; }
-        .muted { color: {{ $pc['muted'] }}; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .nowrap { white-space: nowrap; }
+@extends('pdf.layout')
+@php
+    $m = fn ($v) => $v == 0 ? '-' : number_format($v, 2);
+    $bal = $balance_text;
+    $doc = [
+        'title'     => $config['title'],
+        'info'      => $filters_text,
+        'printedAt' => $printedAt,
+        'signatures' => ['Prepared by' => auth()->user()->name ?? '', 'Checked by' => '', 'Approved by' => ''],
+    ];
+@endphp
 
-        .company-name { font-size: 15px; font-weight: bold; color: {{ $pc['ink'] }}; }
-        .doc-title { font-size: 16px; font-weight: bold; color: {{ $pc['accent'] }}; letter-spacing: 1px; }
-        .rule { border-top: 2.5px solid {{ $pc['accent'] }}; margin: 6px 0 8px 0; }
-
-        .filters td { padding: 1px 10px 1px 0; vertical-align: top; }
-        .filters .k { color: {{ $pc['muted'] }}; width: 70px; }
-
-        .block { margin-top: 10px; page-break-inside: auto; }
-        .block-head { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; padding: 5px 7px; }
-        .block-head .meta { color: {{ $pc['border_strong'] }}; font-size: 7px; }
-        .grid th { background: {{ $pc['border'] }}; padding: 4px 4px; font-size: 7px; text-transform: uppercase; text-align: left; border: 1px solid {{ $pc['border_strong'] }}; }
-        .grid th.right { text-align: right; }
-        .grid td { padding: 3.5px 4px; border: 1px solid {{ $pc['border'] }}; vertical-align: top; }
-        .grid tr.opening td { background: {{ $pc['soft'] }}; font-style: italic; color: {{ $pc['secondary'] }}; }
-        .grid tr.total td { background: {{ $pc['soft'] }}; font-weight: bold; border-top: 1.5px solid {{ $pc['faint'] }}; }
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-
-        .summary { width: 50%; margin-top: 14px; page-break-inside: avoid; }
-        .summary td { padding: 4px 7px; border: 1px solid {{ $pc['border_strong'] }}; }
-        .summary td.k { background: {{ $pc['soft'] }}; font-weight: bold; width: 58%; }
-
-        .footer { position: fixed; bottom: -30px; left: 0; right: 0; font-size: 7.5px; color: {{ $pc['faint'] }}; }
-    </style>
-</head>
-<body>
-
-    <table>
-        <tr>
-            <td style="width: 62%; vertical-align: top;">
-                <table>
-                    <tr>
-                        @if ($company['logo'])
-                            <td style="width: 52px; vertical-align: middle;"><img src="{{ $company['logo'] }}" style="max-height: 36px; max-width: 48px;" alt=""></td>
-                        @endif
-                        <td style="vertical-align: middle;">
-                            <div class="company-name">{{ $company['name'] }}</div>
-                            @if ($company['address'])<div class="muted">{{ $company['address'] }}</div>@endif
-                            <div class="muted">
-                                @if ($company['phone'])Phone: {{ $company['phone'] }}@endif
-                                @if ($company['email']) &nbsp;|&nbsp; {{ $company['email'] }}@endif
-                            </div>
-                        </td>
-                    </tr>
-                </table>
-            </td>
-            <td class="right" style="vertical-align: top;">
-                <div class="doc-title">{{ strtoupper($config['title']) }}</div>
-                <div class="muted" style="margin-top: 2px;">Printed: {{ $printedAt }}</div>
-            </td>
-        </tr>
-    </table>
-
-    <div class="rule"></div>
-
-    <table class="filters">
-        @foreach ($filters_text as $label => $value)
-            <tr><td class="k">{{ $label }}</td><td class="bold">{{ $value }}</td></tr>
-        @endforeach
-    </table>
-
+@section('content')
     @forelse ($items as $item)
-        <div class="block">
-            <div class="block-head">
-                <span class="bold" style="font-size: 9.5px;">{{ $item['name'] }}</span>
-                <span class="meta">
-                    @if ($item['code']) &nbsp; {{ $item['code'] }}@endif
-                    &nbsp;·&nbsp; {{ $item['type'] }}
-                    @if ($item['phone']) &nbsp;·&nbsp; {{ $item['phone'] }}@endif
-                    &nbsp;·&nbsp; {{ $balance_label($item['closing']) }}
-                </span>
-            </div>
-            <table class="grid">
-                <thead>
-                    <tr>
-                        <th style="width: 10%;">Date</th>
-                        <th style="width: 11%;">Voucher</th>
-                        <th style="width: 15%;">Particulars</th>
-                        <th style="width: 11%;">Reference</th>
-                        <th>Remarks</th>
-                        <th class="right" style="width: 11%;">Debit</th>
-                        <th class="right" style="width: 11%;">Credit</th>
-                        <th class="right" style="width: 13%;">Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr class="opening">
-                        <td colspan="7">Balance brought forward (before {{ $from->format('d M Y') }})</td>
-                        <td class="right bold nowrap">{{ $bal($item['opening']) }}</td>
-                    </tr>
-                    @forelse ($item['rows'] as $r)
-                        <tr>
-                            <td class="nowrap">{{ $r['date']->format('d M Y') }}</td>
-                            <td>{{ $r['voucher'] ?: '-' }}</td>
-                            <td>{{ $r['particular'] }}</td>
-                            <td>{{ $r['reference'] ?: '-' }}</td>
-                            <td class="muted">{{ $r['note'] }}</td>
-                            <td class="right">{{ $m($r['dr']) }}</td>
-                            <td class="right">{{ $m($r['cr']) }}</td>
-                            <td class="right bold nowrap">{{ $bal($r['balance']) }}</td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="8" class="muted" style="text-align: center; font-style: italic;">No transactions in this period</td></tr>
-                    @endforelse
-                    <tr class="total">
-                        <td colspan="5" class="right">Total / Closing balance</td>
-                        <td class="right">{{ number_format($item['dr'], 2) }}</td>
-                        <td class="right">{{ number_format($item['cr'], 2) }}</td>
-                        <td class="right nowrap">{{ $bal($item['closing']) }}</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="pdf-h">
+            {{ $item['name'] }}
+            <span class="meta">
+                @if ($item['code']) &nbsp; {{ $item['code'] }} @endif
+                &nbsp;·&nbsp; {{ $item['type'] }}
+                @if ($item['phone']) &nbsp;·&nbsp; {{ $item['phone'] }} @endif
+                &nbsp;·&nbsp; {{ $balance_label($item['closing']) }}
+            </span>
         </div>
+        <table class="pdf-table compact">
+            <thead>
+                <tr>
+                    <th style="width: 10%;">Date</th>
+                    <th style="width: 11%;">Voucher</th>
+                    <th style="width: 15%;">Particulars</th>
+                    <th style="width: 11%;">Reference</th>
+                    <th>Remarks</th>
+                    <th class="num" style="width: 11%;">Debit</th>
+                    <th class="num" style="width: 11%;">Credit</th>
+                    <th class="num" style="width: 13%;">Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="opening">
+                    <td colspan="7">Balance brought forward (before {{ $from->format('d M Y') }})</td>
+                    <td class="num b">{{ $bal($item['opening']) }}</td>
+                </tr>
+                @forelse ($item['rows'] as $r)
+                    <tr>
+                        <td class="nowrap">{{ $r['date']->format('d M Y') }}</td>
+                        <td>{{ $r['voucher'] ?: '-' }}</td>
+                        <td>{{ $r['particular'] }}</td>
+                        <td>{{ $r['reference'] ?: '-' }}</td>
+                        <td class="muted">{{ $r['note'] }}</td>
+                        <td class="num">{{ $m($r['dr']) }}</td>
+                        <td class="num">{{ $m($r['cr']) }}</td>
+                        <td class="num b">{{ $bal($r['balance']) }}</td>
+                    </tr>
+                @empty
+                    <tr class="empty"><td colspan="8">No transactions in this period</td></tr>
+                @endforelse
+                <tr class="total">
+                    <td colspan="5" class="r">Total / Closing balance</td>
+                    <td class="num">{{ number_format($item['dr'], 2) }}</td>
+                    <td class="num">{{ number_format($item['cr'], 2) }}</td>
+                    <td class="num">{{ $bal($item['closing']) }}</td>
+                </tr>
+            </tbody>
+        </table>
     @empty
-        <p class="muted" style="text-align: center; margin-top: 30px;">No {{ $ledger }} transactions match these filters.</p>
+        <table class="pdf-table"><tbody><tr class="empty"><td>No {{ $ledger }} transactions match these filters.</td></tr></tbody></table>
     @endforelse
 
-    <table class="summary">
-        <tr><td class="k">Parties</td><td class="right">{{ $totals['parties'] }}</td></tr>
-        <tr><td class="k">Balance brought forward</td><td class="right">{{ $bal($totals['opening']) }}</td></tr>
-        <tr><td class="k">Total debit</td><td class="right">{{ number_format($totals['dr'], 2) }}</td></tr>
-        <tr><td class="k">Total credit</td><td class="right">{{ number_format($totals['cr'], 2) }}</td></tr>
-        <tr><td class="k">Total {{ strtolower($config['labels']['Dr']) }} (Dr balances)</td><td class="right">{{ number_format($totals['balance_dr'], 2) }}</td></tr>
-        <tr><td class="k">Total {{ strtolower($config['labels']['Cr']) }} (Cr balances)</td><td class="right">{{ number_format($totals['balance_cr'], 2) }}</td></tr>
-        <tr><td class="k">Net closing balance</td><td class="right bold">{{ $bal($totals['closing']) }}</td></tr>
+    <div class="avoid">
+    <div class="pdf-h">Summary</div>
+    <table class="pdf-kv avoid" style="width: 55%;">
+        <tr><td class="k">Parties</td><td class="v num">{{ $totals['parties'] }}</td></tr>
+        <tr><td class="k">Balance brought forward</td><td class="v num">{{ $bal($totals['opening']) }}</td></tr>
+        <tr><td class="k">Total debit</td><td class="v num">{{ number_format($totals['dr'], 2) }}</td></tr>
+        <tr><td class="k">Total credit</td><td class="v num">{{ number_format($totals['cr'], 2) }}</td></tr>
+        <tr><td class="k">Total {{ strtolower($config['labels']['Dr']) }} (Dr balances)</td><td class="v num">{{ number_format($totals['balance_dr'], 2) }}</td></tr>
+        <tr><td class="k">Total {{ strtolower($config['labels']['Cr']) }} (Cr balances)</td><td class="v num">{{ number_format($totals['balance_cr'], 2) }}</td></tr>
+        <tr><td class="k b">Net closing balance</td><td class="v num b">{{ $bal($totals['closing']) }}</td></tr>
     </table>
-
-    <div class="footer">{{ $company['name'] }} &nbsp;|&nbsp; {{ $config['title'] }} &nbsp;|&nbsp; {{ $filters_text['Period'] ?? '' }}</div>
-
-    {{-- Page numbers are drawn by ReportController after rendering. --}}
-</body>
-</html>
+    </div>
+@endsection

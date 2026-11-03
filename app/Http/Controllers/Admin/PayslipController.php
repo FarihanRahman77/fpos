@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Barryvdh\DomPDF\Facade\Pdf as PDF;
 use Carbon\Carbon;
@@ -18,7 +19,7 @@ use Throwable;
  */
 class PayslipController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public function index()
     {
@@ -222,7 +223,7 @@ class PayslipController extends Controller
 
     public static function render(array $slips)
     {
-        return PDF::loadView('admin.payroll.payslips.pdf', ['slips' => $slips])->setPaper('a4');
+        return SettingController::pdf('admin.payroll.payslips.pdf', ['slips' => $slips]);
     }
 
     public static function fileName(array $slip): string
@@ -253,7 +254,7 @@ class PayslipController extends Controller
         } catch (Throwable $e) {
             Log::error('Payslip email error', ['item' => $item->id, 'error' => $e->getMessage()]);
 
-            return ['status' => false, 'message' => 'Could not email ' . $item->name . ': ' . mb_strimwidth($e->getMessage(), 0, 160, '…')];
+            return ['status' => false, 'message' => 'Could not email ' . $item->name . '. Check the email settings and try again.'];
         }
     }
 

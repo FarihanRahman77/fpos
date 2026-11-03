@@ -43,7 +43,9 @@ class ChartOfAccountController extends Controller
 
     public function page()
     {
-        return view('admin.chart_of_accounts.index');
+        $branches = DB::table('branches')->where('deleted', 'No')->where('status', 'Active')->orderByDesc('is_main')->orderBy('name')->get(['id', 'name']);
+
+        return view('admin.chart_of_accounts.index', compact('branches'));
     }
 
     /* ------------------------------------------------------------------ */
@@ -60,6 +62,7 @@ class ChartOfAccountController extends Controller
                 ->get();
 
             $byId    = $accounts->keyBy('id');
+            $balance = self::statementBalances($byId);
             $rows    = [];
             $parents = [];
             $counts  = ['roots' => 0, 'groups' => 0, 'ledgers' => 0];
@@ -84,8 +87,9 @@ class ChartOfAccountController extends Controller
                     e($a->balance ?: '-'),          // 5 Normal balance
                     $this->moneyCell($a),           // 6 Opening balance
                     $this->dateCell($a),            // 7 Opening date
-                    $this->statusCell($a),          // 8 Status
-                    $this->actionCell($a),          // 9 Action
+                    self::balanceCell($balance[$a->id] ?? 0.0),   // 8 Balance (from transactions)
+                    $this->statusCell($a),          // 9 Status
+                    $this->actionCell($a),          // 10 Action
                 ];
 
                 // Parent dropdown: active 1st + 2nd layer accounts.
@@ -136,6 +140,7 @@ class ChartOfAccountController extends Controller
             $parent = $account->parent_id
                 ? DB::table('chart_of_accounts')->where('id', $account->parent_id)->first()
                 : null;
+            $balance = self::statementBalances(DB::table('chart_of_accounts')->where('deleted', 'No')->get(['id', 'parent_id'])->keyBy('id'))[$account->id] ?? 0.0;
 
             return response()->json([
                 'status' => true,
@@ -150,10 +155,14 @@ class ChartOfAccountController extends Controller
                         ? $parent->account_code . ' - ' . $parent->account_name
                         : '— (Top level account)',
                     'account_type'    => $account->account_type,
+                    'branch_id'       => $account->branch_id,
                     'normal_balance'  => $account->balance,
                     'status'          => $account->status,
                     'is_system'       => (int) $account->is_system,
                     'opening_balance' => number_format((float) ($account->opening_balance ?? 0), 2, '.', ''),
+                    // as the Trial Balance shows it (debit − credit), never chart_of_accounts.current_balance
+                    'balance'         => round($balance, 2),
+                    'balance_text'    => self::balanceText($balance),
                     'opening_balance_entry_datetime' => $account->opening_balance_entry_datetime
                         ? Carbon::parse($account->opening_balance_entry_datetime)->format('Y-m-d\TH:i')
                         : '',
@@ -203,6 +212,7 @@ class ChartOfAccountController extends Controller
         $validator = Validator::make($request->all(), [
             'parent_id'       => ['required', 'integer', 'min:1'],
             'account_name'    => ['required', 'string', 'max:150'],
+            'branch_id'       => ['nullable', 'integer', Rule::exists('branches', 'id')->where('deleted', 'No')],
             'status'          => ['sometimes', 'required', Rule::in(['Active', 'Inactive'])],
             'opening_balance' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'opening_balance_entry_datetime' => [
@@ -237,6 +247,9 @@ class ChartOfAccountController extends Controller
                     'slug'            => strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name), '-')),
                     'layer_level'     => $newLayer,
                     'parent_id'       => $parent->id,
+                    // Only a cash / bank / mobile-banking ledger can belong to one branch; everything else is shared.
+                    'branch_id'       => $newLayer === 3 && $root->account_type === 'Liquid Asset' && $request->filled('branch_id')
+                        ? (int) $request->input('branch_id') : null,
                     'account_type'    => $root->account_type,
                     'balance'         => $root->balance,
                     'opening_balance' => round((float) $request->input('opening_balance', 0), 2),
@@ -281,6 +294,7 @@ class ChartOfAccountController extends Controller
         $validator = Validator::make($request->all(), [
             'account_name'    => ['sometimes', 'required', 'string', 'max:150'],
             'status'          => ['sometimes', 'required', Rule::in(['Active', 'Inactive'])],
+            'branch_id'       => ['nullable', 'integer', Rule::exists('branches', 'id')->where('deleted', 'No')],
             'opening_balance' => ['nullable', 'numeric', 'min:0', 'max:9999999999999.99'],
             'opening_balance_entry_datetime' => [
                 'nullable',
@@ -293,7 +307,7 @@ class ChartOfAccountController extends Controller
             return $this->validatorResponse($validator);
         }
 
-        if (!$request->hasAny(['account_name', 'status', 'opening_balance'])) {
+        if (!$request->hasAny(['account_name', 'status', 'opening_balance', 'branch_id'])) {
             return response()->json(['status' => false, 'message' => 'Nothing to update.'], 422);
         }
 
@@ -318,6 +332,17 @@ class ChartOfAccountController extends Controller
                 if ($request->exists('status') && $request->input('status') !== $account->status) {
                     $this->assertStatusChange($account, $request->input('status'));
                     $updates['status'] = $request->input('status');
+                }
+
+                if ($request->exists('branch_id') && (int) $account->layer_level === 3 && $account->account_type === 'Liquid Asset') {
+                    $branch = $request->filled('branch_id') ? (int) $request->input('branch_id') : null;
+                    if ($branch !== ($account->branch_id ? (int) $account->branch_id : null)) {
+                        // Moving a ledger that already has entries would move its history to another branch.
+                        if ($used = $this->usedIn((int) $account->id)) {
+                            $this->fail('branch_id', 'This ledger is already used in ' . $used . ', so its branch cannot be changed.');
+                        }
+                        $updates['branch_id'] = $branch;
+                    }
                 }
 
                 if ($request->exists('opening_balance')) {
@@ -412,9 +437,13 @@ class ChartOfAccountController extends Controller
                     abort(409, 'This account has child accounts. Delete or move them first.');
                 }
 
+                // the balance shown is the statements' one (current_balance is only a guard, never shown)
+                $balance = self::statementBalances(collect([$account->id => $account]))[$account->id] ?? 0.0;
+                if (abs($balance) >= 0.005) {
+                    abort(409, 'This account has a balance of ' . self::balanceText($balance) . ' and cannot be deleted. Mark it Inactive instead.');
+                }
                 if (abs((float) ($account->current_balance ?? 0)) > 0.0001) {
-                    abort(409, 'This account has a balance of ' . number_format((float) $account->current_balance, 2)
-                        . ' and cannot be deleted. Mark it Inactive instead.');
+                    abort(409, 'This account has postings and cannot be deleted. Mark it Inactive instead.');
                 }
 
                 if ($usedIn = $this->usedIn((int) $account->id)) {
@@ -630,6 +659,7 @@ class ChartOfAccountController extends Controller
             'salary payments'    => ['salary_payments', ['payment_account_id'], null],
             'employee loans'     => ['employee_loans', ['loan_account_id', 'payment_account_id'], 'deleted'],
             'loan transactions'  => ['employee_loan_transactions', ['payment_account_id'], null],
+            'suspense entries'   => ['suspense_transactions', ['account_id', 'adjust_account_id', 'dr_account_id', 'cr_account_id'], 'deleted'],
         ];
 
         foreach ($uses as $label => [$table, $columns, $deletedCol]) {
@@ -693,11 +723,14 @@ class ChartOfAccountController extends Controller
         $system = (int) $a->is_system === 1
             ? '<span class="badge bg-light text-muted border ms-2">System</span>'
             : '';
+        $branch = !empty($a->branch_id)
+            ? '<span class="badge bg-light text-muted border ms-2">' . e(BranchController::name((int) $a->branch_id)) . '</span>'
+            : '';
 
         return '<div class="coa-name ' . $indent . '">'
             . '<i class="fas ' . $icon . ' me-2 text-muted"></i>'
             . '<span class="' . $weight . '">' . e($a->account_name) . '</span>'
-            . $system . '</div>';
+            . $system . $branch . '</div>';
     }
 
     private function layerCell(int $layer): string
@@ -712,6 +745,44 @@ class ChartOfAccountController extends Controller
         $color = self::TYPE_COLORS[$a->account_type] ?? 'secondary';
 
         return '<span class="badge bg-' . $color . '">' . e($a->account_type) . '</span>';
+    }
+
+    /**
+     * Balance of every account as the Trial Balance shows it — AccountingReportController::balances() as at today for
+     * the visible branches, debit − credit — keyed by account id; a group / root is the sum of the accounts under it.
+     * chart_of_accounts.current_balance is kept up to date by the postings but is not shown: it does not follow the
+     * statements for cash / bank and the party control ledgers.
+     */
+    public static function statementBalances($byId): array
+    {
+        $acc = AccountingReportController::balances(now()->toDateString(), fn ($q, string $col) => BranchController::scope($q, $col))['acc'];
+
+        $total = [];
+        foreach ($acc as $key => $amount) {
+            [$kind, $id] = explode(':', $key, 2) + [1 => ''];
+            if (!in_array($kind, ['a', 'g'], true) || !ctype_digit($id)) {
+                continue;   // derived lines / money without an account have no Chart of Accounts row
+            }
+            // the account itself and each of its parents (guarded against a broken parent chain)
+            for ($at = (int) $id, $hops = 0; $at && $hops < 10; $at = (int) ($byId[$at]->parent_id ?? 0), $hops++) {
+                $total[$at] = ($total[$at] ?? 0) + $amount;
+            }
+        }
+
+        return array_map(fn ($v) => round($v, 2), $total);
+    }
+
+    /** "1,234.00 Dr" / "1,234.00 Cr" (the Trial Balance column the amount sits in). */
+    public static function balanceText(float $amount): string
+    {
+        return abs($amount) < 0.005 ? '0.00' : number_format(abs($amount), 2) . ($amount > 0 ? ' Dr' : ' Cr');
+    }
+
+    private static function balanceCell(float $amount): string
+    {
+        $class = abs($amount) < 0.005 ? 'text-muted' : 'fw-semibold';
+
+        return '<span class="d-block text-end text-nowrap ' . $class . '" data-order="' . round($amount, 2) . '">' . e(self::balanceText($amount)) . '</span>';
     }
 
     private function moneyCell(object $a): string
@@ -836,7 +907,7 @@ class ChartOfAccountController extends Controller
             // cash / bank ledgers of another branch are not offered
             ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', BranchController::activeId()))
             ->orderBy('account_code')
-            ->get(['id', 'account_code', 'account_name', 'current_balance']);
+            ->get(['id', 'account_code', 'account_name']);
 
         return response()->json(['status' => true, 'data' => $rows]);
     }

@@ -246,6 +246,33 @@
                                             </td>
                                             <td></td>
                                         </tr>
+                                        @if ($programs['vat_enabled'])
+                                            <tr>
+                                                <td colspan="7" class="text-end">VAT{{ $programs['vat_inclusive'] ? ' (included in prices)' : '' }}</td>
+                                                <td>
+                                                    <input type="text" id="vat_amount" class="form-control text-end"
+                                                        value="0.00" placeholder="0.00" readonly aria-label="VAT">
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        @endif
+                                        @if ($programs['loyalty'])
+                                            <tr id="loyaltyRow" class="d-none">
+                                                <td colspan="5" class="text-end">
+                                                    Redeem Points <small class="text-muted" id="pointsHave"></small>
+                                                </td>
+                                                <td>
+                                                    <input type="number" name="redeem_points" id="redeem_points" class="form-control"
+                                                        min="0" step="1" placeholder="Points" aria-label="Points to redeem">
+                                                </td>
+                                                <td class="text-end">Points Discount</td>
+                                                <td>
+                                                    <input type="text" id="loyalty_discount" class="form-control text-end"
+                                                        value="0.00" placeholder="0.00" readonly aria-label="Points discount">
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        @endif
                                         <tr>
                                             <td colspan="7" class="text-end">Grand Total</td>
                                             <td>
@@ -301,7 +328,10 @@
                                                 <input type="number" step="0.01" min="0" name="paid_amount"
                                                     id="paid_amount" class="form-control" value="0" placeholder="0.00">
                                             </td>
-                                            <td></td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-secondary" id="payFullBtn"
+                                                    title="Pay the full grand total">Full</button>
+                                            </td>
                                         </tr>
                                         <tr>
                                             <td colspan="7" class="text-end">Due Amount</td>
@@ -361,6 +391,8 @@
 @push('scripts')
     <script>
         let saleItems = [];
+        const PROGRAMS = @json($programs);
+        let customerProgram = null;
 
         $(document).ready(function() {
 
@@ -376,6 +408,7 @@
                 let id = $(this).val();
                 if (!id) {
                     $('#customer_due').val('0.00');
+                    setCustomerProgram(null);
                     return;
                 }
                 $.ajax({
@@ -388,10 +421,15 @@
                             $('#customer_due').val(
                                 parseFloat(response.due || 0).toFixed(2)
                             );
+                            setCustomerProgram(response.programs || null);
+                        } else {
+                            setCustomerProgram(null);
                         }
                     },
                     error: function(xhr) {
                         // alert(JSON.stringify(xhr));
+                        setCustomerProgram(null);
+                        toastr.error(xhr.responseJSON?.message || 'Unable to load the customer.');
                     }
 
                 });
@@ -399,45 +437,59 @@
             });
 
 
+            // Look the number up once typing pauses (400 ms) and only for a full number (11+ digits), like POS.
+            // A number that is not found clears what an earlier lookup filled in, so the previous
+            // customer's name, address, due and points never stay on a new customer.
+            let phoneTimer = null;
+            let lookupFilled = false;
+
+            function resetLookedUpCustomer() {
+                if (lookupFilled) {
+                    $('#customer_name').val('');
+                    $('#customer_address').val('');
+                    lookupFilled = false;
+                }
+                $('#customer_due').val('0.00');
+                setCustomerProgram(null);
+            }
+
             $('#customer_phone').on('input', function() {
+                clearTimeout(phoneTimer);
 
                 let phone = $.trim($(this).val());
 
-                if (!phone) {
+                if (phone.replace(/\D/g, '').length < 11) {
+                    resetLookedUpCustomer();
                     return;
                 }
 
-                $.ajax({
-
-                    url: "{{ url('/admin/sales/customer-by-phone') }}/" +
-                        encodeURIComponent(phone),
-
-                    type: 'GET',
-
-                    dataType: 'json',
-
-                    success: function(response) {
-                        // alert(JSON.stringify(response));
-                        if (response.status && response.customer) {
-
-                            $('#customer_name')
-                                .val(response.customer.name || '');
-
-                            $('#customer_address')
-                                .val(response.customer.address || '');
-
-                            $('#customer_due').val(parseFloat(response.current_due || 0)
-                                .toFixed(2));
-
+                phoneTimer = setTimeout(function() {
+                    $.ajax({
+                        url: "{{ url('/admin/sales/customer-by-phone') }}/" + encodeURIComponent(phone),
+                        type: 'GET',
+                        dataType: 'json',
+                        success: function(response) {
+                            // alert(JSON.stringify(response));
+                            if ($.trim($('#customer_phone').val()) !== phone) {
+                                return;   // the number changed while this lookup was running
+                            }
+                            if (response.status && response.customer) {
+                                $('#customer_name').val(response.customer.name || '');
+                                $('#customer_address').val(response.customer.address || '');
+                                $('#customer_due').val(parseFloat(response.current_due || 0).toFixed(2));
+                                lookupFilled = true;
+                                setCustomerProgram(response.programs || null);
+                            } else {
+                                resetLookedUpCustomer();
+                            }
+                        },
+                        error: function(xhr) {
+                            // alert(JSON.stringify(xhr));
+                            resetLookedUpCustomer();
+                            toastr.error(xhr.responseJSON?.message || 'Unable to look up the customer.');
                         }
-
-                    },
-                    error: function(xhr) {
-                        // alert(JSON.stringify(xhr));
-                    }
-
-                });
-
+                    });
+                }, 400);
             });
 
 
@@ -447,6 +499,13 @@
 
             $('#paid_amount').on('input', calculateTotals);
 
+            $(document).on('input', '#redeem_points', calculateTotals);
+
+            $('#payFullBtn').on('click', function() {
+                $('#paid_amount').val(calculateTotals().grandTotal.toFixed(2));
+                calculateTotals();
+            });
+
 
             $('#saleForm').on('submit', function(e) {
 
@@ -455,6 +514,22 @@
                 if (saleItems.length === 0) {
 
                     toastr.error('Please add at least one product.');
+
+                    return;
+
+                }
+
+                let badQty = saleItems.findIndex(function(item) {
+                    return !(parseFloat(item.qty) > 0);
+                });
+
+                $('.itemQty').removeClass('is-invalid');
+
+                if (badQty !== -1) {
+
+                    toastr.error('Quantity must be more than zero for "' + escapeHtml(saleItems[badQty].product_name) + '".');
+
+                    $('.itemQty[data-index="' + badQty + '"]').addClass('is-invalid').trigger('focus');
 
                     return;
 
@@ -645,6 +720,9 @@
                     variants: variants || [],
 
                     product_sale_price: parseFloat(product.sale_price || 0),
+
+                    // null = the default VAT rate (same rule as CustomerProgramController::vat())
+                    vat_percent: product.vat_percent === null || product.vat_percent === undefined ? null : parseFloat(product.vat_percent),
 
                     stock: stock,
 
@@ -1078,6 +1156,37 @@
                     subtotal - discountAmount
                 );
 
+            // VAT (same rule as the server / POS): rate per product, else the default; the sale discount is
+            // spread over the lines. Added on top, or only shown when it is already inside the prices.
+            let vat = 0;
+            if (PROGRAMS.vat_enabled && subtotal > 0) {
+                const share = Math.max(0, 1 - discountAmount / subtotal);
+                saleItems.forEach(function(item) {
+                    const lineSub = parseFloat(item.qty || 0) * parseFloat(item.sale_price || 0);
+                    const base = Math.max(0, lineSub - calculateItemDiscount(item, lineSub)) * share;
+                    const rate = item.vat_percent === null || item.vat_percent === undefined || isNaN(item.vat_percent) ?
+                        PROGRAMS.vat_rate : item.vat_percent;
+                    vat += PROGRAMS.vat_inclusive ? base - base / (1 + rate / 100) : base * rate / 100;
+                });
+                vat = Math.round(vat * 100) / 100;
+                if (!PROGRAMS.vat_inclusive) grandTotal += vat;
+            }
+            $('#vat_amount').val(vat.toFixed(2));
+
+            // Loyalty points as money off (capped like CustomerProgramController::redeemValue()).
+            let loyalty = 0;
+            if (customerProgram && customerProgram.loyalty_enabled) {
+                const want = Math.min(parseFloat($('#redeem_points').val()) || 0, customerProgram.loyalty_points);
+                if (want > 0 && want >= customerProgram.min_redeem) {
+                    loyalty = Math.min(want * customerProgram.point_value, grandTotal * customerProgram.max_percent / 100);
+                    loyalty = Math.round(loyalty * 100) / 100;
+                }
+                grandTotal -= loyalty;
+            }
+            $('#loyalty_discount').val(loyalty.toFixed(2));
+
+            grandTotal = Math.round(grandTotal * 100) / 100;
+
 
             let paid =
                 parseFloat($('#paid_amount').val() || 0);
@@ -1116,6 +1225,19 @@
                 due.toFixed(2)
             );
 
+            return { subtotal, discountAmount, vat, loyalty, grandTotal, paid, due };
+
+        }
+
+
+        // The selected customer's loyalty points (from customerByPhone / customerDue), or null.
+        function setCustomerProgram(p) {
+            customerProgram = p;
+            const show = !!(PROGRAMS.loyalty && p && p.loyalty_enabled && p.loyalty_points > 0);
+            $('#loyaltyRow').toggleClass('d-none', !show);
+            $('#pointsHave').text(show ? '(has ' + Math.floor(p.loyalty_points) + ', min ' + p.min_redeem + ')' : '');
+            if (!show) $('#redeem_points').val('');
+            calculateTotals();
         }
 
 
@@ -1228,9 +1350,12 @@
 
         function escapeHtml(value) {
 
-            return $('<div>')
-                .text(value ?? '')
-                .html();
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
 
         }
 

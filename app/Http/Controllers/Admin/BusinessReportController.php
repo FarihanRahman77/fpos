@@ -68,12 +68,12 @@ class BusinessReportController extends Controller
     /** Group-by choices per report. */
     public const GROUP_BY = [
         'sales'                => ['day' => 'Day', 'month' => 'Month', 'product' => 'Product', 'category' => 'Category', 'brand' => 'Brand', 'customer' => 'Customer',
-            'user' => 'Sales person', 'payment' => 'Payment method', 'type' => 'Sale type', 'invoice' => 'Invoice'],
+            'user' => 'Sales person', 'payment' => 'Payment method', 'type' => 'Sale type', 'invoice' => 'Invoice', 'branch' => 'Branch'],
         'product-profit'       => ['product' => 'Product', 'category' => 'Category', 'brand' => 'Brand', 'invoice' => 'Invoice'],
         'discounts'            => ['invoice' => 'Invoice', 'user' => 'Cashier', 'customer' => 'Customer', 'day' => 'Day'],
         'returns'              => ['product' => 'Product', 'party' => 'Customer / supplier', 'month' => 'Month', 'return' => 'Return voucher'],
         'quotation-conversion' => ['month' => 'Month', 'customer' => 'Customer', 'user' => 'Prepared by'],
-        'purchases'            => ['day' => 'Day', 'month' => 'Month', 'supplier' => 'Supplier', 'product' => 'Product', 'category' => 'Category', 'brand' => 'Brand', 'invoice' => 'Invoice'],
+        'purchases'            => ['day' => 'Day', 'month' => 'Month', 'supplier' => 'Supplier', 'product' => 'Product', 'category' => 'Category', 'brand' => 'Brand', 'invoice' => 'Invoice', 'branch' => 'Branch'],
         'expenses'             => ['head' => 'Expense head', 'month' => 'Month', 'employee' => 'Employee', 'source' => 'Source'],
         'attendance-summary'   => ['department' => 'Department', 'employee' => 'Employee'],
     ];
@@ -103,10 +103,12 @@ class BusinessReportController extends Controller
             'icon'       => $icon,
             'desc'       => $desc,
             'filters'    => $filters,
-            'groupBy'    => self::GROUP_BY[$report] ?? [],
+            'groupBy'    => self::groupOptions($report),
             'categories' => DB::table('categories')->where('deleted', 'No')->orderBy('name')->get(['id', 'name']),
             'brands'     => DB::table('brands')->where('deleted', 'No')->orderBy('name')->get(['id', 'name']),
-            'branch'     => BranchController::name(BranchController::current()),
+            // daily cash closing is the working branch's; every other report covers the branches the user sees
+            'branch'     => $report === 'cash-closing' ? BranchController::name(BranchController::activeId()) : BranchController::visibleLabel(),
+            'defaultRange' => self::defaultRange($report),
         ]);
     }
 
@@ -135,8 +137,8 @@ class BusinessReportController extends Controller
         abort_unless(isset(self::REPORTS[$report]), 404);
         $r = $this->build($report, $request);
         $wide = count($r['columns']) > 8;
-        $pdf = PDF::loadView('admin.business-reports.pdf', $r + ['printedAt' => now()->format('d M Y, h:i A'), 'printedBy' => Auth::user()->name ?? ''])
-            ->setPaper('a4', $wide ? 'landscape' : 'portrait');
+        $pdf = SettingController::pdf('admin.business-reports.pdf', $r + ['printedAt' => now()->format('d M Y, h:i A'), 'printedBy' => Auth::user()->name ?? ''],
+            $wide ? 'landscape' : 'portrait');
 
         return $request->boolean('download') ? $pdf->download($r['file'] . '.pdf') : $pdf->stream($r['file'] . '.pdf');
     }
@@ -248,7 +250,7 @@ class BusinessReportController extends Controller
             $this->reflowClosings($day);
 
             return $figures['closing'];
-        });
+        }, self::SAVE_ATTEMPTS);
 
         return response()->json(['status' => true, 'message' => 'Report saved for ' . Carbon::parse($day)->format('d M Y') . '. Closing amount '
             . number_format($closing, 2) . ' is the opening for the next day.']);
@@ -261,11 +263,11 @@ class BusinessReportController extends Controller
         $day = Carbon::parse($data['closing_date'])->toDateString();
 
         $deleted = DB::transaction(function () use ($day) {
-            $n = BranchController::scope(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', $day)->delete();
+            $n = BranchController::scopeOwn(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', $day)->delete();
             $this->reflowClosings($day);
 
             return $n;
-        });
+        }, self::SAVE_ATTEMPTS);
 
         return response()->json($deleted
             ? ['status' => true, 'message' => 'The saved report for ' . Carbon::parse($day)->format('d M Y') . ' was removed.']
@@ -279,7 +281,7 @@ class BusinessReportController extends Controller
         $values = ['opening_balance' => $fig['opening'], 'today_amount' => $fig['today'], 'closing_amount' => $fig['closing'],
             'details' => json_encode(['cash' => $fig['cash'], 'others' => $fig['others']]), 'updated_at' => now()] + $extra;
 
-        $q = fn () => BranchController::scope(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', $day);
+        $q = fn () => BranchController::scopeOwn(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', $day);
         $q()->exists()
             ? $q()->update($values)
             : DB::table('cash_day_closings')->insert(['closing_date' => $day, 'created_at' => now()] + $values);
@@ -290,7 +292,7 @@ class BusinessReportController extends Controller
     /** Today's closing is tomorrow's opening: after a change, recompute every later saved day in date order. */
     private function reflowClosings(string $day): void
     {
-        $later = BranchController::scope(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', '>', $day)
+        $later = BranchController::scopeOwn(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', '>', $day)
             ->orderBy('closing_date')->pluck('closing_date');
         foreach ($later as $d) {
             $this->storeCashDay(Carbon::parse($d)->toDateString());
@@ -331,7 +333,7 @@ class BusinessReportController extends Controller
         if (isset($f['from']) && in_array('range', self::REPORTS[$report][4], true)) {
             $text['Period'] = $f['from']->format('d M Y') . ' – ' . $f['to']->format('d M Y');
         }
-        $text['Branch'] = $r['branch_text'] ?? BranchController::name(BranchController::current());
+        $text['Branch'] = $r['branch_text'] ?? BranchController::visibleLabel();
         if (!empty($f['group_by']) && isset(self::GROUP_BY[$report][$f['group_by']])) {
             $text['Grouped by'] = self::GROUP_BY[$report][$f['group_by']];
         }
@@ -379,7 +381,26 @@ class BusinessReportController extends Controller
 
     private function group(array $f, string $report, string $default): string
     {
-        return isset(self::GROUP_BY[$report][$f['group_by']]) ? $f['group_by'] : $default;
+        return isset(self::groupOptions($report)[$f['group_by']]) ? $f['group_by'] : $default;
+    }
+
+    /** GROUP_BY of a report; "Branch" only when the user sees more than one branch. */
+    private static function groupOptions(string $report): array
+    {
+        $opts = self::GROUP_BY[$report] ?? [];
+        if (!BranchController::multiBranch()) {
+            unset($opts['branch']);
+        }
+
+        return $opts;
+    }
+
+    /** An invoice / voucher number with its branch when the user sees several branches. */
+    private static function withBranch(string $no, $branchId): string
+    {
+        $b = BranchController::label($branchId);
+
+        return $b === '' ? $no : $no . ' · ' . $b;
     }
 
     /** Display format of a report value by column type (screen and PDF). */
@@ -507,7 +528,8 @@ class BusinessReportController extends Controller
                 'user'     => $s->user ?: 'Unknown',
                 'payment'  => (float) $s->due_amount >= (float) $s->grand_total - 0.004 ? 'Credit (due)' : ($methods[$s->payment_method] ?? ($s->payment_method ?: 'Not set')),
                 'type'     => $s->sale_type,
-                'invoice'  => $s->invoice_no,
+                'invoice'  => self::withBranch($s->invoice_no, $s->branch_id),
+                'branch'   => $s->branch ?: '-',
                 default    => $s->sale_date,
             };
             $rows = $sales->groupBy($label)->map(function ($g, $name) use ($items) {
@@ -546,7 +568,7 @@ class BusinessReportController extends Controller
     {
         $day = $f['date']->toDateString();
         $fig = $this->cashFigures($day);
-        $saved = BranchController::scope(DB::table('cash_day_closings as c'), 'c.branch_id')->leftJoin('users as u', 'u.id', '=', 'c.saved_by')
+        $saved = BranchController::scopeOwn(DB::table('cash_day_closings as c'), 'c.branch_id')->leftJoin('users as u', 'u.id', '=', 'c.saved_by')
             ->where('c.closing_date', $day)->first(['c.*', 'u.name as saved_by_name']);
         // Something posted after the day was saved: the saved figures no longer match the books.
         $changed = $saved && (abs((float) $saved->today_amount - $fig['today']) > 0.004 || abs((float) $saved->opening_balance - $fig['opening']) > 0.004);
@@ -565,6 +587,7 @@ class BusinessReportController extends Controller
         return [
             'columns' => ['label' => ['Type', 'text'], 'in' => ['In (+)', 'money'], 'out' => ['Out (−)', 'money']],
             'groups' => $groups, 'rows' => [], 'totals' => [],
+            'branch_text' => BranchController::name(BranchController::activeId()),
             'filters_extra' => ['Day' => $f['date']->format('l, d M Y'), 'Opening balance' => number_format($fig['opening'], 2) . ' (' . $openNote . ')',
                 'Total amount (today)' => number_format($fig['today'], 2), 'Closing amount' => number_format($fig['closing'], 2)],
             'cards' => [
@@ -613,6 +636,11 @@ class BusinessReportController extends Controller
             $m->type === 'Bill Payment'                                      => ['Bill (−)', -1],
             $m->type === 'Salary'                                            => ['Salary (−)', -1],
             $m->type === 'Loan / Advance Paid'                               => ['Loan / Advance Paid (−)', -1],
+            $m->type === 'Suspense Paid'                                     => ['Suspense Paid (−)', -1],
+            $m->type === 'Suspense Return'                                   => ['Suspense Return (+)', 1],
+            $m->type === 'Employee Deposit'                                  => ['Employee Deposit (+)', 1],
+            $m->type === 'Investment'                                        => ['Investment (+)', 1],
+            $m->type === 'Capital Withdrawal'                                => ['Capital Withdrawal (−)', -1],
             default                                                          => $m->in > 0 ? ['Journal In (+)', 1] : ['Journal Out (−)', -1],
         };
 
@@ -630,7 +658,7 @@ class BusinessReportController extends Controller
             $add($method, $label, $sign, $sign > 0 ? $m->in - $m->out : $m->out - $m->in);
         }
 
-        $transfers = BranchController::scope(DB::table('internal_amount_transfers as t'), 't.branch_id')->where('t.deleted', 'No')
+        $transfers = BranchController::scopeOwn(DB::table('internal_amount_transfers as t'), 't.branch_id')->where('t.deleted', 'No')
             ->where('t.status', 'Active')->whereDate('t.transfer_date', $day)->get(['t.from_account_id', 't.to_account_id', 't.amount']);
         foreach ($transfers as $t) {
             $fm = $methodOf('a:' . $t->from_account_id);
@@ -680,7 +708,7 @@ class BusinessReportController extends Controller
     /** Opening = last saved closing before the day + net cash of the unsaved days in between; the books if none saved. */
     private function cashOpening(string $day): array
     {
-        $prev = BranchController::scope(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', '<', $day)
+        $prev = BranchController::scopeOwn(DB::table('cash_day_closings'), 'branch_id')->where('closing_date', '<', $day)
             ->orderByDesc('closing_date')->first(['closing_date', 'closing_amount']);
         if (!$prev) {
             return ['amount' => round($this->cashInBooks($day), 2), 'from' => null, 'gap_days' => 0];
@@ -713,18 +741,21 @@ class BusinessReportController extends Controller
             ->filter(fn ($m) => stripos($methodOf($m->key), 'cash') !== false)->sum(fn ($m) => $m->in - $m->out);
     }
 
-    /** The Cash & Bank Book engine (ReportController) and this branch's liquid ledgers, built once per request. */
+    /**
+     * The Cash & Bank Book engine (ReportController) limited to the WORKING branch (daily cash closing is per working
+     * branch, whatever other branches the user sees) and that branch's liquid ledgers, built once per request.
+     */
     private function cashEngine(): array
     {
-        static $engine = [];
-        $branch = BranchController::current() ?? 0;
-        if (!isset($engine[$branch])) {
-            $rc = new ReportController();
-            $ctx = (object) ['filters' => []];
-            $engine[$branch] = [$rc, $ctx, $rc->liquidAssetAccounts($ctx)];
-        }
+        // per request (BranchController::memo keeps it on the request), keyed by the working branch
+        $branch = (int) BranchController::activeId();
 
-        return $engine[$branch];
+        return BranchController::memo('cash-engine.' . $branch, function () use ($branch) {
+            $rc = new ReportController();
+            $ctx = (object) ['filters' => [], 'branches' => [$branch]];
+
+            return [$rc, $ctx, $rc->liquidAssetAccounts($ctx)];
+        });
     }
 
     /* ================================================================== */
@@ -808,12 +839,13 @@ class BusinessReportController extends Controller
 
         $buckets = ['b0' => [0, 30], 'b31' => [31, 60], 'b61' => [61, 90], 'b90' => [91, 100000]];
         $rows = [];
+        $isMain = BranchController::mainVisible();   // once, not per party; the opening balance is the main branch's
         foreach ($parties as $p) {
             $lines = $ledger[$p->id] ?? collect();
             // charges raise the due: customer = credit, supplier = debit
             $charges = $lines->map(fn ($l) => ['date' => $l->datetime, 'amount' => (float) ($customers ? $l->credit : $l->debit)])->filter(fn ($c) => $c['amount'] > 0)->values()->all();
             $settled = $lines->sum(fn ($l) => (float) ($customers ? $l->debit : $l->credit));
-            $opening = BranchController::isMainBranch() ? (float) $p->opening_balance : 0.0;   // opening belongs to the main branch
+            $opening = $isMain ? (float) $p->opening_balance : 0.0;   // opening belongs to the main branch
             if (($p->opening_balance_type ?? 'Due') === 'Advance') {
                 $opening = -$opening; // an opening advance is settled against later charges
             }
@@ -890,6 +922,26 @@ class BusinessReportController extends Controller
                 'c.name as category', 'b.name as brand', DB::raw('COALESCE(k.qty, 0) as qty')]);
     }
 
+    /**
+     * Stock value at cost as at the end of $asAt, valued exactly like the Stock Valuation report (on-hand quantity per
+     * product / variant × the product's current purchase price, live products only, each line rounded).
+     * $scope($query, 'st.branch_id') limits the branches; used by the accounting statements for Inventory.
+     */
+    public static function stockValueAt(string $asAt, callable $scope): float
+    {
+        $stock = $scope(DB::table('stocks as st'), 'st.branch_id')->where('st.deleted', 'No')->whereRaw('DATE(st.date) <= ?', [$asAt])
+            ->groupBy('st.product_id', 'st.product_variant_id')
+            ->selectRaw('st.product_id, st.product_variant_id, SUM(st.in_qty - st.out_qty) qty');
+
+        $value = 0.0;
+        foreach (DB::table('products as p')->joinSub($stock, 'k', 'k.product_id', '=', 'p.id')->where('p.deleted', 'No')
+            ->get(['k.qty', 'p.purchase_price']) as $r) {
+            $value += round((float) $r->qty * (float) $r->purchase_price, 2);
+        }
+
+        return round($value, 2);
+    }
+
     private function buildStockValuation(array $f): array
     {
         $items = $this->onHand($f['category_id'], $f['brand_id'])->filter(fn ($i) => !$f['hide_zero'] || abs((float) $i->qty) > 0.0005);
@@ -951,12 +1003,14 @@ class BusinessReportController extends Controller
             $cards = [['Bought', $t['net'], 'money', 'accent'], ['Units', $t['qty'], 'qty'], ['Lines', count($rows), 'int']];
         } else {
             $p = BranchController::scope(DB::table('purchases as pu'), 'pu.branch_id')->leftJoin('parties as s', 's.id', '=', 'pu.supplier_id')
+                ->leftJoin('branches as br', 'br.id', '=', 'pu.branch_id')
                 ->where('pu.deleted', 'No')->where('pu.status', 'Active')->whereBetween('pu.purchase_date', $range)
-                ->get(['pu.*', 's.name as supplier']);
+                ->get(['pu.*', 's.name as supplier', 'br.name as branch']);
             $label = fn ($x) => match ($by) {
                 'day'     => $x->purchase_date,
                 'month'   => Carbon::parse($x->purchase_date)->format('Y-m'),
-                'invoice' => $x->invoice_no,
+                'invoice' => self::withBranch($x->invoice_no, $x->branch_id),
+                'branch'  => $x->branch ?: '-',
                 default   => $x->supplier ?: '-',
             };
             $rows = $p->groupBy($label)->map(fn ($g, $n) => ['label' => $n, 'invoices' => $g->count(), 'gross' => $g->sum('subtotal'),
@@ -1151,7 +1205,7 @@ class BusinessReportController extends Controller
             ->groupBy('party_id')->selectRaw('party_id, SUM(credit) - SUM(debit) bal')->pluck('bal', 'party_id');
         $last = BranchController::scope(DB::table('sales'), 'branch_id')->whereIn('customer_id', $ids)->where('deleted', 'No')
             ->groupBy('customer_id')->selectRaw('customer_id, MAX(sale_date) d')->pluck('d', 'customer_id');
-        $isMain = BranchController::isMainBranch();
+        $isMain = BranchController::mainVisible();
 
         $rows = $sales->groupBy('customer_id')->map(function ($g, $id) use ($cost, $ledger, $last, $isMain) {
             $p = $g->first();
@@ -1268,23 +1322,25 @@ class BusinessReportController extends Controller
             ->whereBetween('t.created_at', [$f['from'], $f['to']])->groupBy('t.party_id')
             ->selectRaw("t.party_id, SUM(CASE WHEN t.txn_type = 'Earn' THEN t.points ELSE 0 END) earned,
                 -SUM(CASE WHEN t.txn_type = 'Redeem' THEN t.points ELSE 0 END) redeemed,
-                SUM(CASE WHEN t.txn_type IN ('Adjust', 'Reverse') THEN t.points ELSE 0 END) adjusted,
+                SUM(CASE WHEN t.txn_type = 'Reverse' THEN t.points ELSE 0 END) reversed,
+                SUM(CASE WHEN t.txn_type = 'Adjust' THEN t.points ELSE 0 END) adjusted,
                 SUM(CASE WHEN t.txn_type = 'Redeem' THEN t.amount ELSE 0 END) discount")->get()->keyBy('party_id');
         $parties = DB::table('parties')->where('deleted', 'No')->where(fn ($q) => $q->where('loyalty_points', '>', 0)->orWhereIn('id', $tx->keys()->all() ?: [0]))
             ->orderByDesc('loyalty_points')->get(['id', 'name', 'phone', 'loyalty_points']);
 
         $rows = $parties->map(fn ($p) => ['label' => $p->name, 'phone' => $p->phone, 'earned' => (float) ($tx[$p->id]->earned ?? 0),
-            'redeemed' => (float) ($tx[$p->id]->redeemed ?? 0), 'adjusted' => (float) ($tx[$p->id]->adjusted ?? 0),
+            'redeemed' => (float) ($tx[$p->id]->redeemed ?? 0), 'reversed' => (float) ($tx[$p->id]->reversed ?? 0), 'adjusted' => (float) ($tx[$p->id]->adjusted ?? 0),
             'discount' => (float) ($tx[$p->id]->discount ?? 0), 'balance' => (float) $p->loyalty_points, 'worth' => round((float) $p->loyalty_points * $value, 2)])->values()->all();
-        $t = self::sum($rows, ['earned', 'redeemed', 'adjusted', 'discount', 'balance', 'worth']);
+        $t = self::sum($rows, ['earned', 'redeemed', 'reversed', 'adjusted', 'discount', 'balance', 'worth']);
 
         return [
             'columns' => ['label' => ['Customer', 'text'], 'phone' => ['Phone', 'text'], 'earned' => ['Earned', 'qty'], 'redeemed' => ['Redeemed', 'qty'],
-                'adjusted' => ['Adjusted', 'qty'], 'discount' => ['Discount Given', 'money'], 'balance' => ['Points Now', 'qty'], 'worth' => ['Worth', 'money']],
+                'reversed' => ['Returns / Reversed', 'qty'], 'adjusted' => ['Manual Adjustments', 'qty'], 'discount' => ['Discount Given', 'money'], 'balance' => ['Points Now', 'qty'], 'worth' => ['Worth', 'money']],
             'rows' => $rows, 'totals' => $t,
             'cards' => [['Points earned', $t['earned'], 'qty', 'success'], ['Points redeemed', $t['redeemed'], 'qty', 'accent'],
                 ['Outstanding points', $t['balance'], 'qty'], ['Liability (worth)', $t['worth'], 'money', 'warning']],
-            'notes' => ['Earned / redeemed are this branch\'s activity in the period. "Points now" is the customer\'s balance, which can be used in any branch; its worth is what the business owes in discounts.'],
+            'notes' => ['Returns / Reversed = points taken back by sale returns or deleted sales (and given back when such a return is deleted); Manual Adjustments = points changed by hand on the Loyalty page.',
+                'Earned / redeemed are this branch\'s activity in the period. "Points now" is the customer\'s balance, which can be used in any branch; its worth is what the business owes in discounts.'],
         ];
     }
 
@@ -1530,6 +1586,24 @@ class BusinessReportController extends Controller
     /* ================================================================== */
     /*  Payroll summary                                                   */
     /* ================================================================== */
+
+    /**
+     * Payroll / attendance summaries open on the latest processed salary month of the branch
+     * (this month's figures are usually still empty). [from, to] as Y-m-d, or null for the usual this-month range.
+     */
+    public static function defaultRange(string $report): ?array
+    {
+        if (!in_array($report, ['payroll-summary', 'attendance-summary'], true)) {
+            return null;
+        }
+        $month = BranchController::scope(DB::table('payroll_runs'), 'branch_id')->where('run_status', 'Posted')->max('month');
+        if (!$month) {
+            return null;
+        }
+        $m = Carbon::parse($month)->startOfMonth();
+
+        return [$m->toDateString(), $m->copy()->endOfMonth()->toDateString()];
+    }
 
     private function buildPayrollSummary(array $f): array
     {

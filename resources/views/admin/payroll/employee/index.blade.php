@@ -407,7 +407,7 @@
                                         <div class="text-danger small field-error"></div>
                                     </div>
                                     <div class="col-md-3">
-                                        <label class="form-label" for="joining_date">Joining Date</label>
+                                        <label class="form-label" for="joining_date">Joining Date <span class="text-danger">*</span></label>
                                         <input type="date" name="joining_date" id="joining_date" class="form-control">
                                         <div class="text-danger small field-error"></div>
                                     </div>

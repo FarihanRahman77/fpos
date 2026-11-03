@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +19,7 @@ use Throwable;
  */
 class PayrollSetupController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     private const TABLES = [
         'departments'  => ['table' => 'departments', 'label' => 'Department'],
@@ -360,6 +361,15 @@ class PayrollSetupController extends Controller
             'step_no.unique'      => 'This step already exists in the selected grade and department.',
             'pay_grade_id.required' => 'Select the pay grade.',
             'basic_salary.min'    => 'Basic salary must be greater than zero.',
+        ], [
+            'name'              => $label . ' name',
+            'code'              => $label . ' code',
+            'description'       => 'Description',
+            'department_id'     => 'Department',
+            'pay_grade_id'      => 'Pay grade',
+            'step_no'           => 'Step number',
+            'basic_salary'      => 'Basic salary',
+            'increment_percent' => 'Yearly increment %',
         ]);
 
         if ($validator->fails()) {
@@ -579,6 +589,99 @@ class PayrollSetupController extends Controller
         }
 
         return self::$salarySettingsCache;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Ledgers used by payroll postings (process / pay salary, loans)    */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Active 3rd-layer ledgers of one account type usable in the logged-in branch: shared ledgers plus
+     * the branch's own (a branch-owned cash / bank ledger of another branch is never offered).
+     * Rows: id, account_name, branch_id, group_name.
+     */
+    public static function payrollLedgers(string $type)
+    {
+        $branch = BranchController::activeId();
+
+        return DB::table('chart_of_accounts as a')
+            ->leftJoin('chart_of_accounts as g', 'g.id', '=', 'a.parent_id')
+            ->where('a.layer_level', 3)->where('a.account_type', $type)
+            ->where('a.deleted', 'No')->where('a.status', 'Active')
+            ->where(fn ($q) => $q->whereNull('a.branch_id')->when($branch, fn ($b) => $b->orWhere('a.branch_id', $branch)))
+            ->orderBy('a.account_code')
+            ->get(['a.id', 'a.account_name', 'a.branch_id', 'g.account_name as group_name']);
+    }
+
+    /**
+     * Asset ledgers suitable for employee loans / advance salary: names or groups that speak of
+     * employees, staff, loans or salary advances (never fixed assets, depreciation, inventory, tax ...).
+     * The Payroll Settings ledger is always included. Falls back to all non-fixed asset ledgers when none match.
+     */
+    public static function loanLedgers()
+    {
+        $all = self::payrollLedgers('Asset');
+        $saved = (int) (self::salarySettings()->loan_account_id ?? 0);
+
+        $fit = $all->filter(fn ($a) => (int) $a->id === $saved
+            || (preg_match('/employee|staff|personnel|worker|loan|advance/i', $a->account_name)
+                && !preg_match('/rent|tax|\bait\b|prepaid|deposit|supplier|vendor|fixed|depreciation/i', $a->account_name)));
+
+        if ($fit->isEmpty()) {
+            $fit = $all->reject(fn ($a) => preg_match('/fixed|depreciation|inventory|stock|vat|tax|receivable|deposit|prepaid/i',
+                $a->account_name . ' ' . $a->group_name));
+        }
+
+        return $fit->values();
+    }
+
+    /**
+     * Default ledgers for the payroll dialogs: the Payroll Settings ledger when it is still offered,
+     * else the first ledger whose name matches. Keys: expense, payable, pf, loan, payment (ids or null).
+     * PF payable never defaults to the salary payable ledger.
+     */
+    public static function payrollLedgerDefaults(): array
+    {
+        $s = self::salarySettings();
+        $pick = function ($rows, $saved, array $patterns, array $not = []) {
+            $rows = $rows->reject(fn ($a) => in_array((int) $a->id, $not, true));
+            if ($saved && $rows->contains(fn ($a) => (int) $a->id === (int) $saved)) {
+                return (int) $saved;
+            }
+            foreach ($patterns as $p) {
+                $hit = $rows->first(fn ($a) => preg_match($p, $a->account_name));
+                if ($hit) {
+                    return (int) $hit->id;
+                }
+            }
+
+            return null;
+        };
+
+        $expenses    = self::payrollLedgers('Expense');
+        $liabilities = self::payrollLedgers('Liability');
+
+        $d = [];
+        $d['expense'] = $pick($expenses, $s->salary_expense_account_id ?? null,
+            ['/^salar(y|ies)\b.*wage/i', '/^salar(y|ies)/i', '/salar(y|ies)|wage/i']);
+        $d['payable'] = $pick($liabilities, $s->salary_payable_account_id ?? null,
+            ['/salar(y|ies).*payable|payable.*salar/i', '/wages?.*payable/i']);
+        $d['pf']      = $pick($liabilities, $s->pf_account_id ?? null,
+            ['/provident/i', '/\bpf\b/i'], array_filter([$d['payable']]));
+        $d['loan']    = $pick(self::loanLedgers(), $s->loan_account_id ?? null,
+            ['/(employee|staff).*(loan|advance)/i', '/loan|advance/i']);
+
+        // Paid from: the last used ledger when this branch may use it, else the branch's own cash / bank, else a shared cash ledger.
+        $liquid = self::payrollLedgers('Liquid Asset');
+        $branch = BranchController::activeId();
+        $saved  = (int) ($s->salary_payment_account_id ?? 0);
+        $d['payment'] = $liquid->contains(fn ($a) => (int) $a->id === $saved) ? $saved
+            : ($liquid->first(fn ($a) => $branch && (int) $a->branch_id === (int) $branch)->id
+                ?? $liquid->first(fn ($a) => preg_match('/cash/i', $a->group_name . ' ' . $a->account_name))->id
+                ?? $liquid->first()->id ?? null);
+        $d['payment'] = $d['payment'] ? (int) $d['payment'] : null;
+
+        return $d;
     }
 
     public static function isScale(): bool

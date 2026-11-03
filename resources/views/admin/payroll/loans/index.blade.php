@@ -105,7 +105,7 @@
                                 <select name="payment_account_id" id="payment_account_id" class="form-select">
                                     <option value="">Select cash / bank</option>
                                     @foreach ($paymentAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected($payroll->salary_payment_account_id == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['payment'] == $a->id)>{{ $a->account_name }}{{ $a->group_name ? ' · ' . $a->group_name : '' }}</option>
                                     @endforeach
                                 </select>
                                 <div class="text-danger small field-error"></div>
@@ -125,10 +125,10 @@
                                 <select name="loan_account_id" id="loan_account_id" class="form-select">
                                     <option value="">Select asset ledger</option>
                                     @foreach ($loanAccounts as $a)
-                                        <option value="{{ $a->id }}" @selected(($payroll->loan_account_id ?? null) == $a->id)>{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['loan'] == $a->id)>{{ $a->account_name }}</option>
                                     @endforeach
                                 </select>
-                                <small class="text-muted">An Asset ledger such as “Employee Loans &amp; Advances” (add it in <a href="{{ route('admin.chart-of-accounts.page') }}" target="_blank">Chart of Accounts</a>).</small>
+                                <small class="text-muted">Only employee loan / advance ledgers are listed, e.g. “Employee Loans &amp; Advances” (add one in <a href="{{ route('admin.chart-of-accounts.page') }}" target="_blank">Chart of Accounts</a>).</small>
                                 <div class="text-danger small field-error"></div>
                             </div>
                             <div class="col-12">
@@ -210,7 +210,7 @@
                                 <select name="payment_account_id" id="rp_account" class="form-select">
                                     <option value="">Select cash / bank</option>
                                     @foreach ($paymentAccounts as $a)
-                                        <option value="{{ $a->id }}">{{ $a->account_name }}</option>
+                                        <option value="{{ $a->id }}" @selected($ledgerDefaults['payment'] == $a->id)>{{ $a->account_name }}{{ $a->group_name ? ' · ' . $a->group_name : '' }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -414,6 +414,7 @@
             $('#newLoanBtn').on('click', function() {
                 $('#loanForm')[0].reset();
                 $('#employee_id').val('').trigger('change.select2');
+                $('#payment_account_id, #loan_account_id').trigger('change.select2');
                 Voucher.clearErrors($('#loanForm'));
                 $('#loan_error').text('');
                 loanPreview();

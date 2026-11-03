@@ -537,6 +537,14 @@
         }
 
         $(document).ready(function() {
+            // Open the tab named in the URL hash (#tabBonus, #tabAdj, #tabTypes) and keep the hash in step with the open tab.
+            (function() {
+                const btn = location.hash ? document.querySelector('[data-bs-target="' + location.hash + '"]') : null;
+                if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+                $('[data-bs-toggle="tab"][data-bs-target^="#tab"]').on('shown.bs.tab', function() {
+                    history.replaceState(null, '', location.pathname + location.search + $(this).attr('data-bs-target'));
+                });
+            })();
             Voucher.initSelect2($('#bonus_type_id, .scope-input, #adj_employee'));
 
             $('#month').on('change', loadMonth);
@@ -615,7 +623,9 @@
             $('#typeForm').on('submit', function(e) {
                 e.preventDefault();
                 submitForm($(this), R.typeSave, $('#typeSubmit').text('Saving...'), $('#type_error'), 'Save Type', function() {
-                    resetTypeForm(); loadTypes(); setTimeout(function() { location.reload(); }, 600);
+                    // The bonus type lists on the other tabs are rendered by the server: reload, but come back to this tab.
+                    resetTypeForm(); loadTypes();
+                    setTimeout(function() { history.replaceState(null, '', location.pathname + location.search + '#tabTypes'); location.reload(); }, 600);
                 });
             });
             $('#typeCancel').on('click', resetTypeForm);

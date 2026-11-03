@@ -1,42 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>Attendance {{ $month_label }}</title>
-    @include('admin.inventory.partials.invoice-style')
+@extends('pdf.layout')
+@php
+    $soft = fn ($hex) => \App\Http\Controllers\Admin\SettingController::mix($hex, '#ffffff', 0.88);
+    $doc = [
+        'title'      => 'Attendance Report',
+        'number'     => $month_label,
+        'info'       => ['Month' => $month_label, 'Department' => $department, 'Employees' => count($employees)],
+        'signatures' => ['Prepared by' => auth()->user()->name ?? '', 'Checked by' => '', 'Approved by' => ''],
+    ];
+@endphp
+
+@section('styles')
     <style>
-        @page { margin: 26px 24px 46px 24px; }
-        .grid { margin-top: 16px; }
-        .grid th.d, .grid td.d { width: 15px; }
-        .grid th { background: {{ $pc['brand'] }}; color: {{ $pc['on_brand'] }}; font-size: 6.5px; padding: 3px 1px; text-align: center; border: 1px solid {{ $pc['brand'] }}; font-weight: bold; }
-        .grid th.off { background: {{ $pc['secondary'] }}; border-color: {{ $pc['secondary'] }}; }
-        .grid th.emp, .grid td.emp { text-align: left; padding-left: 4px; width: 120px; min-width: 120px; }
-        .grid th.n, .grid td.n { width: 20px; }
-        .grid td { font-size: 6.5px; padding: 3px 1px; text-align: center; border: 1px solid {{ $pc['border'] }}; vertical-align: middle; }
-        .grid td.emp .sub { font-size: 6px; color: {{ $pc['muted'] }}; }
-        .grid td.n { font-weight: bold; background: {{ $pc['soft'] }}; }
-        .c-P { color: {{ $pc['success'] }}; }
-        .c-L, .c-HD { color: {{ $pc['warning'] }}; background: {{ $pc['warning_soft'] }}; font-weight: bold; }
-        .c-A { color: {{ $pc['danger'] }}; background: {{ $pc['danger_soft'] }}; font-weight: bold; }
-        .c-LV { color: {{ $pc['accent'] }}; font-weight: bold; }
-        .c-H, .c-W { color: {{ $pc['muted'] }}; background: {{ $pc['soft'] }}; }
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-        .legend { margin-top: 10px; font-size: 7.5px; color: {{ $pc['muted'] }}; }
-        .legend b { color: {{ $pc['ink'] }}; }
+        .att { margin-top: 2px; }
+        .att th, .att td { text-align: center; vertical-align: middle; }
+        .att th { font-size: 6.2px; padding: 3px 1px; letter-spacing: 0; }
+        .att td { font-size: 6.5px; padding: 3px 1px; border: 0.5px solid {{ $pdfT['rule'] }}; }
+        .att th.d, .att td.d { width: 15px; }
+        .att th.off { background: {{ $pdfT['accent_soft'] }}; color: {{ $pdfT['ink'] }}; }
+        .att th.emp, .att td.emp { text-align: left; padding-left: 4px; width: 120px; }
+        .att th.n, .att td.n { width: 20px; }
+        .att td.emp .sub { font-size: 6px; color: {{ $pdfT['muted'] }}; }
+        .att tbody tr td.n { font-weight: bold; color: {{ $pdfT['ink'] }}; background: {{ $pdfT['accent_soft'] }}; }
+        .att tbody tr td.c-P { color: {{ $pdfT['success'] }}; }
+        .att tbody tr td.c-L, .att tbody tr td.c-HD { color: {{ $pdfT['warning'] }}; background: {{ $soft($pdfT['warning']) }}; font-weight: bold; }
+        .att tbody tr td.c-A { color: {{ $pdfT['danger'] }}; background: {{ $soft($pdfT['danger']) }}; font-weight: bold; }
+        .att tbody tr td.c-LV { color: {{ $pdfT['accent'] }}; font-weight: bold; }
+        .att tbody tr td.c-H, .att tbody tr td.c-W { color: {{ $pdfT['muted'] }}; background: {{ $pdfT['accent_soft'] }}; }
+        .legend { margin-top: 4px; font-size: 7.5px; color: {{ $pdfT['muted'] }}; }
+        .legend b { color: {{ $pdfT['ink'] }}; }
     </style>
-</head>
-<body>
-    <div class="inv-footer">
-        <table><tr>
-            <td>Generated {{ now()->format('d M Y, h:i A') }}{{ auth()->user() ? ' by ' . auth()->user()->name : '' }}</td>
-            <td class="r">{{ $generalSetting['company_name'] ?? config('app.name') }}</td>
-        </tr></table>
-    </div>
+@endsection
 
-    @include('admin.inventory.partials.invoice-header', ['title' => 'Attendance Report', 'number' => $month_label . ' · ' . $department])
-
-    <table class="grid">
+@section('content')
+    <table class="pdf-table compact att">
         <thead>
             <tr>
                 <th class="emp">Employee</th>
@@ -63,7 +59,7 @@
                     <td class="n">{{ $c['ot_hours'] ? rtrim(rtrim(number_format($c['ot_hours'], 2), '0'), '.') : '-' }}</td>
                 </tr>
             @empty
-                <tr><td colspan="{{ count($dates) + 8 }}">No employees.</td></tr>
+                <tr class="empty"><td colspan="{{ count($dates) + 8 }}">No employees.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -72,5 +68,4 @@
         @foreach ($codes as $status => $code)<b>{{ $code }}</b> {{ $status }} &nbsp; @endforeach
         <b>·</b> no attendance taken &nbsp; · &nbsp; P column = present incl. late
     </div>
-</body>
-</html>
+@endsection

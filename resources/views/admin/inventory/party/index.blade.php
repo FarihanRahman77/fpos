@@ -77,7 +77,7 @@
                             <span class="text-danger" id="emailError"></span>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label">Phone</label>
+                            <label class="form-label">Phone <span class="text-danger">*</span></label>
                             <input type="text" id="phone" class="form-control" placeholder="Mobile Number">
                             <span class="text-danger" id="phoneError"></span>
                         </div>
@@ -87,7 +87,7 @@
                             <span class="text-danger" id="alt_phoneError"></span>
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Address</label>
+                            <label class="form-label">Address <span class="text-danger">*</span></label>
                             <textarea id="address" class="form-control" rows="2" placeholder="Address"></textarea>
                             <span class="text-danger" id="addressError"></span>
                         </div>
@@ -147,7 +147,8 @@
                     'opening_balance_type', 'opening_balance_date', 'credit_limit', 'status'];
 
     function esc(v) {
-        return $('<div>').text(v ?? '').html();
+        // Escapes quotes too: the output also goes into attribute values.
+        return String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     }
 
     function money(v) {

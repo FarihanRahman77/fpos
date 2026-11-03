@@ -14,6 +14,7 @@
             Permissions
         </h4>
 
+        @perm('roles.create')
         <button type="button"
                 class="btn btn-primary"
                 id="addPermissionBtn">
@@ -22,6 +23,7 @@
             Add Permission
 
         </button>
+        @endperm
 
     </div>
 

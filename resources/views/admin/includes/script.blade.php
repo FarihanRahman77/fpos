@@ -14,6 +14,10 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+<script>
+    // Messages often carry stored names (products, employees, parties, batches): show them as text, never as HTML.
+    if (window.toastr) { toastr.options.escapeHtml = true; }
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 

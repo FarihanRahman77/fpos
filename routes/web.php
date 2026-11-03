@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\ExpenseController;
 use App\Http\Controllers\Admin\JournalController;
 use App\Http\Controllers\Admin\BillController;
 use App\Http\Controllers\Admin\AmountTransferController;
+use App\Http\Controllers\Admin\SuspenseController;
 use App\Http\Controllers\Admin\EmployeeController;
 use App\Http\Controllers\Admin\PayrollSetupController;
 use App\Http\Controllers\Admin\PayrollRunController;
@@ -55,6 +56,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/general-settings', [SettingController::class, 'index'])->name('admin.settings.index');
     Route::post('/settings/update', [SettingController::class, 'update'])->name('admin.settings.update');
+    Route::get('/settings/theme', [SettingController::class, 'theme'])->name('admin.settings.theme');
+    Route::post('/settings/theme/save', [SettingController::class, 'themeSave'])->name('admin.settings.theme.save');
+    Route::post('/settings/theme/reset', [SettingController::class, 'themeReset'])->name('admin.settings.theme.reset');
+    Route::get('/settings/theme/pdf-preview', [SettingController::class, 'themePdfPreview'])->name('admin.settings.theme.pdf-preview');
 
     Route::prefix('users')->name('admin.users.')->group(function () {
         Route::get('/', [UserController::class, 'index'])->name('index');
@@ -337,6 +342,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/sales/returns', [SaleController::class, 'returnIndex'])
             ->name('sales.returns.index');
 
+        Route::get('/sales/return/invoices', [SaleController::class, 'returnInvoices'])
+            ->name('sales.return.invoices');
         Route::get('/sales/returns/list', [SaleController::class, 'returnList'])
             ->name('sales.returns.list');
 
@@ -396,6 +403,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/payment/store/', [PaymentController::class, 'store'])->name('admin.payment.store');
         Route::post('/payment/delete', [PaymentController::class, 'delete'])->name('admin.payment.delete');
         Route::get('/payment/due', [PaymentController::class, 'party_due'])->name('admin.payment.due');
+        Route::get('/payment/invoices', [PaymentController::class, 'openInvoices'])->name('admin.payment.invoices');
 
         Route::get('/chart-of-accounts', [ChartOfAccountController::class, 'page'])->middleware('main.branch')->name('admin.chart-of-accounts.page');
         Route::get('/chart-of-accounts/tree', [ChartOfAccountController::class, 'index'])->middleware('main.branch')->name('admin.chart-of-accounts.index');
@@ -440,6 +448,19 @@ Route::middleware('auth')->group(function () {
         Route::post('/amount-transfer/store', [AmountTransferController::class, 'store'])->name('admin.transfer.store');
         Route::post('/amount-transfer/delete', [AmountTransferController::class, 'delete'])->name('admin.transfer.delete');
 
+        // Suspense: advances / imprest to investors and employees, investor capital in / out
+        Route::prefix('/suspense')->name('admin.suspense.')->group(function () {
+            Route::get('/', [SuspenseController::class, 'index'])->name('index');
+            Route::get('/list', [SuspenseController::class, 'list'])->name('list');
+            Route::get('/show', [SuspenseController::class, 'show'])->name('show');
+            Route::get('/balance', [SuspenseController::class, 'balance'])->name('balance');
+            Route::post('/store', [SuspenseController::class, 'store'])->name('store');
+            Route::post('/delete', [SuspenseController::class, 'delete'])->name('delete');
+            Route::get('/statement', [SuspenseController::class, 'statementData'])->name('statement');
+            Route::get('/statement/pdf', [SuspenseController::class, 'statementPdf'])->name('statement.pdf');
+            Route::get('/statement/excel', [SuspenseController::class, 'statementExcel'])->name('statement.excel');
+        });
+
         // Payroll: employees
         Route::get('/employee/index', [EmployeeController::class, 'index'])->name('admin.employee.index');
         Route::get('/employee/list', [EmployeeController::class, 'list'])->name('admin.employee.list');
@@ -482,6 +503,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/{id}/share', [SaleQuotationController::class, 'share'])->whereNumber('id')->name('share');
             Route::post('/{id}/status', [SaleQuotationController::class, 'status'])->whereNumber('id')->name('status');
             Route::post('/{id}/duplicate', [SaleQuotationController::class, 'duplicate'])->whereNumber('id')->name('duplicate');
+            Route::post('/{id}/convert', [SaleQuotationController::class, 'convert'])->whereNumber('id')->name('convert');
             Route::post('/{id}/delete', [SaleQuotationController::class, 'delete'])->whereNumber('id')->name('delete');
         });
 

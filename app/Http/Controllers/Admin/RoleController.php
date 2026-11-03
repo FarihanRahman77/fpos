@@ -35,12 +35,19 @@ class RoleController extends Controller
                         ? '<span class="badge bg-success">Active</span>'
                         : '<span class="badge bg-danger">Inactive</span>';
 
-            $actions = action_dropdown([
-                ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'editRole', 'attrs' => ['data-id' => $role->id]],
-                ['label' => 'Assign Permissions', 'icon' => 'fas fa-key', 'href' => route('admin.roles.permissions', $role->id)],
-                ['divider' => true],
-                ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteRole', 'attrs' => ['data-id' => $role->id]],
-            ]);
+            $items = [];
+            if (PermissionController::allows('roles.edit')) {
+                $items[] = ['label' => 'Edit', 'icon' => 'fas fa-edit', 'class' => 'editRole', 'attrs' => ['data-id' => $role->id]];
+            }
+            $items[] = ['label' => 'Permissions', 'icon' => 'fas fa-key', 'href' => route('admin.roles.permissions', $role->id)];
+            if (PermissionController::allows('roles.delete') && $role->slug !== PermissionController::SUPERADMIN) {
+                $items[] = ['divider' => true];
+                $items[] = ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger deleteRole', 'attrs' => ['data-id' => $role->id]];
+            }
+            $actions = action_dropdown($items);
+            if ($role->slug === PermissionController::SUPERADMIN) {
+                $permissionCount = 'All (always)';
+            }
 
             $data[] = [
                 'id' => $role->id,
@@ -65,6 +72,11 @@ class RoleController extends Controller
             'description' => 'nullable|string',
             'status' => 'required|in:Active,Inactive',
         ]);
+
+        if (Str::slug($request->name) === PermissionController::SUPERADMIN) {
+            return response()->json(['status' => false, 'message' => 'There is already a Superadmin role. Choose another name.',
+                'errors' => ['name' => ['There is already a Superadmin role. Choose another name.']]], 422);
+        }
 
         $role = new Role();
 
@@ -122,8 +134,20 @@ class RoleController extends Controller
             'status' => 'required|in:Active,Inactive',
         ]);
 
+        // The Superadmin role is recognised by its slug and must stay active; nobody may switch off their own role.
+        $isSuper = $role->slug === PermissionController::SUPERADMIN;
+        $problem = null;
+        if (($isSuper || (int) $role->id === (int) Auth::user()->role_id) && $request->status !== 'Active') {
+            $problem = $isSuper ? 'The Superadmin role must stay active.' : 'You cannot make your own role inactive — you would lock yourself out.';
+        } elseif (!$isSuper && Str::slug($request->name) === PermissionController::SUPERADMIN) {
+            $problem = 'There is already a Superadmin role. Choose another name.';
+        }
+        if ($problem) {
+            return response()->json(['status' => false, 'message' => $problem, 'errors' => ['status' => [$problem]]], 422);
+        }
+
         $role->name = $request->name;
-        $role->slug = Str::slug($request->name);
+        $role->slug = $isSuper ? PermissionController::SUPERADMIN : Str::slug($request->name);
         $role->description = $request->description;
         $role->status = $request->status;
         $role->updated_by = Auth::id();
@@ -149,6 +173,10 @@ class RoleController extends Controller
             ], 404);
         }
 
+        if ($role->slug === PermissionController::SUPERADMIN) {
+            return response()->json(['status' => false, 'message' => 'The Superadmin role cannot be deleted.'], 422);
+        }
+
         $inUse = DB::table('users')->where('role_id', $role->id)->where('deleted', 'No')->count();
         if ($inUse) {
             return response()->json([
@@ -171,6 +199,7 @@ class RoleController extends Controller
         ]);
     }
 
+    /** Role permission grid: modules × actions, with presets. */
     public function permissions($id)
     {
         $role = Role::where('id', $id)
@@ -192,13 +221,31 @@ class RoleController extends Controller
             ->pluck('permission_id')
             ->toArray();
 
+        $idBySlug = $permissions->pluck('id', 'slug')->all();
+        $catalogue = PermissionController::catalogue();
+
+        // group => [module => [label, [action => permission id|null]]]
+        $grid = [];
+        foreach (PermissionController::MODULES as $module => [$label, $group, $actions]) {
+            $cells = [];
+            foreach (array_keys(PermissionController::ACTIONS) as $action) {
+                $cells[$action] = in_array($action, $actions, true) ? ($idBySlug[$module . '.' . $action] ?? null) : null;
+            }
+            $grid[$group][$module] = [$label, $cells];
+        }
+        $others = $permissions->filter(fn ($p) => !isset($catalogue[$p->slug]))->values();
+
+        $presets = [];
+        foreach (PermissionController::presets() as $key => [$label, $slugs]) {
+            $presets[$key] = ['label' => $label, 'ids' => array_values(array_filter(array_map(fn ($s) => $idBySlug[$s] ?? null, $slugs)))];
+        }
+
+        $isSuper = $role->slug === PermissionController::SUPERADMIN;
+        $canEdit = PermissionController::allows('roles.edit');
+
         return view(
             'admin.users.roles.permissions',
-            compact(
-                'role',
-                'permissions',
-                'assignedPermissions'
-            )
+            compact('role', 'grid', 'others', 'assignedPermissions', 'presets', 'isSuper', 'canEdit')
         );
     }
 
@@ -221,11 +268,20 @@ class RoleController extends Controller
             $permissionIds = [];
         }
 
-        $permissionIds = Permission::whereIn('id', $permissionIds)
+        $chosen = Permission::whereIn('id', $permissionIds)
             ->where('deleted', 'No')
             ->where('status', 'Active')
-            ->pluck('id')
-            ->toArray();
+            ->pluck('slug', 'id');
+        $permissionIds = $chosen->keys()->all();
+
+        // Nobody may take Roles & permissions away from their own role (they could not undo it).
+        if ((int) $role->id === (int) Auth::user()->role_id && $role->slug !== PermissionController::SUPERADMIN
+            && (!$chosen->contains('roles.view') || !$chosen->contains('roles.edit'))) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This is your own role: keep "View" and "Edit" on Roles & permissions, or you would lock yourself out.',
+            ], 422);
+        }
 
         DB::beginTransaction();
 
@@ -246,10 +302,12 @@ class RoleController extends Controller
             }
 
             DB::commit();
+            PermissionController::flushCache();
 
             return response()->json([
                 'status' => true,
-                'message' => 'Permissions assigned successfully.'
+                'message' => 'Permissions saved: ' . count($permissionIds) . ' allowed.'
+                    . ($role->slug === PermissionController::SUPERADMIN ? ' (Superadmin always has full access.)' : ''),
             ]);
         } catch (\Exception $e) {
 
@@ -257,7 +315,7 @@ class RoleController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => $e->getMessage()
+                'message' => self::safeError($e)
             ], 500);
         }
     }

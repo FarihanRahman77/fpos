@@ -206,7 +206,7 @@
             min-height: var(--pos-control);
             padding: 0 var(--space-lg);
             border: 1px solid var(--color-border);
-            border-radius: var(--radius-pill);
+            border-radius: var(--radius-button);
             background: var(--color-surface);
             color: var(--color-text-secondary);
             font-size: var(--text-caption);
@@ -703,7 +703,7 @@
             margin-top: var(--space-xs);
             padding: var(--space-xs);
             border: 0;
-            border-radius: var(--radius-pill);
+            border-radius: var(--radius-button);
             background: transparent;
             color: var(--color-text-muted);
             font-size: var(--text-body-lg);
@@ -1591,7 +1591,9 @@
                 price_desc: (a, b) => b.sale_price - a.sale_price,
                 stock_desc: (a, b) => b.current_stock - a.current_stock
             };
-            list.sort(sorters[f.sort] || sorters.name);
+            // Products that can be sold now come first; out-of-stock ones go to the bottom, each group in the chosen order.
+            let sorter = sorters[f.sort] || sorters.name;
+            list.sort((a, b) => ((b.current_stock > 0) - (a.current_stock > 0)) || sorter(a, b));
 
             // Panel filters (search and category chips are visible on their own)
             let panelCount = [f.brand, f.min !== null, f.max !== null, f.stock, f.sort !== 'name']

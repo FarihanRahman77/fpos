@@ -21,6 +21,7 @@ class Kernel extends HttpKernel
         \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
         \App\Http\Middleware\TrimStrings::class,
         \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+        \App\Http\Middleware\SecurityHeaders::class,
     ];
 
     /**
@@ -39,6 +40,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\SetBranch::class,
             \App\Http\Middleware\BlockClosedPeriod::class,
             \App\Http\Middleware\MainBranchOnly::class . ':listed',
+            \App\Http\Middleware\CheckPermission::class,
             \App\Http\Middleware\LogActivity::class,
         ],
 

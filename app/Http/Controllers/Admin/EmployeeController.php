@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Models\Admin\Employee;
 use App\Models\Admin\EmployeeDocument;
 use App\Models\Admin\EmployeeEducation;
@@ -26,7 +27,7 @@ use PDF;
 
 class EmployeeController extends Controller
 {
-    use SequentialCodeTrait, VoucherHelperTrait;
+    use SequentialCodeTrait, VoucherHelperTrait, SafeJsonErrors;
 
     public const DOCUMENT_TYPES = [
         'NID', 'Passport', 'Driving License', 'Appointment Letter', 'Joining Letter', 'Birth Certificate',
@@ -51,7 +52,7 @@ class EmployeeController extends Controller
 
     public function index()
     {
-        $active = DB::table('employees')->where('deleted', 'No');
+        $active = BranchController::scope(DB::table('employees'), 'branch_id')->where('deleted', 'No');
 
         return view('admin.payroll.employee.index', [
             'documentTypes'   => self::DOCUMENT_TYPES,
@@ -155,13 +156,13 @@ class EmployeeController extends Controller
                     ['label' => 'PF Ledger', 'icon' => 'fas fa-piggy-bank', 'onclick' => "window.open('" . route('admin.reports.pf-ledger', ['employee_id' => $id]) . "', '_blank')"],
                     ['divider' => true],
                     ['label' => 'Delete', 'icon' => 'fas fa-trash', 'class' => 'text-danger', 'onclick' => 'deleteEmployee(' . $id . ')'],
-                ]);
+                ], $emp->branch_id);
 
                 $output['data'][] = [
                     $i++,
                     '<div class="d-flex align-items-center gap-2">' . $photo . '<div>'
                         . '<div class="fw-semibold">' . e($emp->name) . '</div>'
-                        . '<div class="text-muted small">ID: ' . e($emp->employee_code) . '</div></div></div>',
+                        . '<div class="text-muted small">ID: ' . e($emp->employee_code) . '</div>' . branch_tag($emp->branch_id) . '</div></div>',
                     e($emp->designation ?: '-') . ($emp->department ? '<div class="text-muted small">' . e($emp->department) . '</div>' : ''),
                     e($emp->phone ?: '-') . ($emp->email ? '<div class="text-muted small">' . e($emp->email) . '</div>' : ''),
                     e($emp->employment_type ?: '-'),
@@ -263,7 +264,7 @@ class EmployeeController extends Controller
     {
         $term = trim((string) $request->query('q', ''));
 
-        $rows = BranchController::scope(DB::table('employees'), 'branch_id')
+        $rows = BranchController::scopeOwn(DB::table('employees'), 'branch_id')
             ->where('deleted', 'No')
             ->when($request->filled('exclude'), fn ($q) => $q->where('id', '<>', (int) $request->query('exclude')))
             ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$term}%")->orWhere('employee_code', 'like', "%{$term}%")))
@@ -324,7 +325,7 @@ class EmployeeController extends Controller
             'work_shift_id'              => ['nullable', 'integer', Rule::exists('work_shifts', 'id')->where('deleted', 'No')],
             'device_user_id'             => ['nullable', 'string', 'max:30', Rule::unique('employees', 'device_user_id')->where('deleted', 'No')->ignore($id)],
             'reporting_to'               => ['nullable', 'integer', Rule::exists('employees', 'id')->where('deleted', 'No'), Rule::notIn(array_filter([$id]))],
-            'joining_date'               => $date,
+            'joining_date'               => ['required', 'date'],   // salary, PF and leave are pro-rated from it
             'confirmation_date'          => ['nullable', 'date', 'after_or_equal:joining_date'],
             'resign_date'                => ['nullable', 'date', 'after_or_equal:joining_date'],
             'card_valid_until'           => $date,
@@ -376,6 +377,7 @@ class EmployeeController extends Controller
             'name.required'                        => 'Enter the employee name.',
             'phone.required'                       => 'Enter a phone number.',
             'designation_id.required'              => 'Select the designation.',
+            'joining_date.required'                => 'Enter the joining date (salary, PF and leave start from it).',
             'step_id.required'                     => 'Select the pay grade and step.',
             'contract_salary.required'             => 'Enter the contract salary.',
             'date_of_birth.before'                 => 'Date of birth must be in the past.',
@@ -442,7 +444,8 @@ class EmployeeController extends Controller
 
         try {
             if ($id) {
-                $employee = BranchController::scope(Employee::where('id', $id), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('employees', $id);
+                $employee = BranchController::scopeOwn(Employee::where('id', $id), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$employee) {
                     abort(404, 'Employee not found.');
@@ -553,7 +556,8 @@ class EmployeeController extends Controller
 
     public function status(Request $request)
     {
-        $employee = BranchController::scope(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->first();
+        BranchController::guardOwn('employees', $request->input('id'));
+        $employee = BranchController::scopeOwn(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->first();
 
         if (!$employee) {
             return response()->json(['status' => false, 'message' => 'Employee not found.'], 404);
@@ -577,7 +581,8 @@ class EmployeeController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $employee = BranchController::scope(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
+                BranchController::guardOwn('employees', $request->input('id'));
+                $employee = BranchController::scopeOwn(Employee::where('id', (int) $request->input('id')), 'branch_id')->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$employee) {
                     abort(404, 'Employee not found.');
@@ -592,6 +597,12 @@ class EmployeeController extends Controller
                     ->where('loan_status', 'Running')->selectRaw('COALESCE(SUM(amount - recovered), 0) as b')->value('b');
                 if ($loanLeft > 0.004) {
                     abort(422, $employee->name . ' still owes ' . number_format($loanLeft, 2) . ' on a loan / advance. Recover or cancel it first, or set the employee Inactive.');
+                }
+                $suspense = SuspenseController::totals('Employee', (int) $employee->id)['outstanding'] ?? 0;
+                if (abs($suspense) > 0.004) {
+                    abort(422, $suspense > 0
+                        ? $employee->name . ' still holds ' . number_format($suspense, 2) . ' of suspense (office advance). Return or adjust it first, or set the employee Inactive.'
+                        : 'The office still owes ' . $employee->name . ' ' . number_format(-$suspense, 2) . ' (suspense deposit). Pay it first, or set the employee Inactive.');
                 }
                 $salaryDue = (float) DB::table('payroll_run_items as i')->join('payroll_runs as r', 'r.id', '=', 'i.payroll_run_id')
                     ->where('i.employee_id', $employee->id)->where('r.run_status', 'Posted')
@@ -630,6 +641,8 @@ class EmployeeController extends Controller
 
         $mm = 72 / 25.4;
 
+        // the PDF template's colors/fonts ($pdfT) and company ($pdfCo) like every PDF, but not SettingController::pdf():
+        // its "Page X of Y" footer would be printed on the card
         $pdf = PDF::loadView('admin.payroll.employee.id-card', [
             'employee'  => $employee,
             'company'   => $this->company(),
@@ -639,6 +652,8 @@ class EmployeeController extends Controller
             'validTill' => $employee->card_valid_until
                 ? Carbon::parse($employee->card_valid_until)
                 : now()->addYears(2)->endOfMonth(),
+            'pdfT'      => SettingController::pdfTheme(),
+            'pdfCo'     => SettingController::pdfCompany(),
         ])->setPaper([0, 0, 54 * $mm, 85.6 * $mm])
             ->setOption('isFontSubsettingEnabled', true);   // embeds only the glyphs used: ~880 KB -> small
 
@@ -658,9 +673,8 @@ class EmployeeController extends Controller
             return $d;
         });
 
-        $pdf = PDF::loadView('admin.payroll.employee.profile-pdf', [
+        $pdf = SettingController::pdf('admin.payroll.employee.profile-pdf', [
             'employee'    => $employee,
-            'company'     => $this->company(),
             'photo'       => $this->imageData($employee->photo),
             'signature'   => $this->imageData($employee->signature),
             'reportingTo' => $employee->reporting_to ? DB::table('employees')->where('id', $employee->reporting_to)->first(['name', 'employee_code', 'designation']) : null,
@@ -669,8 +683,7 @@ class EmployeeController extends Controller
             'experiences' => $this->rowsOf('employee_experiences', $employee->id, ['company_name', 'designation', 'from_date', 'to_date', 'responsibilities']),
             'printedAt'   => now()->format('d M Y, h:i A'),
             'isScale'     => PayrollSetupController::isScale(),
-        ])->setPaper('a4', 'portrait')
-            ->setOption('isFontSubsettingEnabled', true);
+        ]);
 
         $fileName = 'Employee-' . $employee->employee_code . '.pdf';
 

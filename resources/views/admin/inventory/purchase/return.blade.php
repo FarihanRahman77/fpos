@@ -466,14 +466,14 @@ $(document).ready(function () {
 
                     <td>
 
-                        ${purchased.toFixed(4)}
+                        ${fmtQty(purchased)}
 
                     </td>
 
 
                     <td>
 
-                        ${returned.toFixed(4)}
+                        ${fmtQty(returned)}
 
                     </td>
 
@@ -482,7 +482,7 @@ $(document).ready(function () {
 
                         <strong class="text-primary">
 
-                            ${remaining.toFixed(4)}
+                            ${fmtQty(remaining)}
 
                         </strong>
 
@@ -782,16 +782,22 @@ $(document).ready(function () {
             }
 
 
-            if (!confirm(
-                'Are you sure you want to process this purchase return?'
-            )) {
-
-                return;
-            }
-
-
             let button =
                 $(this);
+
+            Swal.fire({
+                title: 'Process this purchase return?',
+                text: items.length + ' line(s) go back to the supplier and leave stock. The supplier due is reduced.',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, return',
+                cancelButtonText: 'Cancel',
+                reverseButtons: true
+            }).then(function (result) {
+
+            if (!result.isConfirmed) {
+                return;
+            }
 
 
             button.prop(
@@ -894,6 +900,8 @@ $(document).ready(function () {
 
             });
 
+            });
+
         }
     );
 
@@ -904,12 +912,14 @@ $(document).ready(function () {
     |--------------------------------------------------------------------------
     */
 
+    // Quantities without trailing zeros (5, 2.5 — not 5.0000).
+    function fmtQty(value) {
+        return String(parseFloat((parseFloat(value) || 0).toFixed(4)));
+    }
+
     function escapeHtml(value) {
-
-        return $('<div>')
-            .text(value ?? '')
-            .html();
-
+        // Escapes quotes too: the output also goes into attribute values.
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     }
 
 });

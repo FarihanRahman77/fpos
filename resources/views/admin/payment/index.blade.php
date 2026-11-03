@@ -7,12 +7,29 @@
 @section('content')
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>{{ $type }}</h4>
+            <div>
+                <h4 class="mb-0">{{ $type }}</h4>
+                @if ($type == 'Discount')
+                    <small class="text-muted">Discount given (to customers) lowers what a customer owes; discount received (from suppliers) lowers what we owe.</small>
+                @elseif ($type == 'Payment')
+                    <small class="text-muted">Pay suppliers, or pay a customer's credit (advance or returns kept as credit) back in cash.</small>
+                @else
+                    <small class="text-muted">Receive from customers (walk-in customers with a due are listed too); optionally against one invoice.</small>
+                @endif
+            </div>
 
             <button type="button" class="btn btn-primary" onclick="openpaymentModal()">
                 Add {{ $type }}
             </button>
         </div>
+
+        @if ($type == 'Discount')
+            <div class="btn-group mb-3" role="group" aria-label="Discount side">
+                <button type="button" class="btn btn-outline-primary active discount-side" data-side="">All</button>
+                <button type="button" class="btn btn-outline-primary discount-side" data-side="customer">Given to customers</button>
+                <button type="button" class="btn btn-outline-primary discount-side" data-side="supplier">Received from suppliers</button>
+            </div>
+        @endif
 
         <div class="card">
             <div class="card-body">
@@ -56,7 +73,7 @@
                         <div class="row">
 
                             <div class="col-md-4 mb-3">
-                                <label for="payment_date" class="form-label">Date</label>
+                                <label for="payment_date" class="form-label">Date <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="payment_date" name="payment_date"
                                     value="{{ date('Y-m-d') }}">
                                 <span class="text-danger error-text payment_date_error"></span>
@@ -65,34 +82,45 @@
                             <div class="col-md-4 mb-3">
                                 <label for="party_id" class="form-label">
                                     @if ($type == 'Payment')
-                                        Supplier
+                                        Supplier / customer credit
                                     @elseif($type == 'Payment Receive')
                                         Customer
                                     @else
                                         Party
                                     @endif
+                                    <span class="text-danger">*</span>
                                 </label>
                                 <select class="form-control select2" id="party_id" name="party_id">
                                     <option value="">Select Party</option>
-                                    @foreach ($parties as $party)
-                                        <option value="{{ $party->id }}">{{ $party->name }}@if ($party->phone)
-                                                ({{ $party->phone }})
-                                            @endif
-                                        </option>
+                                    @php
+                                        $groups = $type == 'Discount'
+                                            ? ['Customers (discount given)' => $parties->whereIn('type', ['Customer', 'Walk-In Customer']), 'Suppliers (discount received)' => $parties->where('type', 'Supplier')]
+                                            : ($type == 'Payment'
+                                                ? ['Suppliers' => $parties->where('type', 'Supplier'), 'Customers with credit (pay back)' => $parties->whereIn('type', ['Customer', 'Walk-In Customer'])]
+                                                : ['Customers' => $parties]);
+                                    @endphp
+                                    @foreach ($groups as $groupName => $groupParties)
+                                        @if ($groupParties->isNotEmpty())
+                                            <optgroup label="{{ $groupName }}">
+                                                @foreach ($groupParties as $party)
+                                                    <option value="{{ $party->id }}" data-type="{{ $party->type }}">{{ $party->label }}</option>
+                                                @endforeach
+                                            </optgroup>
+                                        @endif
                                     @endforeach
                                 </select>
                                 <span class="text-danger error-text party_id_error"></span>
                             </div>
 
                             <div class="col-md-4 mb-3">
-                                <label for="due_amount" class="form-label">Due</label>
+                                <label for="due_amount" class="form-label">Balance</label>
                                 <input type="text" class="form-control" id="due_amount" name="due_amount" readonly
                                     placeholder="Due Amount">
                                 <span class="text-danger error-text due_amount_error"></span>
                             </div>
 
                             <div class="col-md-4 mb-3">
-                                <label for="amount" class="form-label">Amount</label>
+                                <label for="amount" class="form-label">Amount <span class="text-danger">*</span></label>
                                 <input type="number" step="0.01" min="0" class="form-control" id="amount"
                                     name="amount" placeholder="Amount">
                                 <span class="text-danger error-text amount_error"></span>
@@ -100,9 +128,19 @@
 
 
 
+                            @if ($type == 'Payment Receive')
+                                <div class="col-md-8 mb-3">
+                                    <label for="sale_id" class="form-label">Against invoice <small class="text-muted">(optional)</small></label>
+                                    <select class="form-control select2" id="sale_id" name="sale_id">
+                                        <option value="">On account (no particular invoice)</option>
+                                    </select>
+                                    <span class="text-danger error-text sale_id_error"></span>
+                                </div>
+                            @endif
+
                             @if ($type != 'Discount')
                                 <div class="col-md-4 mb-3">
-                                    <label for="payment_method" class="form-label">Payment Method</label>
+                                    <label for="payment_method" class="form-label">Payment Method <span class="text-danger">*</span></label>
                                     <select class="form-control select2" id="payment_method" name="payment_method">
                                         <option value="">Select Payment Method</option>
                                         @foreach ($childCoas as $childCoa)
@@ -113,7 +151,7 @@
                                 </div>
 
                                 <div class="col-md-4 mb-3">
-                                    <label for="payment_method_account" class="form-label">Payment Account</label>
+                                    <label for="payment_method_account" class="form-label">Payment Account <span class="text-danger">*</span></label>
                                     <select class="form-control select2" id="payment_method_account" name="payment_method_account">
                                         <option value="">Select payment method first</option>
                                     </select>
@@ -145,6 +183,7 @@
     <script>
         let paymentTable;
         let paymentModal;
+        let discountSide = '';
 
         $(document).ready(function() {
 
@@ -161,6 +200,9 @@
                 ajax: {
                     url: "{{ route('admin.payment.list', $type) }}",
                     type: 'GET',
+                    data: function(d) {
+                        d.side = discountSide;
+                    },
                     dataSrc: function(json) {
                         if (json.status === false) {
                             toastr.error(json.message || 'Failed to load data.');
@@ -223,7 +265,7 @@
                     success: function(response) {
                         // alert(JSON.stringify(response));
                         if (response.status) {
-                            $('#due_amount').val(response.due);
+                            $('#due_amount').val(response.due_text || (parseFloat(response.due) || 0).toFixed(2));
                         }
                     },
                     error: function(xhr) {
@@ -231,6 +273,51 @@
                         toastr.error('Could not load due amount.');
                     }
                 });
+            });
+
+            // Payment Receive: the customer's open invoices, to apply the receipt to one of them.
+            $('#party_id').on('change', function() {
+                let $invoice = $('#sale_id');
+                if (!$invoice.length) {
+                    return;
+                }
+                $invoice.html('<option value="">On account (no particular invoice)</option>').trigger('change');
+                if (!$(this).val()) {
+                    return;
+                }
+                $.ajax({
+                    url: "{{ route('admin.payment.invoices') }}",
+                    type: 'GET',
+                    dataType: 'json',
+                    data: {
+                        party: $(this).val()
+                    },
+                    success: function(response) {
+                        // alert(JSON.stringify(response));
+                        $.each(response.invoices || [], function(i, inv) {
+                            $invoice.append($('<option>', { value: inv.id, text: inv.text }).attr('data-due', inv.due));
+                        });
+                        $invoice.trigger('change');
+                    },
+                    error: function(xhr) {
+                        // alert(JSON.stringify(xhr));
+                        toastr.error('Could not load the open invoices.');
+                    }
+                });
+            });
+
+            $('#sale_id').on('change', function() {
+                let due = $(this).find(':selected').data('due');
+                if (due) {
+                    $('#amount').val(parseFloat(due).toFixed(2));
+                }
+            });
+
+            $('.discount-side').on('click', function() {
+                $('.discount-side').removeClass('active');
+                $(this).addClass('active');
+                discountSide = $(this).data('side') || '';
+                paymentTable.ajax.reload();
             });
 
             // Load the accounts of the selected payment method (same as the sale page)

@@ -139,7 +139,7 @@ class CustomerProgramController extends Controller
             . ' (now owes ' . number_format($current, 2) . ').';
     }
 
-    public static function addPoints(int $partyId, float $points, string $type, ?int $saleId, float $amount, ?string $remarks = null): void
+    public static function addPoints(int $partyId, float $points, string $type, ?int $saleId, float $amount, ?string $remarks = null, ?int $saleReturnId = null): void
     {
         if (abs($points) < 0.004) {
             return;
@@ -148,6 +148,7 @@ class CustomerProgramController extends Controller
         DB::table('loyalty_transactions')->insert([
             'party_id'      => $partyId,
             'sale_id'       => $saleId,
+            'sale_return_id' => $saleReturnId,
             'txn_type'      => $type,
             'points'        => round($points, 2),
             'balance_after' => (float) DB::table('parties')->where('id', $partyId)->value('loyalty_points'),
@@ -164,6 +165,7 @@ class CustomerProgramController extends Controller
     /** Undo a sale's loyalty (sale deleted). */
     public static function reverseSale(int $saleId): void
     {
+        // Only the sale's own Earn / Redeem: a return's point reversal is undone when that return is deleted.
         foreach (DB::table('loyalty_transactions')->where('sale_id', $saleId)->whereIn('txn_type', ['Earn', 'Redeem'])->get() as $t) {
             self::addPoints((int) $t->party_id, -(float) $t->points, 'Reverse', $saleId, (float) $t->amount, 'Sale deleted');
         }
@@ -247,9 +249,12 @@ class CustomerProgramController extends Controller
 
     public function loyaltyHistory(int $partyId)
     {
-        $rows = DB::table('loyalty_transactions as t')->leftJoin('sales as s', 's.id', '=', 't.sale_id')
+        // A sale return's point reversal shows as "INV-… / SR-…".
+        $rows = BranchController::scope(DB::table('loyalty_transactions as t'), 't.branch_id')->leftJoin('sales as s', 's.id', '=', 't.sale_id')
+            ->leftJoin('sale_returns as sr', 'sr.id', '=', 't.sale_return_id')
             ->leftJoin('users as u', 'u.id', '=', 't.created_by')->where('t.party_id', $partyId)
-            ->orderByDesc('t.id')->limit(200)->get(['t.*', 's.invoice_no', 'u.name as by_name']);
+            ->orderByDesc('t.id')->limit(200)
+            ->get(['t.*', DB::raw("CONCAT_WS(' / ', s.invoice_no, sr.return_no) as invoice_no"), 'u.name as by_name']);
 
         return response()->json(['status' => true, 'data' => $rows]);
     }
@@ -315,19 +320,33 @@ class CustomerProgramController extends Controller
             ->orderBy('s.purchase_date')->orderBy('s.id')
             ->get(['s.invoice_no as ref', 's.purchase_date as date', 'p.name as party', 's.grand_total', 's.vat_amount', 's.vat_percent']);
 
+        // Sale returns in the period give back their share of the sale's VAT (saved on the return).
+        $returns = BranchController::scope(DB::table('sale_returns as r'), 'r.branch_id')->leftJoin('parties as p', 'p.id', '=', 'r.customer_id')
+            ->leftJoin('sales as s', 's.id', '=', 'r.sale_id')
+            ->where('r.deleted', 'No')->where('r.status', 'Active')->whereBetween(DB::raw('DATE(r.datetime)'), [$from, $to])->where('r.vat_amount', '>', 0)
+            ->orderBy('r.datetime')->orderBy('r.id')
+            ->get(['r.return_no as ref', DB::raw('DATE(r.datetime) as date'), 's.invoice_no', 'p.name as party', 'r.grand_total', 'r.vat_amount']);
+
         $net = fn ($r) => (float) $r->grand_total - (float) $r->vat_amount;
-        $output = round($sales->sum('vat_amount'), 2);
+        $salesVat = round($sales->sum('vat_amount'), 2);
+        $returnsVat = round($returns->sum('vat_amount'), 2);
+        $output = round($salesVat - $returnsVat, 2);
         $input = round($purchases->sum('vat_amount'), 2);
 
         return [
             'from' => $from, 'to' => $to,
             'sales' => $sales->map(fn ($r) => ['ref' => $r->ref, 'date' => $r->date, 'party' => $r->party ?: 'Walk-In Customer',
                 'taxable' => round($net($r), 2), 'vat' => (float) $r->vat_amount, 'total' => (float) $r->grand_total])->values()->all(),
+            'returns' => $returns->map(fn ($r) => ['ref' => $r->ref . ($r->invoice_no ? ' (' . $r->invoice_no . ')' : ''), 'date' => $r->date,
+                'party' => $r->party ?: 'Walk-In Customer', 'taxable' => -round($net($r), 2), 'vat' => -(float) $r->vat_amount,
+                'total' => -(float) $r->grand_total])->values()->all(),
+            'sales_vat' => $salesVat, 'returns_vat' => $returnsVat,
+            'taxable_returns' => round($returns->sum($net), 2),
             'purchases' => $purchases->map(fn ($r) => ['ref' => $r->ref, 'date' => $r->date, 'party' => $r->party ?: '-',
                 'taxable' => round($net($r), 2), 'vat' => (float) $r->vat_amount, 'total' => (float) $r->grand_total])->values()->all(),
             'output' => $output, 'input' => $input, 'payable' => round($output - $input, 2),
-            'taxable_sales' => round($sales->sum($net), 2), 'taxable_purchases' => round($purchases->sum($net), 2),
-            'branch' => BranchController::name(BranchController::current()),
+            'taxable_sales' => round($sales->sum($net) - $returns->sum($net), 2), 'taxable_purchases' => round($purchases->sum($net), 2),
+            'branch' => BranchController::visibleLabel(),
         ];
     }
 
@@ -348,10 +367,17 @@ class CustomerProgramController extends Controller
         $book = new Spreadsheet();
         $sheet = $book->getActiveSheet()->setTitle('VAT');
         $sheet->fromArray([['VAT Report', $r['from'] . ' to ' . $r['to'], $r['branch']], [],
-            ['Output VAT (sales)', $r['output']], ['Input VAT (purchases)', $r['input']], ['VAT payable', $r['payable']], [],
+            ['VAT on sales', $r['sales_vat']], ['Less VAT on sale returns', -$r['returns_vat']],
+            ['Output VAT (sales less returns)', $r['output']], ['Input VAT (purchases)', $r['input']], ['VAT payable', $r['payable']], [],
             ['Sales', '', '', '', '', ''], ['Invoice', 'Date', 'Customer', 'Taxable', 'VAT', 'Total']]);
-        $row = 9;
+        $row = 11;
         foreach ($r['sales'] as $l) {
+            $sheet->fromArray([array_values($l)], null, 'A' . $row++);
+        }
+        $row++;
+        $sheet->fromArray([['Sale returns'], ['Return (invoice)', 'Date', 'Customer', 'Taxable', 'VAT', 'Total']], null, 'A' . $row);
+        $row += 2;
+        foreach ($r['returns'] as $l) {
             $sheet->fromArray([array_values($l)], null, 'A' . $row++);
         }
         $row++;

@@ -58,6 +58,15 @@
   --color-button-text: var(--color-on-primary);
   --color-focus: var(--color-primary);
   --color-focus-ring: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  --color-link: var(--color-accent);
+
+  /* Top bar, inputs, table heads (app addition: own tokens so Theme Settings can color them). */
+  --color-topbar: var(--color-surface);
+  --color-topbar-text: var(--color-text);
+  --color-topbar-border: var(--color-border);
+  --color-input-bg: var(--color-surface);
+  --color-table-head: var(--color-surface-soft);
+  --color-table-head-text: var(--color-text-muted);
 
   /* Sidebar: the dashboard track's dark-app shell on brand-dark-900. */
   --color-sidebar: var(--color-brand-dark);
@@ -112,7 +121,8 @@
   --radius-md: 8px;     /* compact cards, alerts */
   --radius-lg: 12px;    /* cards */
   --radius-xl: 16px;    /* large panels */
-  --radius-pill: 9999px;/* buttons, tag pills */
+  --radius-pill: 9999px;/* tag pills, badges */
+  --radius-button: 5px; /* every button (Theme Settings > Button corner radius: 5, 10 or 15px) */
 
   /* ---- Elevation ---- */
   --shadow-0: none;
@@ -189,4 +199,107 @@ table,
 .acc-grand,
 input[type="number"] {
   font-feature-settings: var(--font-feature-numeric);
+}
+
+/* ==========================================================================
+   Default theme: Midnight (app addition). Settings > Theme Settings defaults =
+   these values (SettingController::THEME_FIELDS); themeCss() prints only changes.
+   ========================================================================== */
+:root {
+  --color-accent: #533afd;
+  --color-accent-soft: #efedff;
+  --color-accent-ink: #4434d4;
+  --color-link: #533afd;
+  --bs-link-color: #533afd;
+  --color-focus: #533afd;
+  --color-button: #533afd;
+  --color-button-hover: #4434d4;
+  --color-button-press: #2e2b8c;
+  --color-button-text: #ffffff;
+  --color-sidebar: #0b0b10;
+  --color-sidebar-soft: #222227;
+  --color-sidebar-border: #26262b;
+  --color-sidebar-text: #c9cad3;
+  --color-sidebar-muted: #87878f;
+  --color-sidebar-text-strong: #ffffff;
+  --color-sidebar-active: #ffffff;
+  --color-topbar: #000000;
+  --color-topbar-text: #ffffff;
+  --color-topbar-border: #1f1f24;
+  --color-bg: #f6f9fc;
+  --bs-body-bg: #f6f9fc;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f6f9fc;
+  --color-surface-hover: #f8f7ff;
+  --color-text: #0d253d;
+  --bs-body-color: #0d253d;
+  --color-text-secondary: #273951;
+  --color-text-muted: #61718a;
+  --color-border: #e3e8ee;
+  --color-border-input: #a8c3de;
+  --color-input-bg: #ffffff;
+  --color-table-head: #f6f9fc;
+  --color-table-head-text: #61718a;
+  --color-success: #0e7c4a;
+  --color-success-soft: #e7f2ed;
+  --color-warning: #9a5a0a;
+  --color-warning-soft: #f5efe7;
+  --color-danger: #c0123c;
+  --color-danger-soft: #f9eaed;
+  --color-info: #4434d4;
+  --color-info-soft: #efedff;
+  --color-hero-bg: #0b0b10;
+  --color-hero-text: #ffffff;
+  --color-hero-muted: #b6b6b7;
+  --color-hero-accent: #533afd;
+  --color-focus-ring: rgba(83,58,253,0.28);
+}
+html[data-theme="dark"] {
+  --color-accent: #b9b9f9;
+  --color-accent-soft: #363748;
+  --color-accent-ink: #b9b9f9;
+  --color-link: #b9b9f9;
+  --bs-link-color: #b9b9f9;
+  --color-focus: #b9b9f9;
+  --color-button: #665efd;
+  --color-button-hover: #533afd;
+  --color-button-press: #4434d4;
+  --color-button-text: #ffffff;
+  --color-sidebar: #050508;
+  --color-sidebar-soft: #1d1d20;
+  --color-sidebar-border: #202124;
+  --color-sidebar-text: #c9cad3;
+  --color-sidebar-muted: #84858c;
+  --color-sidebar-text-strong: #ffffff;
+  --color-sidebar-active: #ffffff;
+  --color-topbar: #000000;
+  --color-topbar-text: #f3f4f6;
+  --color-topbar-border: #1c1c22;
+  --color-bg: #0b0c10;
+  --bs-body-bg: #0b0c10;
+  --color-surface: #15161c;
+  --color-surface-soft: #101116;
+  --color-surface-hover: #1d1d33;
+  --color-text: #f3f4f6;
+  --bs-body-color: #f3f4f6;
+  --color-text-secondary: #d2d3d5;
+  --color-text-muted: #a3a8b5;
+  --color-border: #2a2c36;
+  --color-border-input: #4e515c;
+  --color-input-bg: #15161c;
+  --color-table-head: #101116;
+  --color-table-head-text: #a3a8b5;
+  --color-success: #4fd194;
+  --color-success-soft: #1d302d;
+  --color-warning: #f0b45a;
+  --color-warning-soft: #342c25;
+  --color-danger: #ff7d9c;
+  --color-danger-soft: #36242e;
+  --color-info: #4434d4;
+  --color-info-soft: #363748;
+  --color-hero-bg: #050508;
+  --color-hero-text: #ffffff;
+  --color-hero-muted: #b4b4b5;
+  --color-hero-accent: #665efd;
+  --color-focus-ring: rgba(185,185,249,0.35);
 }

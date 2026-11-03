@@ -53,7 +53,7 @@
 
                         <th>Advance</th>
 
-                        <th>Due</th>
+                        <th title="Value of the delivery invoices (each delivery is a sale invoice)">Delivered</th>
 
                         <th>Status</th>
 

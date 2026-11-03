@@ -23,4 +23,5 @@ Route::prefix('/stock')->name('admin.stock.')->group(function () {
 
     Route::get('/batches', [StockController::class, 'batches'])->name('batches');
     Route::get('/batches/list', [StockController::class, 'batchList'])->name('batches.list');
+    Route::post('/batches/{id}/expiry', [StockController::class, 'batchExpiry'])->whereNumber('id')->name('batches.expiry');
 });

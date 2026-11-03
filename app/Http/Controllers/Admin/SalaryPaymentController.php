@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\AccountBalanceTrait;
 use App\Traits\VoucherHelperTrait;
 use Carbon\Carbon;
@@ -23,7 +24,7 @@ use Throwable;
  */
 class SalaryPaymentController extends Controller
 {
-    use AccountBalanceTrait, VoucherHelperTrait;
+    use AccountBalanceTrait, VoucherHelperTrait, SafeJsonErrors;
 
     public function index()
     {
@@ -52,7 +53,7 @@ class SalaryPaymentController extends Controller
 
                     return [
                         $i + 1,
-                        '<span class="fw-semibold">' . e($r->payment_no) . '</span><div class="text-muted small">' . e($r->run_no) . '</div>',
+                        '<span class="fw-semibold">' . e($r->payment_no) . '</span><div class="text-muted small">' . e($r->run_no) . '</div>' . branch_tag($r->branch_id),
                         '<span class="d-none">' . $r->month . '</span>' . e(Carbon::parse($r->month)->format('F Y')),
                         e(Carbon::parse($r->payment_date)->format('d M Y')),
                         e($r->account ?: '-') . ($r->method ? '<div class="text-muted small">' . e($r->method) . '</div>' : ''),
@@ -61,7 +62,7 @@ class SalaryPaymentController extends Controller
                         $r->payment_status === 'Posted'
                             ? '<span class="badge bg-success">Posted</span>'
                             : '<span class="badge bg-secondary" title="' . e($r->cancel_reason) . '">Cancelled</span>',
-                        action_dropdown($items),
+                        action_dropdown($items, $r->branch_id),
                     ];
                 }),
             ]);
@@ -108,6 +109,7 @@ class SalaryPaymentController extends Controller
             'remarks'            => ['nullable', 'string', 'max:500'],
         ], [
             'payment_account_id.required' => 'Select the cash / bank account the salary is paid from.',
+            'payment_account_id.exists'   => 'Select a cash / bank account of this branch.',
             'items.required'              => 'Enter the amount to pay at least one employee.',
         ]);
 
@@ -120,17 +122,19 @@ class SalaryPaymentController extends Controller
                 $wanted = collect($request->input('items'))->map(fn ($v) => round((float) $v, 2))->filter(fn ($v) => $v > 0);
                 abort_if($wanted->isEmpty(), 422, 'Enter the amount to pay at least one employee.');
 
-                $items = BranchController::scope(DB::table('payroll_run_items as i'), 'e.branch_id')->join('payroll_runs as r', 'r.id', '=', 'i.payroll_run_id')
+                // only the working branch's processed salaries are paid here (from its cash / bank)
+                $items = BranchController::scopeOwn(DB::table('payroll_run_items as i'), 'r.branch_id')->join('payroll_runs as r', 'r.id', '=', 'i.payroll_run_id')
                     ->join('employees as e', 'e.id', '=', 'i.employee_id')
                     ->whereIn('i.id', $wanted->keys()->all())->where('r.run_status', 'Posted')
                     ->lockForUpdate()->get(['i.*', 'r.month', 'r.payable_account_id', 'e.name']);
 
-                abort_if($items->count() !== $wanted->count(), 422, 'Some employees are not in a processed salary any more. Reload the sheet.');
+                abort_if($items->count() !== $wanted->count(), 422, 'Some employees are not in a processed salary of ' . BranchController::name(BranchController::activeId()) . ' any more (salary is paid in each employee\'s own branch). Reload the sheet.');
 
                 foreach ($items as $it) {
                     $due = round((float) $it->net_payable - (float) $it->paid_amount, 2);
                     abort_if($wanted[$it->id] > $due + 0.004, 422, $it->name . ': only ' . number_format($due, 2) . ' is due.');
                 }
+                ReportController::ensureCash($request->input('payment_account_id'), $wanted->sum());
 
                 $created = [];
                 foreach ($items->groupBy('payroll_run_id') as $runId => $runItems) {
@@ -174,7 +178,7 @@ class SalaryPaymentController extends Controller
                 DB::table('payroll_settings')->update(['salary_payment_account_id' => (int) $request->input('payment_account_id')]);
 
                 return collect($created);
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json([
                 'status'  => true,
@@ -202,7 +206,8 @@ class SalaryPaymentController extends Controller
 
         try {
             $payment = DB::transaction(function () use ($request, $id) {
-                $payment = BranchController::scope(DB::table('salary_payments'), 'branch_id')->where('id', $id)->lockForUpdate()->first();
+                BranchController::guardOwn('salary_payments', $id);
+                $payment = BranchController::scopeOwn(DB::table('salary_payments'), 'branch_id')->where('id', $id)->lockForUpdate()->first();
                 abort_unless($payment, 404, 'Salary payment not found.');
                 abort_unless($payment->payment_status === 'Posted', 422, 'This payment is already cancelled.');
 
@@ -224,7 +229,7 @@ class SalaryPaymentController extends Controller
                 ]);
 
                 return $payment;
-            });
+            }, self::SAVE_ATTEMPTS);
 
             return response()->json(['status' => true, 'message' => 'Salary ' . $payment->payment_no . ' cancelled. That amount is due again.']);
         } catch (HttpExceptionInterface $e) {

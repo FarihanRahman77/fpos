@@ -18,7 +18,7 @@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
             <div>
                 <h4 class="mb-0">VAT Report</h4>
-                <small class="text-muted">Output VAT collected on sales minus input VAT paid on purchases = VAT payable. <span id="branchNote"></span></small>
+                <small class="text-muted">Output VAT on sales less sale returns, minus input VAT paid on purchases = VAT payable. <span id="branchNote"></span></small>
             </div>
             <div class="ms-auto d-flex flex-wrap gap-2">
                 <input type="date" id="from" class="form-control" value="{{ now()->startOfMonth()->toDateString() }}" aria-label="From">
@@ -29,7 +29,7 @@
         </div>
 
         <div class="row g-3 mb-3">
-            <div class="col-md-4"><div class="card acc-stat"><div class="card-body"><div class="text-muted small">Output VAT (sales)</div><h5 class="mb-0" id="out">0.00</h5><small class="text-muted">on <span id="taxSales">0.00</span></small></div></div></div>
+            <div class="col-md-4"><div class="card acc-stat"><div class="card-body"><div class="text-muted small">Output VAT (sales less returns)</div><h5 class="mb-0" id="out">0.00</h5><small class="text-muted">on <span id="taxSales">0.00</span> · returns −<span id="retVat">0.00</span></small></div></div></div>
             <div class="col-md-4"><div class="card acc-stat"><div class="card-body"><div class="text-muted small">Input VAT (purchases)</div><h5 class="mb-0" id="in">0.00</h5><small class="text-muted">on <span id="taxPurch">0.00</span></small></div></div></div>
             <div class="col-md-4"><div class="card acc-stat"><div class="card-body"><div class="text-muted small">VAT payable</div><h5 class="mb-0" id="pay">0.00</h5></div></div></div>
         </div>
@@ -41,6 +41,15 @@
                     <div class="table-responsive"><table class="table table-bordered vat-table mb-0">
                         <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th class="num">Taxable</th><th class="num">VAT</th><th class="num">Total</th></tr></thead>
                         <tbody id="salesRows"></tbody><tfoot id="salesFoot"></tfoot>
+                    </table></div>
+                </div></div>
+            </div>
+            <div class="col-xl-6">
+                <div class="card acc-card"><div class="card-body">
+                    <h6>Sale returns (VAT given back)</h6>
+                    <div class="table-responsive"><table class="table table-bordered vat-table mb-0">
+                        <thead><tr><th>Return (invoice)</th><th>Date</th><th>Customer</th><th class="num">Taxable</th><th class="num">VAT</th><th class="num">Total</th></tr></thead>
+                        <tbody id="retRows"></tbody><tfoot id="retFoot"></tfoot>
                     </table></div>
                 </div></div>
             </div>
@@ -84,7 +93,10 @@
                     $('#taxPurch').text(money(response.taxable_purchases));
                     $('#branchNote').text('Branch: ' + response.branch + '.');
                     $('#salesRows').html(rows(response.sales));
-                    $('#salesFoot').html(foot(response.taxable_sales, response.output));
+                    $('#salesFoot').html(foot(response.taxable_sales + response.taxable_returns, response.sales_vat));
+                    $('#retVat').text(money(response.returns_vat));
+                    $('#retRows').html(rows(response.returns));
+                    $('#retFoot').html(foot(-response.taxable_returns, -response.returns_vat));
                     $('#purchRows').html(rows(response.purchases));
                     $('#purchFoot').html(foot(response.taxable_purchases, response.input));
                 },

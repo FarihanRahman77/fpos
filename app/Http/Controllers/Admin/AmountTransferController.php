@@ -94,13 +94,13 @@ class AmountTransferController extends Controller
                 $output['data'][] = [
                     $i++,
                     '<span class="fw-semibold">' . e($t->transfer_no) . '</span>'
-                        . ($t->reference_no ? '<div class="text-muted small">Ref: ' . e($t->reference_no) . '</div>' : ''),
+                        . ($t->reference_no ? '<div class="text-muted small">Ref: ' . e($t->reference_no) . '</div>' : '') . branch_tag($t->branch_id),
                     '<span class="d-none">' . $date->format('Y-m-d') . '</span>' . e($date->format('d M Y')),
                     $accountCell($t->from_code, $t->from_name, $t->from_group_name),
                     $accountCell($t->to_code, $t->to_name, $t->to_group_name),
                     '<span class="d-none">' . sprintf('%021.2f', (float) $t->amount) . '</span>'
                         . '<span class="d-block text-end fw-semibold">' . number_format((float) $t->amount, 2) . '</span>',
-                    $this->actionButtons('Transfer', (int) $t->id),
+                    $this->actionButtons('Transfer', (int) $t->id, [], $t->branch_id),
                 ];
             }
 
@@ -197,60 +197,69 @@ class AmountTransferController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
+        return self::retryOnDeadlock(function () use ($request) {
+            DB::beginTransaction();
 
-        try {
-            if ($request->filled('id')) {
-                $transfer = BranchController::scope(InternalAmountTransfer::where('id', (int) $request->input('id')))
-                    ->where('deleted', 'No')->lockForUpdate()->first();
+            try {
+                if ($request->filled('id')) {
+                    BranchController::guardOwn('internal_amount_transfers', $request->input('id'));
+                    $transfer = BranchController::scopeOwn(InternalAmountTransfer::where('id', (int) $request->input('id')))
+                        ->where('deleted', 'No')->lockForUpdate()->first();
 
-                if (!$transfer) {
-                    abort(404, 'Transfer not found.');
+                    if (!$transfer) {
+                        abort(404, 'Transfer not found.');
+                    }
+
+                    if ($closed = AccountingReportController::closedDateMessage($transfer->transfer_date)) {
+                        abort(422, $closed);
+                    }
+
+                    // the from-ledger gets back what this transfer took from it (and loses what it brought in)
+                    $from = (int) $request->input('from_account_id');
+                    ReportController::ensureCash($from, $request->input('amount'),
+                        ((int) $transfer->from_account_id === $from ? (float) $transfer->amount : 0) - ((int) $transfer->to_account_id === $from ? (float) $transfer->amount : 0));
+                    $this->post($transfer, -1);   // undo the old movement
+
+                    $transfer->updated_by   = Auth::id();
+                    $transfer->updated_date = now();
+                } else {
+                    ReportController::ensureCash($request->input('from_account_id'), $request->input('amount'));
+                    $transfer = new InternalAmountTransfer();
+                    $transfer->transfer_no  = $this->nextSequentialCode(InternalAmountTransfer::class, 'transfer_no', 'TRF');
+                    $transfer->created_by   = Auth::id();
+                    $transfer->created_date = now();
                 }
 
-                if ($closed = AccountingReportController::closedDateMessage($transfer->transfer_date)) {
-                    abort(422, $closed);
-                }
+                $transfer->transfer_date   = $request->input('transfer_date');
+                $transfer->from_group_id   = (int) $request->input('from_group_id');
+                $transfer->from_account_id = (int) $request->input('from_account_id');
+                $transfer->to_group_id     = (int) $request->input('to_group_id');
+                $transfer->to_account_id   = (int) $request->input('to_account_id');
+                $transfer->amount          = round((float) $request->input('amount'), 2);
+                $transfer->reference_no    = $this->nullIfBlank($request->input('reference_no'));
+                $transfer->remarks         = $this->nullIfBlank($request->input('remarks'));
+                $transfer->save();
 
-                $this->post($transfer, -1);   // undo the old movement
+                $this->post($transfer, 1);
 
-                $transfer->updated_by   = Auth::id();
-                $transfer->updated_date = now();
-            } else {
-                $transfer = new InternalAmountTransfer();
-                $transfer->transfer_no  = $this->nextSequentialCode(InternalAmountTransfer::class, 'transfer_no', 'TRF');
-                $transfer->created_by   = Auth::id();
-                $transfer->created_date = now();
+                DB::commit();
+
+                return response()->json([
+                    'status'  => true,
+                    'message' => 'Transfer ' . $transfer->transfer_no . ($request->filled('id') ? ' updated' : ' saved') . ' successfully.',
+                ]);
+            } catch (HttpExceptionInterface $e) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
+            } catch (Throwable $e) {
+                DB::rollBack();
+                self::rethrowIfConcurrency($e);
+                Log::error('Transfer store error', $this->ctx($e));
+
+                return response()->json(['status' => false, 'message' => 'Unable to save the transfer. Please try again.'], 500);
             }
-
-            $transfer->transfer_date   = $request->input('transfer_date');
-            $transfer->from_group_id   = (int) $request->input('from_group_id');
-            $transfer->from_account_id = (int) $request->input('from_account_id');
-            $transfer->to_group_id     = (int) $request->input('to_group_id');
-            $transfer->to_account_id   = (int) $request->input('to_account_id');
-            $transfer->amount          = round((float) $request->input('amount'), 2);
-            $transfer->reference_no    = $this->nullIfBlank($request->input('reference_no'));
-            $transfer->remarks         = $this->nullIfBlank($request->input('remarks'));
-            $transfer->save();
-
-            $this->post($transfer, 1);
-
-            DB::commit();
-
-            return response()->json([
-                'status'  => true,
-                'message' => 'Transfer ' . $transfer->transfer_no . ($request->filled('id') ? ' updated' : ' saved') . ' successfully.',
-            ]);
-        } catch (HttpExceptionInterface $e) {
-            DB::rollBack();
-
-            return response()->json(['status' => false, 'message' => $e->getMessage()], $e->getStatusCode());
-        } catch (Throwable $e) {
-            DB::rollBack();
-            Log::error('Transfer store error', $this->ctx($e));
-
-            return response()->json(['status' => false, 'message' => 'Unable to save the transfer. Please try again.'], 500);
-        }
+        });
     }
 
     /* ------------------------------------------------------------------ */
@@ -267,7 +276,8 @@ class AmountTransferController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
-                $transfer = BranchController::scope(InternalAmountTransfer::where('id', (int) $request->input('id')))
+                BranchController::guardOwn('internal_amount_transfers', $request->input('id'));
+                $transfer = BranchController::scopeOwn(InternalAmountTransfer::where('id', (int) $request->input('id')))
                     ->where('deleted', 'No')->lockForUpdate()->first();
 
                 if (!$transfer) {

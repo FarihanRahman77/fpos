@@ -2,50 +2,43 @@
 
 namespace Tests\Feature\Auth;
 
-use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Tests\TestCase;
+use Tests\AppTestCase;
 
-class PasswordUpdateTest extends TestCase
+/**
+ * Updated from the stock Breeze test: the user signs in to a branch first (SetBranch requires one) and the page they
+ * come from is their own profile (admin.users.profile — the app's profile screen). Same assertions, plus the
+ * password is unchanged when the current one is wrong.
+ */
+class PasswordUpdateTest extends AppTestCase
 {
-    use RefreshDatabase;
-
     public function test_password_can_be_updated(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
+        $from = route('admin.users.profile', $this->ids['user.cashier']);
 
-        $response = $this
-            ->actingAs($user)
-            ->from('/profile')
-            ->put('/password', [
-                'current_password' => 'password',
-                'password' => 'new-password',
-                'password_confirmation' => 'new-password',
-            ]);
+        $response = $this->from($from)->put('/password', [
+            'current_password' => $this->password,
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect('/profile');
-
-        $this->assertTrue(Hash::check('new-password', $user->refresh()->password));
+        $response->assertSessionHasNoErrors()->assertRedirect($from);
+        $this->assertTrue(Hash::check('new-password', $this->user('cashier')->password));
     }
 
     public function test_correct_password_must_be_provided_to_update_password(): void
     {
-        $user = User::factory()->create();
+        $this->signIn('cashier', 'two');
+        $from = route('admin.users.profile', $this->ids['user.cashier']);
 
-        $response = $this
-            ->actingAs($user)
-            ->from('/profile')
-            ->put('/password', [
-                'current_password' => 'wrong-password',
-                'password' => 'new-password',
-                'password_confirmation' => 'new-password',
-            ]);
+        $response = $this->from($from)->put('/password', [
+            'current_password' => 'wrong-password',
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ]);
 
-        $response
-            ->assertSessionHasErrorsIn('updatePassword', 'current_password')
-            ->assertRedirect('/profile');
+        $response->assertSessionHasErrorsIn('updatePassword', 'current_password')->assertRedirect($from);
+        $this->assertTrue(Hash::check($this->password, $this->user('cashier')->password));
     }
 }

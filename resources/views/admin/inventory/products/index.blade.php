@@ -4,47 +4,250 @@
     {{ $generalSetting['company_name'] ?? '' }} Products
 @endsection
 
+@push('styles')
+<style>
+    /* Products list: summary tiles, filter bar and the one-value-per-cell table. Tokens only. */
+    .prd-stat .card-body { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg); }
+    .prd-stat .icon { flex: 0 0 auto; width: var(--control-height); height: var(--control-height); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: var(--text-body-lg); }
+    .prd-stat .i1 { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+    .prd-stat .i2 { background: var(--color-success-soft); color: var(--color-success); }
+    .prd-stat .i3 { background: var(--color-warning-soft); color: var(--color-warning); }
+    .prd-stat .i4 { background: var(--color-danger-soft); color: var(--color-danger); }
+    .prd-stat .i5 { background: var(--color-info-soft); color: var(--color-info); }
+    .prd-stat .min-w-0 { min-width: 0; }
+    .prd-stat .label { color: var(--color-text-muted); font-size: var(--text-caption); letter-spacing: var(--tracking-caption); white-space: nowrap; }
+    .prd-stat .value { margin: 0; font-size: var(--text-heading-sm); font-weight: var(--font-weight-light); font-feature-settings: var(--font-feature-numeric); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .prd-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-sm) var(--space-md); }
+    .prd-filters .f-item { display: flex; flex-direction: column; gap: var(--space-xxs); min-width: 0; }
+    .prd-filters .f-item > label { margin: 0; color: var(--color-text-muted); font-size: var(--text-micro); font-weight: var(--font-weight-medium); letter-spacing: var(--tracking-micro-cap); text-transform: uppercase; white-space: nowrap; }
+    .prd-filters .f-select { width: 170px; }
+    .prd-filters .f-small { width: 120px; }
+    .prd-filters .f-range { width: 190px; }
+    .prd-filters .f-range .form-control { min-width: 0; text-align: right; font-feature-settings: var(--font-feature-numeric); }
+    .prd-filters .f-range .input-group-text { padding-left: var(--space-xs); padding-right: var(--space-xs); color: var(--color-text-muted); }
+    .prd-filters .f-actions { margin-left: auto; }
+    @media (max-width: 767.98px) {
+        .prd-filters .f-item { flex: 1 1 calc(50% - var(--space-md)); }
+        .prd-filters .f-select, .prd-filters .f-small, .prd-filters .f-range { width: auto; }
+        .prd-filters .f-range { flex-basis: 100%; }
+        .prd-filters .f-actions { margin-left: 0; flex: 0 0 auto; }
+    }
+
+    .prd-dt-head, .prd-dt-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
+    .prd-dt-head { margin-bottom: var(--space-sm); }
+    .prd-dt-foot { justify-content: space-between; margin-top: var(--space-sm); }
+    .prd-dt-head .dataTables_length, .prd-dt-head .dataTables_filter { float: none; padding: 0; }
+    .prd-dt-count { flex: 1 1 auto; min-width: 0; }
+    .prd-dt-head .dataTables_filter input { margin-left: 0; }
+    @media (max-width: 575.98px) {
+        .prd-dt-head .dataTables_filter { flex: 1 1 auto; }
+        .prd-dt-head .dataTables_filter label, .prd-dt-head .dataTables_filter input { width: 100%; }
+        .prd-dt-count { order: 3; flex-basis: 100%; }
+    }
+    .prd-count { color: var(--color-text-muted); font-size: var(--text-caption); font-feature-settings: var(--font-feature-numeric); }
+    .prd-count strong { color: var(--color-text); font-weight: var(--font-weight-medium); }
+    .prd-cols .dropdown-menu { max-height: 360px; overflow-y: auto; min-width: 210px; }
+    .prd-cols .dropdown-item { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; }
+    .prd-cols .form-check-input { margin: 0; }
+
+    .prd-scroll { width: 100%; overflow: auto; }
+    @media (min-width: 992px) {
+        .prd-scroll { max-height: calc(100vh - 230px); min-height: 320px; }
+        #manageProductTable > thead > tr > th { position: sticky; top: 0; z-index: 2; }
+    }
+    #manageProductTable { margin: 0 !important; }
+    #manageProductTable > tbody > tr > td { min-width: 0; padding: var(--space-sm) var(--space-md); vertical-align: middle; white-space: nowrap; }
+    #manageProductTable > thead > tr > th { padding: var(--space-sm) var(--space-md); }
+    #manageProductTable > thead > tr > th.sorting, #manageProductTable > thead > tr > th.sorting_asc, #manageProductTable > thead > tr > th.sorting_desc { padding-right: calc(var(--space-md) * 2 + var(--space-xs)); }
+    #manageProductTable td.num, #manageProductTable th.num { text-align: right; font-feature-settings: var(--font-feature-numeric); }
+    #manageProductTable .prd-name { display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+    #manageProductTable .prd-name-btn { padding: 0; border: 0; background: none; color: var(--color-link); text-align: left; font: inherit; }
+    #manageProductTable .prd-name-btn:hover { text-decoration: underline; }
+    #manageProductTable .prd-clip { display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+    #manageProductTable .prd-code { font-family: var(--font-mono); font-size: var(--text-caption); }
+    #manageProductTable .product-table-image { width: 40px; height: 40px; object-fit: contain; border-radius: var(--radius-sm); background: var(--color-surface-soft); }
+    #manageProductTable .prd-noimg { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-surface-soft); color: var(--color-text-muted); }
+    #manageProductTable .muted { color: var(--color-text-muted); }
+    #manageProductTable .neg { color: var(--color-danger); }
+    #manageProductTable .status-icon { font-size: var(--text-body-lg); }
+    #manageProductTable .status-on { color: var(--color-success); }
+    #manageProductTable .status-off { color: var(--color-danger); }
+</style>
+@endpush
+
 @section('content')
 
 <div class="container-fluid">
 
     <!-- PAGE HEADER -->
-    <div class="row mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <h4 class="mb-0">Products</h4>
 
-        <div class="col-md-6">
-            <h4 class="mb-0">Products</h4>
-        </div>
-
-        <div class="col-md-6 text-end">
+        @perm('products.create')
             <button type="button" class="btn btn-primary" id="addProductBtn">
                 <i class="fas fa-plus"></i> Add Product
             </button>
-        </div>
+        @endperm
+    </div>
 
+
+    <!-- SUMMARY (reflects the filters) -->
+    <div class="row row-cols-2 row-cols-md-3 row-cols-xl-5 g-3 mb-3">
+        <div class="col">
+            <div class="card prd-stat h-100"><div class="card-body">
+                <div class="icon i1"><i class="fas fa-boxes-stacked" aria-hidden="true"></i></div>
+                <div class="min-w-0"><div class="label">Products</div><h5 class="value" id="sumProducts">0</h5></div>
+            </div></div>
+        </div>
+        <div class="col">
+            <div class="card prd-stat h-100"><div class="card-body">
+                <div class="icon i2"><i class="fas fa-circle-check" aria-hidden="true"></i></div>
+                <div class="min-w-0"><div class="label">In stock</div><h5 class="value" id="sumIn">0</h5></div>
+            </div></div>
+        </div>
+        <div class="col">
+            <div class="card prd-stat h-100"><div class="card-body">
+                <div class="icon i3"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i></div>
+                <div class="min-w-0"><div class="label">Low stock</div><h5 class="value" id="sumLow">0</h5></div>
+            </div></div>
+        </div>
+        <div class="col">
+            <div class="card prd-stat h-100"><div class="card-body">
+                <div class="icon i4"><i class="fas fa-circle-xmark" aria-hidden="true"></i></div>
+                <div class="min-w-0"><div class="label">Out of stock</div><h5 class="value" id="sumOut">0</h5></div>
+            </div></div>
+        </div>
+        <div class="col-12 col-md">
+            <div class="card prd-stat h-100"><div class="card-body">
+                <div class="icon i5"><i class="fas fa-coins" aria-hidden="true"></i></div>
+                <div class="min-w-0"><div class="label" title="On-hand quantity × purchase price">Stock value (cost)</div><h5 class="value" id="sumValue">0.00</h5></div>
+            </div></div>
+        </div>
     </div>
 
 
     <!-- PRODUCT TABLE -->
     <div class="card">
         <div class="card-body">
-            <div class="table-responsive">
 
-                <table id="manageProductTable" class="table table-bordered datatable" width="100%" style="width:100%">
+            <!-- FILTERS -->
+            <form id="productFilters" class="prd-filters mb-3" autocomplete="off" onsubmit="return false;">
+
+                <div class="f-item f-select">
+                    <label for="f_category_id">Category</label>
+                    <select id="f_category_id" name="category_id" class="form-select prd-filter-select2">
+                        <option value="">All categories</option>
+                        @foreach ($filterCategories as $category)
+                            <option value="{{ $category->id }}">{{ $category->name }}{{ $category->status === 'Inactive' ? ' (inactive)' : '' }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="f-item f-select">
+                    <label for="f_brand_id">Brand</label>
+                    <select id="f_brand_id" name="brand_id" class="form-select prd-filter-select2">
+                        <option value="">All brands</option>
+                        @foreach ($filterBrands as $brand)
+                            <option value="{{ $brand->id }}">{{ $brand->name }}{{ $brand->status === 'Inactive' ? ' (inactive)' : '' }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="f-item f-range">
+                    <label for="f_purchase_price_min">Purchase price</label>
+                    <div class="input-group">
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_purchase_price_min" name="purchase_price_min" placeholder="Min" aria-label="Minimum purchase price">
+                        <span class="input-group-text">–</span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_purchase_price_max" name="purchase_price_max" placeholder="Max" aria-label="Maximum purchase price">
+                    </div>
+                </div>
+
+                <div class="f-item f-range">
+                    <label for="f_sale_price_min">Sale price</label>
+                    <div class="input-group">
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_sale_price_min" name="sale_price_min" placeholder="Min" aria-label="Minimum sale price">
+                        <span class="input-group-text">–</span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_sale_price_max" name="sale_price_max" placeholder="Max" aria-label="Maximum sale price">
+                    </div>
+                </div>
+
+                <div class="f-item f-range">
+                    <label for="f_old_price_min">Old price</label>
+                    <div class="input-group">
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_old_price_min" name="old_price_min" placeholder="Min" aria-label="Minimum old sale price">
+                        <span class="input-group-text">–</span>
+                        <input type="number" min="0" step="0.01" inputmode="decimal" class="form-control prd-price" id="f_old_price_max" name="old_price_max" placeholder="Max" aria-label="Maximum old sale price">
+                    </div>
+                </div>
+
+                <div class="f-item f-small">
+                    <label for="f_stock_status">Stock</label>
+                    <select id="f_stock_status" name="stock_status" class="form-select prd-filter">
+                        <option value="">All</option>
+                        <option value="in">In stock</option>
+                        <option value="low">Low</option>
+                        <option value="out">Out</option>
+                    </select>
+                </div>
+
+                <div class="f-item f-small">
+                    <label for="f_status">Status</label>
+                    <select id="f_status" name="status" class="form-select prd-filter">
+                        <option value="">All</option>
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+
+                <div class="f-item f-actions">
+                    <button type="button" class="btn btn-outline-dark" id="resetProductFilters">
+                        <i class="fas fa-rotate-left" aria-hidden="true"></i> Reset
+                    </button>
+                </div>
+
+            </form>
+
+            <!-- COUNT + COLUMN PICKER (moved into the DataTables header row on init) -->
+            <div class="d-none" id="productToolbarHolder">
+                <div class="prd-count" id="productCount" aria-live="polite">Loading…</div>
+
+                <div class="dropdown prd-cols">
+                    <button type="button" class="btn btn-sm btn-outline-dark dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <i class="fas fa-table-columns" aria-hidden="true"></i> Columns
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end" id="productColumnMenu"></div>
+                </div>
+            </div>
+
+            {{-- DataTables puts the table in .prd-scroll.dt-scroll (dom option): horizontal scroll + sticky header. --}}
+                <table id="manageProductTable" class="table table-bordered table-hover" width="100%" style="width:100%">
                     <thead>
                         <tr>
-                            <th width="3%" class="text-center">SL#</th>
-                            <th width="8%" class="text-center">Image</th>
-                            <th width="42%" class="text-center">Product Info</th>
-                            <th width="15%" class="text-center">Stock</th>
-                            <th width="16%" class="text-center">Price</th>
-                            <th width="8%" class="text-center">Status</th>
-                            <th width="8%" class="text-center">Actions</th>
+                            <th class="text-center">SL</th>
+                            <th class="text-center">Image</th>
+                            <th>Product</th>
+                            <th>SKU</th>
+                            <th>Barcode</th>
+                            <th>Category</th>
+                            <th>Brand</th>
+                            <th>Unit</th>
+                            <th class="num">Variants</th>
+                            <th class="num" title="Purchase price">Purchase</th>
+                            <th class="num" title="Current sale price">Sale</th>
+                            <th class="num" title="Old sale price">Old price</th>
+                            <th class="num">Discount</th>
+                            <th class="num" title="(Sale − Purchase) ÷ Sale">Margin %</th>
+                            <th class="num" title="Stock on hand in the branches you see">On hand</th>
+                            <th class="num">Alert qty</th>
+                            <th class="text-center" title="Stock status">Stock</th>
+                            <th class="text-center" title="Batch &amp; expiry tracked">Batch</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                 </table>
-
-            </div>
         </div>
     </div>
 
@@ -222,7 +425,15 @@
                             <div class="mb-3">
                                 <label for="vat_percent" class="form-label">VAT %</label>
                                 <input type="number" step="0.01" min="0" max="100" class="form-control border-dark"
-                                    name="vat_percent" id="vat_percent" placeholder="Default rate">
+                                    name="vat_percent" id="vat_percent" placeholder="Default rate" aria-describedby="vatHint">
+                                @if ($vatEnabled)
+                                    <small id="vatHint" class="text-muted d-block mt-1">Blank = default rate ({{ rtrim(rtrim(number_format($vatRate, 2, '.', ''), '0'), '.') }}%).</small>
+                                @else
+                                    <small id="vatHint" class="text-warning-emphasis d-block mt-1">
+                                        VAT is off for all sales, so this rate is not charged now.
+                                        Turn it on in <a href="{{ route('admin.customers.settings') }}">Settings › VAT, Loyalty &amp; Credit</a>.
+                                    </small>
+                                @endif
                             </div>
                         </div>
 
@@ -941,8 +1152,10 @@ function renderVariants($row, existingVariants = []) {
         const existingVariant = cache[attributeId] || {};
 
         const barcode      = existingVariant.barcode ?? '';
-        const salePrice    = existingVariant.sale_price ?? '';
-        const oldSalePrice = existingVariant.old_sale_price ?? '';
+        // A new variant starts with the product's own prices (edit them per variant if they differ).
+        const productPrice = (id) => { const v = parseFloat($('#' + id).val()); return v > 0 ? v : ''; };
+        const salePrice    = existingVariant.sale_price ?? productPrice('sale_price');
+        const oldSalePrice = existingVariant.old_sale_price ?? productPrice('old_sale_price');
         const openingStock = existingVariant.opening_stock ?? '';
 
         const isExisting = Boolean(existingVariant.id);
@@ -1831,22 +2044,442 @@ $(document).on('click', '#confirmDeleteProduct', function (e) {
 
 /*
 |--------------------------------------------------------------------------
-| DATATABLE
+| DATATABLE (server-side: filters, search, order and paging run in
+| ProductController::list). One value per cell.
 |--------------------------------------------------------------------------
 */
+
+const canEditProduct   = @json(\App\Http\Controllers\Admin\PermissionController::allows('products.edit'));
+const canDeleteProduct = @json(\App\Http\Controllers\Admin\PermissionController::allows('products.delete'));
+const productImageUrl  = "{{ asset('uploads/products') }}";
+
+// Columns hidden by default (the table is wide); the Columns menu shows them, the choice is remembered per browser.
+const productColumnsKey     = 'fpos.products.columns.v1';
+const productDefaultHidden  = ['barcode', 'unit_name', 'track_batch'];
+const productPriceFilters   = ['purchase_price', 'sale_price', 'old_price'];
+
+function money(value) {
+
+    const number = parseFloat(value);
+
+    if (!isFinite(number)) {
+        return '0.00';
+    }
+
+    return number.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function qty(value) {
+
+    const number = parseFloat(value);
+
+    if (!isFinite(number)) {
+        return '0';
+    }
+
+    return number.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+}
+
+function textCell(value, extraClass) {
+
+    if (value === null || value === undefined || String(value).trim() === '') {
+        return '<span class="muted">—</span>';
+    }
+
+    return '<span class="prd-clip ' + (extraClass || '') + '" title="' + escapeHtml(value) + '">' + escapeHtml(value) + '</span>';
+}
+
+function productFilterParams() {
+
+    const params = {};
+
+    $('#productFilters').find('select[name], input[name]').each(function () {
+
+        const value = ($(this).val() || '').toString().trim();
+
+        if (value !== '') {
+            params[this.name] = value;
+        }
+    });
+
+    return params;
+}
+
+// min <= max for each price range; marks the bad pair and returns false.
+function productFiltersValid() {
+
+    let valid = true;
+
+    productPriceFilters.forEach(function (key) {
+
+        const $min = $('#f_' + key + '_min');
+        const $max = $('#f_' + key + '_max');
+        const min  = $min.val() === '' ? null : parseFloat($min.val());
+        const max  = $max.val() === '' ? null : parseFloat($max.val());
+
+        const bad = (min !== null && (isNaN(min) || min < 0))
+            || (max !== null && (isNaN(max) || max < 0))
+            || (min !== null && max !== null && min > max);
+
+        $min.add($max).toggleClass('is-invalid', bad);
+
+        if (bad) {
+            valid = false;
+        }
+    });
+
+    return valid;
+}
+
+function reloadProducts() {
+
+    if (productTable && productFiltersValid()) {
+        productTable.ajax.reload();
+    }
+}
+
+function updateProductSummary(json) {
+
+    const summary = (json && json.summary) || {};
+    const shown   = parseInt(summary.products || 0, 10);
+    const total   = parseInt(summary.total || 0, 10);
+    const active  = Object.keys(productFilterParams()).length;
+
+    $('#sumProducts').text(qty(shown));
+    $('#sumIn').text(qty(summary.in_stock || 0));
+    $('#sumLow').text(qty(summary.low_stock || 0));
+    $('#sumOut').text(qty(summary.out_of_stock || 0));
+    // Whole units on the tile (it is narrow); the exact figure is in the tooltip.
+    const stockValue = parseFloat(summary.stock_value || 0);
+    $('#sumValue').text(currency + stockValue.toLocaleString('en-US', { maximumFractionDigits: 0 }))
+        .attr('title', currency + money(stockValue));
+
+    let text = '<strong>' + qty(shown) + '</strong> of ' + qty(total) + ' products';
+
+    if (active > 0) {
+        text += ' · ' + active + (active === 1 ? ' filter' : ' filters') + ' active';
+    }
+
+    $('#productCount').html(text);
+    $('#resetProductFilters').toggleClass('btn-outline-dark', active === 0).toggleClass('btn-dark', active > 0);
+}
+
+function savedProductColumns() {
+
+    try {
+        const saved = JSON.parse(window.localStorage.getItem(productColumnsKey) || 'null');
+        return Array.isArray(saved) ? saved : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function buildProductColumnMenu() {
+
+    const $menu = $('#productColumnMenu').empty();
+
+    productTable.columns().every(function (index) {
+
+        const name  = productTable.settings()[0].aoColumns[index].sName;
+        const title = $(this.header()).attr('title') || $(this.header()).text().trim();
+
+        if (!name || name === 'actions') {
+            return;
+        }
+
+        const id = 'prdCol_' + index;
+
+        $menu.append(
+            '<label class="dropdown-item" for="' + id + '">' +
+                '<input type="checkbox" class="form-check-input prd-col-toggle" id="' + id + '" data-column="' + index + '"' + (this.visible() ? ' checked' : '') + '>' +
+                '<span>' + escapeHtml(title || name) + '</span>' +
+            '</label>'
+        );
+    });
+}
+
+$(document).on('change', '.prd-col-toggle', function () {
+
+    if (!productTable) {
+        return;
+    }
+
+    productTable.column($(this).data('column')).visible(this.checked, false);
+    productTable.columns.adjust();
+
+    const hidden = [];
+
+    productTable.settings()[0].aoColumns.forEach(function (column, index) {
+        if (column.sName && !productTable.column(index).visible()) {
+            hidden.push(column.sName);
+        }
+    });
+
+    try {
+        window.localStorage.setItem(productColumnsKey, JSON.stringify(hidden));
+    } catch (e) {
+        // Storage unavailable (private window): the choice lasts for this page only.
+    }
+});
+
+let productFilterTimer = null;
+
+$(document).on('input', '#productFilters .prd-price', function () {
+
+    clearTimeout(productFilterTimer);
+    productFilterTimer = setTimeout(reloadProducts, 450);
+});
+
+$(document).on('change', '#productFilters select', function () {
+
+    clearTimeout(productFilterTimer);
+    reloadProducts();
+});
+
+$('#resetProductFilters').on('click', function () {
+
+    clearTimeout(productFilterTimer);
+
+    $('#productFilters').find('input').val('').removeClass('is-invalid');
+    $('#productFilters').find('select').val('');
+    $('#productFilters').find('select.prd-filter-select2').trigger('change.select2');
+
+    reloadProducts();
+});
 
 $(document).ready(function () {
 
     initializeSelect2($('#productModal'));
 
+    $('#productFilters select.prd-filter-select2').each(function () {
+
+        $(this).select2({ width: '100%' });
+    });
+
     if ($.fn.DataTable && $('#manageProductTable').length) {
 
+        const hiddenNames = savedProductColumns() || productDefaultHidden;
+
+        const columns = [
+
+            // SL
+            {
+                data: null,
+                name: '',
+                className: 'text-center',
+                orderable: false,
+                searchable: false,
+                render: function (data, type, row, meta) {
+                    return meta.settings._iDisplayStart + meta.row + 1;
+                }
+            },
+
+            // IMAGE
+            {
+                data: 'image',
+                name: 'image',
+                className: 'text-center',
+                orderable: false,
+                render: function (data, type, row) {
+
+                    if (data) {
+
+                        return '<img src="' + productImageUrl + '/' + encodeURIComponent(data) + '"' +
+                            ' class="product-table-image" alt="' + escapeHtml(row.name || '') + '" width="40" height="40" loading="lazy"' +
+                            ' onerror="this.onerror=null; this.outerHTML=\'<span class=&quot;prd-noimg&quot;><i class=&quot;fas fa-image&quot;></i></span>\';">';
+                    }
+
+                    return '<span class="prd-noimg" aria-label="No image"><i class="fas fa-image" aria-hidden="true"></i></span>';
+                }
+            },
+
+            // PRODUCT NAME
+            {
+                data: 'name',
+                name: 'name',
+                render: function (data, type, row) {
+
+                    const name = escapeHtml(data || '');
+
+                    if (canEditProduct) {
+                        return '<button type="button" class="prd-name prd-name-btn editProductBtn" data-id="' + escapeHtml(row.id) + '" title="' + name + '">' + name + '</button>';
+                    }
+
+                    return '<span class="prd-name" title="' + name + '">' + name + '</span>';
+                }
+            },
+
+            { data: 'sku',           name: 'sku',           render: function (data) { return textCell(data, 'prd-code'); } },
+            { data: 'barcode',       name: 'barcode',       render: function (data) { return textCell(data, 'prd-code'); } },
+            { data: 'category_name', name: 'category_name', render: function (data) { return textCell(data); } },
+            { data: 'brand_name',    name: 'brand_name',    render: function (data) { return textCell(data); } },
+            { data: 'unit_name',     name: 'unit_name',     render: function (data) { return textCell(data); } },
+
+            // VARIANTS (count)
+            {
+                data: 'variant_count',
+                name: 'variant_count',
+                className: 'num',
+                render: function (data) {
+                    const count = parseInt(data || 0, 10);
+                    return count > 0 ? String(count) : '<span class="muted" title="No variants">0</span>';
+                }
+            },
+
+            { data: 'purchase_price', name: 'purchase_price', className: 'num', render: function (data) { return money(data); } },
+            { data: 'sale_price',     name: 'sale_price',     className: 'num', render: function (data) { return money(data); } },
+
+            {
+                data: 'old_sale_price',
+                name: 'old_sale_price',
+                className: 'num',
+                render: function (data) {
+                    return parseFloat(data || 0) > 0 ? money(data) : '<span class="muted">—</span>';
+                }
+            },
+
+            {
+                data: 'discount',
+                name: 'discount',
+                className: 'num',
+                render: function (data) {
+                    return parseFloat(data || 0) > 0 ? money(data) : '<span class="muted">—</span>';
+                }
+            },
+
+            // MARGIN % = (sale − purchase) / sale
+            {
+                data: 'margin',
+                name: 'margin',
+                className: 'num',
+                render: function (data) {
+
+                    if (data === null || data === undefined || data === '') {
+                        return '<span class="muted" title="No sale price">—</span>';
+                    }
+
+                    const margin = parseFloat(data);
+
+                    return '<span class="' + (margin < 0 ? 'neg' : '') + '">' + margin.toFixed(2) + '%</span>';
+                }
+            },
+
+            // STOCK ON HAND (visible branches)
+            {
+                data: 'current_stock',
+                name: 'current_stock',
+                className: 'num',
+                render: function (data) {
+                    const current = parseFloat(data || 0);
+                    return '<span class="' + (current < 0 ? 'neg' : '') + '">' + qty(current) + '</span>';
+                }
+            },
+
+            { data: 'stock_alert', name: 'stock_alert', className: 'num', render: function (data) { return qty(data); } },
+
+            // STOCK STATUS
+            {
+                data: 'stock_state',
+                name: 'stock_state',
+                className: 'text-center',
+                render: function (data) {
+
+                    if (data === 'out') {
+                        return '<span class="badge bg-danger-subtle text-danger-emphasis">Out</span>';
+                    }
+
+                    if (data === 'low') {
+                        return '<span class="badge bg-warning-subtle text-warning-emphasis">Low</span>';
+                    }
+
+                    return '<span class="badge bg-success-subtle text-success-emphasis">In stock</span>';
+                }
+            },
+
+            // BATCH TRACKED
+            {
+                data: 'track_batch',
+                name: 'track_batch',
+                className: 'text-center',
+                render: function (data) {
+                    return data === 'Yes' ? 'Yes' : '<span class="muted">No</span>';
+                }
+            },
+
+            // STATUS (click toggles when the user may edit)
+            {
+                data: 'status',
+                name: 'status',
+                className: 'text-center',
+                render: function (data, type, row) {
+
+                    const active = data === 'Active';
+                    const icon   = '<i class="fas ' + (active ? 'fa-check-circle status-on' : 'fa-times-circle status-off') + ' status-icon" aria-hidden="true"></i>';
+                    const label  = active ? 'Active' : 'Inactive';
+
+                    if (canEditProduct) {
+                        return '<button type="button" class="btn btn-sm btn-link p-0 toggleStatusBtn" data-id="' + escapeHtml(row.id) + '"' +
+                            ' title="' + label + ' (click to ' + (active ? 'deactivate' : 'activate') + ')" aria-label="' + label + '">' + icon + '</button>';
+                    }
+
+                    return '<span title="' + label + '" aria-label="' + label + '">' + icon + '</span>';
+                }
+            },
+
+            // ACTIONS
+            {
+                data: 'id',
+                name: 'actions',
+                className: 'text-center',
+                orderable: false,
+                searchable: false,
+                render: function (data) {
+
+                    const items = [];
+
+                    if (canEditProduct) {
+                        items.push({ label: 'Edit', icon: 'fas fa-edit', class: 'editProductBtn', attrs: { 'data-id': data } });
+                    }
+
+                    if (canDeleteProduct) {
+                        items.push({ label: 'Delete', icon: 'fas fa-trash', class: 'text-danger deleteProductBtn', attrs: { 'data-id': data } });
+                    }
+
+                    return items.length ? actionDropdown(items) : '<span class="muted">—</span>';
+                }
+            }
+        ];
+
+        columns.forEach(function (column) {
+            column.visible = !column.name || hiddenNames.indexOf(column.name) === -1;
+        });
+
         productTable = $('#manageProductTable').DataTable({
+
+            serverSide: true,
+            processing: true,
+            searchDelay: 400,
+            autoWidth: false,
+            pageLength: 25,
+
+            lengthMenu: [
+                [10, 25, 50, 100, 500],
+                [10, 25, 50, 100, 500]
+            ],
+
+            order: [],
+
+            dom: '<"prd-dt-head"l<"prd-dt-count">f<"prd-dt-cols">>r<"prd-scroll dt-scroll"t><"prd-dt-foot"ip>',
 
             ajax: {
 
                 url: "{{ route('products.list') }}",
                 type: 'GET',
+                dataType: 'json',
+
+                data: function (d) {
+                    return $.extend(d, productFilterParams());
+                },
 
                 dataSrc: function (json) {
 
@@ -1857,176 +2490,32 @@ $(document).ready(function () {
                         return [];
                     }
 
+                    updateProductSummary(json);
+
                     return json.data || [];
+                },
+
+                error: function (xhr) {
+                    // alert(JSON.stringify(xhr));
+                    toastr.error((xhr.responseJSON && xhr.responseJSON.message) || 'Unable to load products.');
+                    $('#manageProductTable_processing').hide();
                 }
             },
 
-            processing: true,
-            pageLength: 25,
-
-            lengthMenu: [
-                [10, 25, 50, 100, -1],
-                [10, 25, 50, 100, 'All']
-            ],
-
-            order: [[0, 'asc']],
-
-            columns: [
-
-                // SL
-                {
-                    data: null,
-                    className: 'text-center',
-                    render: function (data, type, row, meta) {
-                        return meta.row + 1;
-                    }
-                },
-
-                // IMAGE
-                {
-                    data: 'image',
-                    className: 'text-center',
-                    orderable: false,
-                    render: function (data, type, row) {
-
-                        if (data) {
-
-                            return `
-                                <img src="{{ asset('uploads/products') }}/${escapeHtml(data)}"
-                                    class="product-table-image"
-                                    alt="${escapeHtml(row.name || '')}"
-                                    width="45" height="45"
-                                    style="object-fit:contain; border-radius:4px;"
-                                    onerror="this.onerror=null; this.parentElement.innerHTML='-';">
-                            `;
-                        }
-
-                        return '-';
-                    }
-                },
-
-                // PRODUCT INFO
-                {
-                    data: null,
-                    render: function (data, type, row) {
-
-                        let html = '<strong class="text-dark">' + escapeHtml(row.name || '') + '</strong>';
-
-
-
-                        if (row.category_name) {
-                            html += '<br><small class="text-muted"><b>Category:</b> ' + escapeHtml(row.category_name) + '</small>';
-                        }
-
-                        if (row.brand_name) {
-                            html += '<br><small class="text-muted"><b>Brand:</b> ' + escapeHtml(row.brand_name) + '</small>';
-                        }
-
-                        return html;
-                    }
-                },
-
-                // STOCK
-                {
-                    data: null,
-                    className: 'text-center',
-                    render: function (data, type, row) {
-
-                        const opening  = parseFloat(row.opening_stock || 0);
-                        const current  = parseFloat(row.current_stock || 0);
-                        const alertQty = parseFloat(row.stock_alert || 0);
-
-                        const currentClass = current <= alertQty
-                            ? 'text-danger fw-bold'
-                            : 'text-success fw-bold';
-
-                        return `
-                            <div class="small text-start d-inline-block">
-                                <div><b>Opening:</b> ${opening}</div>
-                                <div><b>Alert:</b> ${alertQty}</div>
-                                <div><b>Available:</b> <span class="${currentClass}">${current}</span></div>
-                            </div>
-                        `;
-                    }
-                },
-
-                // PRICE
-                {
-                    data: null,
-                    className: 'text-center',
-                    render: function (data, type, row) {
-
-                        const purchasePrice = parseFloat(row.purchase_price || 0);
-                        const salePrice     = parseFloat(row.sale_price || 0);
-                        const oldSalePrice  = parseFloat(row.old_sale_price || 0);
-                        const discount      = parseFloat(row.discount || 0);
-
-                        let html = '<div class="small text-start d-inline-block">';
-
-                        html += '<div><b>PP:</b> ' + escapeHtml(currency) + purchasePrice.toFixed(2) + '</div>';
-                        html += '<div><b>SP:</b> ' + escapeHtml(currency) + salePrice.toFixed(2) + '</div>';
-
-                        if (oldSalePrice > 0) {
-                            html += '<div><b>Old:</b> ' + escapeHtml(currency) + oldSalePrice.toFixed(2) + '</div>';
-                        }
-
-                        if (discount > 0) {
-                            html += '<div><b>Discount:</b> ' + discount.toFixed(2) + '</div>';
-                        }
-
-                        html += '</div>';
-
-                        return html;
-                    }
-                },
-
-                // STATUS
-                {
-                    data: 'status',
-                    className: 'text-center',
-                    render: function (data, type, row) {
-
-                        if (data === 'Active') {
-
-                            return `
-                                <button type="button" class="btn btn-sm btn-link p-0 toggleStatusBtn"
-                                    data-id="${escapeHtml(row.id)}"
-                                    title="Active (Click to Deactivate)">
-                                    <i class="fas fa-check-circle text-success" style="font-size:18px;"></i>
-                                </button>
-                            `;
-                        }
-
-                        return `
-                            <button type="button" class="btn btn-sm btn-link p-0 toggleStatusBtn"
-                                data-id="${escapeHtml(row.id)}"
-                                title="Inactive (Click to Activate)">
-                                <i class="fas fa-times-circle text-danger" style="font-size:18px;"></i>
-                            </button>
-                        `;
-                    }
-                },
-
-                // ACTIONS
-                {
-                    data: 'id',
-                    className: 'text-center',
-                    orderable: false,
-                    searchable: false,
-                    render: function (data) {
-
-                        return actionDropdown([
-                            { label: 'Edit', icon: 'fas fa-edit', class: 'editProductBtn', attrs: { 'data-id': data } },
-                            { label: 'Delete', icon: 'fas fa-trash', class: 'text-danger deleteProductBtn', attrs: { 'data-id': data } }
-                        ]);
-                    }
-                }
-
-            ],
+            columns: columns,
 
             language: {
-                processing: 'Loading...',
-                emptyTable: 'No products found.'
+                processing: 'Loading…',
+                emptyTable: 'No products found.',
+                zeroRecords: 'No products match these filters.',
+                info: 'Showing _START_–_END_ of _TOTAL_',
+                infoFiltered: ''
+            },
+
+            initComplete: function () {
+                $('.prd-dt-count').append($('#productCount'));
+                $('.prd-dt-cols').append($('#productToolbarHolder .prd-cols'));
+                buildProductColumnMenu();
             }
         });
     }

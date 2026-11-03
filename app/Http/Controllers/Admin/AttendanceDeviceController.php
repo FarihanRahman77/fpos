@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Admin\Zk\ZkClient;
 use App\Http\Controllers\Controller;
+use App\Traits\SafeJsonErrors;
 use App\Traits\VoucherHelperTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,7 +26,7 @@ use Throwable;
  */
 class AttendanceDeviceController extends Controller
 {
-    use VoucherHelperTrait;
+    use VoucherHelperTrait, SafeJsonErrors;
 
     public const TIMEOUT = 4.0;
 
@@ -146,13 +147,18 @@ class AttendanceDeviceController extends Controller
             ];
         } catch (RuntimeException $e) {
             $zk->disconnect();
+            if ($e instanceof \PDOException) {   // a database error is a RuntimeException too: never show its SQL
+                Log::error('Attendance device test error', ['device' => $device->id, 'error' => $e->getMessage()]);
+
+                return ['status' => false, 'message' => 'Could not talk to the device. Please try again.', 'seconds' => round(microtime(true) - $started, 2)];
+            }
 
             return ['status' => false, 'message' => $e->getMessage(), 'seconds' => round(microtime(true) - $started, 2)];
         } catch (Throwable $e) {
             $zk->disconnect();
             Log::error('Attendance device test error', ['device' => $device->id, 'error' => $e->getMessage()]);
 
-            return ['status' => false, 'message' => 'Could not talk to the device: ' . $e->getMessage(), 'seconds' => round(microtime(true) - $started, 2)];
+            return ['status' => false, 'message' => 'Could not talk to the device. Please try again.', 'seconds' => round(microtime(true) - $started, 2)];
         }
     }
 
@@ -185,6 +191,12 @@ class AttendanceDeviceController extends Controller
             return ['status' => true, 'message' => $message] + $result;
         } catch (RuntimeException $e) {
             $zk->disconnect();
+            if ($e instanceof \PDOException) {   // a database error is a RuntimeException too: never show its SQL
+                Log::error('Attendance device sync error', ['device' => $device->id, 'error' => $e->getMessage(), 'line' => $e->getLine()]);
+                DB::table('attendance_devices')->where('id', $device->id)->update(['last_message' => 'Sync failed: could not save the records.', 'updated_at' => now()]);
+
+                return ['status' => false, 'message' => 'Sync failed: could not save the records. Please try again.'];
+            }
             DB::table('attendance_devices')->where('id', $device->id)->update(['last_message' => mb_substr('Sync failed: ' . $e->getMessage(), 0, 255), 'updated_at' => now()]);
 
             return ['status' => false, 'message' => $e->getMessage()];
@@ -192,7 +204,7 @@ class AttendanceDeviceController extends Controller
             $zk->disconnect();
             Log::error('Attendance device sync error', ['device' => $device->id, 'error' => $e->getMessage(), 'line' => $e->getLine()]);
 
-            return ['status' => false, 'message' => 'Sync failed: ' . $e->getMessage()];
+            return ['status' => false, 'message' => 'Sync failed. Please try again.'];
         }
     }
 

@@ -52,10 +52,10 @@
                     </table>
                 </div>
                 <p class="text-muted small mt-3 mb-0">
-                    Closing posts, as at the year end: Dr every Income ledger / Cr every Expense ledger for its balance, and the
-                    difference (net profit or loss) to the retained earnings ledger, then saves a snapshot of every ledger. Postings dated
-                    after the year end stay in the ledgers. Reopening reverses exactly those amounts.
-                    Entries dated inside a closed year are not blocked yet by the other screens.
+                    Closing moves the year's net profit or loss (all branches) to the retained earnings ledger you choose: from the day
+                    after the year end the Trial Balance and Balance Sheet show it in retained earnings instead of the Income and Expense
+                    lines, and a snapshot of every balance at the year end is saved. Entries dated inside a closed year are refused.
+                    Reopening the most recently closed year puts its profit back in the Income and Expense lines.
                 </p>
             </div>
         </div>
@@ -74,24 +74,24 @@
                         <div class="mb-3">
                             <label class="form-label" for="fy_name">Name <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="fy_name" name="name" maxlength="60" placeholder="FY 2026">
-                            <div class="invalid-feedback"></div>
+                            <div class="invalid-feedback field-error"></div>
                         </div>
                         <div class="row g-3">
                             <div class="col-6">
                                 <label class="form-label" for="fy_start">First day <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="fy_start" name="start_date">
-                                <div class="invalid-feedback"></div>
+                                <div class="invalid-feedback field-error"></div>
                             </div>
                             <div class="col-6">
                                 <label class="form-label" for="fy_end">Last day <span class="text-danger">*</span></label>
                                 <input type="date" class="form-control" id="fy_end" name="end_date">
-                                <div class="invalid-feedback"></div>
+                                <div class="invalid-feedback field-error"></div>
                             </div>
                         </div>
                         <div class="mt-3">
                             <label class="form-label" for="fy_remarks">Remarks</label>
                             <input type="text" class="form-control" id="fy_remarks" name="remarks" maxlength="500">
-                            <div class="invalid-feedback"></div>
+                            <div class="invalid-feedback field-error"></div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -131,11 +131,11 @@
                                 <option value="{{ $l->id }}">{{ $l->account_name }} ({{ $l->account_code }})</option>
                             @endforeach
                         </select>
-                        <div class="invalid-feedback"></div>
+                        <div class="invalid-feedback field-error"></div>
                         @if ($equityLedgers->isEmpty())
                             <div class="text-danger small mt-1">There is no Equity ledger yet. Add one (e.g. Retained Earnings) under Equity in the Chart of Accounts.</div>
                         @endif
-                        <p class="text-muted small mt-3 mb-0">The profit posted is the Income less Expense ledger balances. Sales and cost of goods sold are not posted to ledgers in this app, so it can differ from the Profit &amp; Loss statement.</p>
+                        <p class="text-muted small mt-3 mb-0">The profit moved is the year's Income less Expense balances since the previous closing, from the same ledger as the Profit &amp; Loss statement (sales, cost of goods sold, expenses, payroll, journals), all branches.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary me-auto" data-bs-dismiss="modal">Cancel</button>
@@ -270,7 +270,7 @@
 
             confirm: function(title, text, button, run) {
                 if (typeof Swal === 'undefined') { if (confirm(title + ' ' + text)) run(); return; }
-                Swal.fire({ title: title, text: text, icon: 'warning', showCancelButton: true, confirmButtonText: button, reverseButtons: true })
+                Swal.fire({ titleText: title, text: text, icon: 'warning', showCancelButton: true, confirmButtonText: button, reverseButtons: true })
                     .then(function(r) { if (r.isConfirmed) run(); });
             },
 

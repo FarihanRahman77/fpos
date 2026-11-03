@@ -18,6 +18,15 @@
         .att-days .btn { min-width: 52px; }
         .att-msg { font-size: var(--text-caption); color: var(--color-text-muted); max-width: 360px; }
         .att-msg.err { color: var(--color-danger); }
+        /* shifts list fits its card: cells wrap instead of forcing a horizontal scroll */
+        .att-shifts td, .att-shifts th { min-width: 0; white-space: normal; word-break: normal; }
+        .att-shifts td.att-actions { white-space: nowrap; width: 1%; }
+        @media (max-width: 767.98px) {
+            .att-shifts thead { display: none; }
+            .att-shifts tr { display: block; padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-border); }
+            .att-shifts td { display: block; border: 0; padding: 2px 10px; }
+            .att-shifts td[data-label]::before { content: attr(data-label) ': '; color: var(--color-text-muted); }
+        }
     </style>
 @endpush
 
@@ -93,7 +102,8 @@
                                                 <label class="btn btn-sm btn-outline-secondary" for="off_{{ $d }}">{{ substr($d, 0, 3) }}</label>
                                             @endforeach
                                         </div>
-                                        <div class="att-hint mt-1">None picked = the weekend of the holiday calendar.</div>
+                                        <div class="att-hint mt-1">None picked = the weekend of the holiday calendar ({{ $calendarWeekend ? implode(', ', $calendarWeekend) : 'none set' }}).</div>
+                                        <div class="att-hint mt-1 text-warning d-none" id="offDiffers"></div>
                                     </div>
                                     <div class="mb-3">
                                         <label class="form-label" for="shift_status">Status</label>
@@ -116,8 +126,8 @@
                             <div class="card-body">
                                 <h6 class="mb-2">Shifts</h6>
                                 <div class="table-responsive">
-                                    <table class="table table-bordered att-table mb-0">
-                                        <thead><tr><th>Shift</th><th>Time</th><th>Grace / Half day / OT after</th><th>Weekly Off</th><th class="text-center">Employees</th><th>Status</th><th style="width: 90px;"></th></tr></thead>
+                                    <table class="table table-bordered att-table att-shifts mb-0">
+                                        <thead><tr><th>Shift</th><th>Time</th><th>Grace / Half day / OT</th><th>Weekly Off</th><th class="text-center">Staff</th><th>Status</th><th class="att-actions"></th></tr></thead>
                                         <tbody id="shiftRows"></tbody>
                                     </table>
                                 </div>
@@ -327,6 +337,16 @@
         }
 
         /* ---------------- Shifts ---------------- */
+        const CAL_WEEKEND = @json($calendarWeekend);
+
+        // Text when a shift's own weekly off is not the holiday calendar's weekend ('' when the same or none picked).
+        function offsDiffer(offs) {
+            if (!offs || !offs.length) return '';
+            const a = offs.slice().sort().join(','), b = CAL_WEEKEND.slice().sort().join(',');
+            return a === b ? '' : 'This shift is off on ' + offs.join(', ') + ' but the holiday calendar weekend is ' +
+                (CAL_WEEKEND.length ? CAL_WEEKEND.join(', ') : 'not set') + '. Its employees work on the calendar weekend and are off on these days instead.';
+        }
+
         function loadShifts() {
             $.ajax({
                 url: R.shifts,
@@ -336,13 +356,15 @@
                     // alert(JSON.stringify(response));
                     shiftCache = response.data;
                     $('#shiftRows').html(response.data.length ? response.data.map(function(s) {
-                        return '<tr><td class="fw-semibold">' + esc(s.name) + (s.is_default ? ' <span class="att-pill info">Default</span>' : '') + '</td>' +
-                            '<td>' + s.start + ' – ' + s.end + '</td>' +
-                            '<td>' + s.grace_minutes + ' / ' + (s.half_day_after_minutes || '—') + ' / ' + s.overtime_after_minutes + ' min</td>' +
-                            '<td>' + (s.weekly_offs.length ? esc(s.weekly_offs.join(', ')) : '<span class="text-muted">Calendar weekend</span>') + '</td>' +
-                            '<td class="text-center">' + s.employees + '</td>' +
-                            '<td><span class="att-pill ' + (s.status === 'Active' ? 'ok' : 'off') + '">' + s.status + '</span></td>' +
-                            '<td class="text-nowrap"><button type="button" class="btn btn-sm btn-outline-secondary shift-edit" data-id="' + s.id + '" aria-label="Edit"><i class="fas fa-pen"></i></button> ' +
+                        const differs = offsDiffer(s.weekly_offs);
+                        return '<tr><td class="fw-semibold" data-label="Shift">' + esc(s.name) + (s.is_default ? ' <span class="att-pill info">Default</span>' : '') + '</td>' +
+                            '<td data-label="Time">' + s.start + ' – ' + s.end + '</td>' +
+                            '<td data-label="Grace / Half day / OT">' + s.grace_minutes + ' / ' + (s.half_day_after_minutes || '—') + ' / ' + s.overtime_after_minutes + ' min</td>' +
+                            '<td data-label="Weekly off">' + (s.weekly_offs.length ? esc(s.weekly_offs.join(', ')) : '<span class="text-muted">Calendar weekend</span>') +
+                                (differs ? ' <span class="att-pill warn" title="' + esc(differs) + '">Differs from calendar</span>' : '') + '</td>' +
+                            '<td class="text-center" data-label="Employees">' + s.employees + '</td>' +
+                            '<td data-label="Status"><span class="att-pill ' + (s.status === 'Active' ? 'ok' : 'off') + '">' + s.status + '</span></td>' +
+                            '<td class="att-actions"><button type="button" class="btn btn-sm btn-outline-secondary shift-edit" data-id="' + s.id + '" aria-label="Edit"><i class="fas fa-pen"></i></button> ' +
                             '<button type="button" class="btn btn-sm btn-outline-danger shift-del" data-id="' + s.id + '" aria-label="Remove"><i class="fas fa-trash"></i></button></td></tr>';
                     }).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">No shifts yet.</td></tr>');
 
@@ -364,6 +386,12 @@
             $('#shiftCancel').addClass('d-none');
             Voucher.clearErrors($('#shiftForm'));
             $('#shift_error').text('');
+            offHint();
+        }
+        function offHint() {
+            const offs = $('#shiftForm input[name="weekly_offs[]"]:checked').map(function() { return $(this).val(); }).get();
+            const text = offsDiffer(offs);
+            $('#offDiffers').toggleClass('d-none', !text).text(text);
         }
 
         /* ---------------- Devices ---------------- */
@@ -435,6 +463,7 @@
                 submitForm($(this), R.shiftSave, $('#shiftSubmit'), $('#shift_error'), 'Save Shift', function() { resetShift(); loadShifts(); });
             });
             $('#shiftCancel').on('click', resetShift);
+            $('#shiftForm').on('change', 'input[name="weekly_offs[]"]', offHint);
             $(document).on('click', '.shift-edit', function() {
                 const s = shiftCache.find(function(x) { return x.id == $(this).data('id'); }, this);
                 if (!s) return;
@@ -448,6 +477,7 @@
                 $('#overtime_after_minutes').val(s.overtime_after_minutes);
                 $('#shiftForm input[name="weekly_offs[]"]').each(function() { $(this).prop('checked', s.weekly_offs.indexOf($(this).val()) !== -1); });
                 $('#shift_status').val(s.status);
+                offHint();
                 $('#shiftTitle').text('Edit ' + s.name);
                 $('#shiftCancel').removeClass('d-none');
             });

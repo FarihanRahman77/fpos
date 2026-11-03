@@ -99,11 +99,11 @@
                     @if (in_array('range', $filters))
                         <div class="col-6 col-md-2">
                             <label class="form-label" for="from">From</label>
-                            <input type="date" id="from" name="from" class="form-control" value="{{ now()->startOfMonth()->toDateString() }}">
+                            <input type="date" id="from" name="from" class="form-control" value="{{ $defaultRange[0] ?? now()->startOfMonth()->toDateString() }}">
                         </div>
                         <div class="col-6 col-md-2">
                             <label class="form-label" for="to">To</label>
-                            <input type="date" id="to" name="to" class="form-control" value="{{ now()->toDateString() }}">
+                            <input type="date" id="to" name="to" class="form-control" value="{{ $defaultRange[1] ?? now()->toDateString() }}">
                         </div>
                     @endif
                     @if (in_array('date', $filters))
